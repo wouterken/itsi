@@ -12,4 +12,5 @@
 *.a
 mkmf.log
 target/
+sandbox/
 .DS_Store

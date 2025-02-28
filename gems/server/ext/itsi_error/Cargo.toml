@@ -1,0 +1,9 @@
+[package]
+name = "itsi_error"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+thiserror = "2.0.11"
+magnus = { version = "0.7.1" }
+rcgen = "0.13.2"

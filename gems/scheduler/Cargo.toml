@@ -1,0 +1,3 @@
+[workspace]
+members = ["./ext/itsi_scheduler"]
+resolver = "2"

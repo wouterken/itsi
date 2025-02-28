@@ -1,0 +1,16 @@
+[package]
+name = "itsi-scheduler"
+version = "0.1.0"
+edition = "2021"
+authors = ["Wouter Coppieters <wc@pico.net.nz>"]
+license = "MIT"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+magnus = { version = "0.6.2" }
+itsi_tracing = { path = "../itsi_tracing" }
+itsi_rb_helpers = { path = "../itsi_rb_helpers" }
+itsi_error = { path = "../itsi_error" }
