@@ -1,0 +1,84 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "optparse"
+require "rack"
+require "etc"
+
+# Default options used when starting Osprey from the CLI using `osprey`
+DEFAULT_OPTIONS = {
+  # Number of workers
+  workers: Etc.nprocessors,
+  # Number of threads per worker
+  threads: 1,
+  # Graceful shutdown timeout
+  shutdown_timeout: 0.3,
+  # Binds
+  binds: ['http://0.0.0.0:3000']
+}
+
+options = DEFAULT_OPTIONS.to_a.select(&:last).to_h
+
+# Define the option parser
+OptionParser.new do |opts|
+  opts.banner = "Usage: script.rb [options]"
+
+  opts.on("-w", "--workers WORKERS", Integer, "Number of workers (default: #{options[:workers]})") do |w|
+    options[:workers] = w
+  end
+
+  opts.on("-t", "--threads THREADS", Integer, "Number of threads (default: #{options[:threads]})") do |t|
+    options[:threads] = t
+  end
+
+  opts.on("-h", "--host HOST", String, "Host to bind to (default: #{options[:host]})") do |h|
+    options[:host] = h
+  end
+
+  opts.on("-p", "--port PORT", Integer, "Port for the application (default: #{options[:port]})") do |p|
+    options[:port] = p
+  end
+
+  opts.on("-f", "--use_fiber_scheduler PORT", TrueClass,
+          "Port for the application (default: #{options[:use_scheduler]})") do |p|
+    options[:use_scheduler] = p
+  end
+
+  opts.on("--http_port HTTP_PORT", Integer, "HTTP port for the application (default: #{options[:http_port]})") do |hp|
+    options[:http_port] = hp
+  end
+
+  opts.on("-c", "--cert_path CERT_PATH", String, "Path to the SSL certificate file") do |cp|
+    options[:cert_path] = cp
+  end
+
+  opts.on("-k", "--key_path KEY_PATH", String, "Path to the SSL key file") do |kp|
+    options[:key_path] = kp
+  end
+
+  opts.on("--shutdown_timeout SHUTDOWN_TIMEOUT", String,
+          "Graceful timeout period before forcing workers to shutdown") do |shutdown_timeout|
+    options[:shutdown_timeout] = shutdown_timeout
+  end
+
+  opts.on("--script_name SCRIPT_NAME", String, "Script name to inject into Rack ENV") do |script_name|
+    options[:script_name] = script_name
+  end
+
+  opts.on("--help", "Show this help message") do
+    puts opts
+    exit
+  end
+end.parse!
+
+# Parse the Rack application
+app, _ = Rack::Builder.parse_file("config.ru")
+
+puts "App is #{app}"
+# Make sure osprey is loaded, if not already loaded by the rack_app above.
+# Start the Osprey server
+require "itsi/server"
+Itsi::Server.new(
+  app: app,
+  **options
+).start

@@ -28,6 +28,9 @@ Gem::Specification.new do |spec|
         f.start_with?(*%w[bin/ test/ spec/ features/ .git appveyor Gemfile])
     end
   end
+  spec.bindir = "exe"
+  spec.executables = spec.files.grep(%r{\Aexe/}) { |f| File.basename(f) }
+
   spec.require_paths = ["lib"]
 
   spec.add_dependency "itsi-server", "~> 0.1"

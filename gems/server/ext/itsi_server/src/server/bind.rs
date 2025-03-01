@@ -1,4 +1,4 @@
-use super::tls::configure_tls;
+use super::{tls::configure_tls, transfer_protocol::TransferProtocol};
 use itsi_error::ItsiError;
 use std::{
     collections::HashMap,
@@ -7,39 +7,6 @@ use std::{
     str::FromStr,
 };
 use tokio_rustls::rustls::ServerConfig;
-
-// When we bind our server,
-// we bind to an Address (IPv4, IPV6 or Unix Socket), Port,
-// With a protocol.
-// If the protocol is HTTPS we'll configure generate a TLS ServerConfig.
-#[derive(Debug, Default, Clone)]
-pub struct Bind {
-    pub address: BindAddress,
-    pub port: Option<u16>, // None for Unix Sockets
-    pub protocol: TransferProtocol,
-    pub tls_config: Option<ServerConfig>,
-}
-
-#[derive(Debug, Default, Clone)]
-pub enum TransferProtocol {
-    Http,
-    #[default]
-    Https,
-    Unix,
-}
-
-impl FromStr for TransferProtocol {
-    type Err = ItsiError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "http" => Ok(TransferProtocol::Http),
-            "https" => Ok(TransferProtocol::Https),
-            "unix" => Ok(TransferProtocol::Unix),
-            _ => Err(ItsiError::UnsupportedProtocol(s.to_string())),
-        }
-    }
-}
 
 // Support binding to either IP or Unix Socket
 #[derive(Debug, Clone)]
@@ -52,6 +19,15 @@ impl Default for BindAddress {
     fn default() -> Self {
         BindAddress::Ip(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
     }
+}
+
+#[derive(Debug, Default, Clone)]
+#[magnus::wrap(class = "Itsi::Bind")]
+pub struct Bind {
+    pub address: BindAddress,
+    pub port: Option<u16>, // None for Unix Sockets
+    pub protocol: TransferProtocol,
+    pub tls_config: Option<ServerConfig>,
 }
 
 impl FromStr for Bind {
@@ -67,16 +43,7 @@ impl FromStr for Bind {
         let (url, options) = if let Some((base, options)) = remainder.split_once('?') {
             (base, parse_bind_options(options))
         } else {
-            (s, HashMap::new())
-        };
-
-        if let TransferProtocol::Unix = protocol {
-            return Ok(Self {
-                address: BindAddress::UnixSocket(PathBuf::from(url)),
-                protocol: TransferProtocol::Unix,
-                port: None,
-                tls_config: None,
-            });
+            (remainder, HashMap::new())
         };
 
         let (host, port) = if url.starts_with('[') {
@@ -108,12 +75,6 @@ impl FromStr for Bind {
             (url, None)
         };
 
-        let port = port.or(match protocol {
-            TransferProtocol::Http => Some(80),
-            TransferProtocol::Https => Some(443),
-            TransferProtocol::Unix => None,
-        });
-
         let address = if let Ok(ip) = host.parse::<IpAddr>() {
             BindAddress::Ip(ip)
         } else {
@@ -121,8 +82,17 @@ impl FromStr for Bind {
                 .map(BindAddress::Ip)
                 .unwrap_or(BindAddress::Ip(IpAddr::V4(Ipv4Addr::UNSPECIFIED)))
         };
+        let (port, address) = match protocol {
+            TransferProtocol::Http => (port.or(Some(80)), address),
+            TransferProtocol::Https => (port.or(Some(443)), address),
+            TransferProtocol::Unix => (None, BindAddress::UnixSocket(host.into())),
+        };
 
-        let tls_config = if let TransferProtocol::Https = protocol {
+        let tls_config = if let TransferProtocol::Http = protocol {
+            None
+        } else if let TransferProtocol::Https = protocol {
+            Some(configure_tls(host, &options)?)
+        } else if options.contains_key("cert") {
             Some(configure_tls(host, &options)?)
         } else {
             None

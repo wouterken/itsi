@@ -5,6 +5,17 @@ require_relative "server/itsi_server"
 
 module Itsi
   class Server
-    class Error < StandardError; end
+    # Call our Rack app with our request ENV.
+    def self.call(app, request)
+      app.call(request.to_env)
+    end
+
+    # If scheduler is enabled
+    # Each request is wrapped in a Fiber.
+    def self.schedule(app, request)
+      Fiber.schedule do
+        call(app, request)
+      end
+    end
   end
 end

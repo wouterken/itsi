@@ -107,7 +107,7 @@ pub fn load_private_key(path: &str) -> PrivateKey {
 }
 
 pub fn generate_ca_signed_cert(domain: &str) -> Result<(Vec<Certificate>, PrivateKey)> {
-    info!("Generating New Isi CA - Self signed Certificate. Use `itsi ca export` to export the CA certificate for import into your local trust store.");
+    info!("Generating New Itsi CA - Self signed Certificate. Use `itsi ca export` to export the CA certificate for import into your local trust store.");
 
     let ca_kp = KeyPair::from_pem(ITS_CA_KEY).unwrap();
     let params = CertificateParams::from_ca_cert_pem(ITS_CA_CERT).unwrap();

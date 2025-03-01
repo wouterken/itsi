@@ -1,12 +1,11 @@
 pub use tracing::{debug, error, info, trace, warn};
-use tracing_subscriber::fmt;
+use tracing_subscriber::{EnvFilter, fmt};
 
 pub fn init() {
-    let format = fmt::format()
-        .with_level(false)
-        .with_target(false)
-        .with_thread_ids(true)
-        .with_thread_names(true)
-        .compact();
-    tracing_subscriber::fmt().event_format(format).init();
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let format = fmt::format().with_level(true).with_target(false).compact();
+    tracing_subscriber::fmt()
+        .with_env_filter(env_filter)
+        .event_format(format)
+        .init();
 }
