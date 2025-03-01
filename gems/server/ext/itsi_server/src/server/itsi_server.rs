@@ -2,8 +2,11 @@ use super::{
     bind::Bind,
     listener::{Listener, SockAddr},
 };
-use crate::{request::itsi_request::ItsiRequest, ITSI_SERVER};
+use crate::{
+    request::itsi_request::ItsiRequest, response::itsi_response::ItsiResponse, ITSI_SERVER,
+};
 use bytes::Bytes;
+use crossbeam::channel::{Receiver, Sender};
 use derive_more::Debug;
 use http_body_util::{combinators::BoxBody, Empty};
 use hyper::{
@@ -11,7 +14,8 @@ use hyper::{
     StatusCode,
 };
 use hyper_util::{rt::TokioExecutor, server::conn::auto::Builder};
-use itsi_tracing::{error, info};
+use itsi_rb_helpers::{call_with_gvl, call_without_gvl, create_ruby_thread, schedule_thread};
+use itsi_tracing::{debug, error, info};
 use magnus::{
     error::Result,
     scan_args::{get_kwargs, scan_args, Args, KwArgs},
@@ -20,8 +24,8 @@ use magnus::{
 };
 use parking_lot::Mutex;
 use std::{collections::HashMap, convert::Infallible, sync::Arc};
-use tokio::runtime::Builder as RuntimeBuilder;
 use tokio::task::JoinSet;
+use tokio::{runtime::Builder as RuntimeBuilder, sync::oneshot};
 
 #[magnus::wrap(class = "Itsi::Server", free_immediately, size)]
 #[derive(Debug)]
@@ -36,6 +40,44 @@ pub struct Server {
     shutdown_timeout: f64,
     script_name: String,
     pub(crate) binds: Mutex<Vec<Bind>>,
+}
+
+pub enum RequestJob {
+    ProcessRequest(ItsiRequest),
+    Shutdown,
+}
+
+struct ThreadWorker {
+    id: u16,
+    app: Opaque<Value>,
+    receiver: Arc<Receiver<RequestJob>>,
+}
+
+impl ThreadWorker {
+    fn run(&self) -> u64 {
+        debug!("Starting thread worker {}", self.id);
+        let ruby = Ruby::get().unwrap();
+        let server = ruby.get_inner(&ITSI_SERVER);
+
+        call_without_gvl(|| loop {
+            match self.receiver.recv() {
+                Ok(RequestJob::ProcessRequest(request)) => {
+                    debug!("Incoming request for worker {}", self.id);
+                    match call_with_gvl(|| request.process(&ruby, server, self.app)) {
+                        Ok(_) => {}
+                        Err(err) => error!("Request processing failed: {}", err),
+                    }
+                }
+                Ok(RequestJob::Shutdown) => {
+                    debug!("Shutting down thread worker {}", self.id);
+                    break;
+                }
+                Err(err) => error!("ThreadWorker {}: {}", self.id, err),
+            }
+        });
+
+        0
+    }
 }
 
 impl Server {
@@ -80,36 +122,31 @@ impl Server {
 
     pub(crate) async fn process_request(
         hyper_request: Request<Incoming>,
-        app: Opaque<Value>,
+        sender: Arc<Sender<RequestJob>>,
         script_name: String,
         listener: Arc<Listener>,
         addr: SockAddr,
     ) -> itsi_error::Result<Response<BoxBody<Bytes, Infallible>>> {
-        let request = ItsiRequest::build_from(hyper_request, addr, script_name, listener).await;
-        let ruby = Ruby::get().unwrap();
-        let server = ruby.get_inner(&ITSI_SERVER);
-        let response: Result<(u16, HashMap<String, String>, Value)> =
-            server.funcall("call", (app, request));
-        if let Ok((status, headers_raw, body)) = response {
-            let mut body_buf = vec![];
-            for body_chunk in body.enumeratorize("each", ()) {
-                body_buf.push(body_chunk.unwrap().to_string())
+        let (request, receiver) =
+            ItsiRequest::build_from(hyper_request, addr, script_name, listener).await;
+
+        info!("Sending request {:?} to worker thread", request);
+        match sender.send(RequestJob::ProcessRequest(request)) {
+            Err(err) => {
+                error!("Error occurred: {}", err);
+                let mut response = Response::new(BoxBody::new(Empty::new()));
+                *response.status_mut() = StatusCode::BAD_REQUEST;
+                Ok(response)
             }
-            body.check_funcall::<_, _, Value>("close", ());
-            let boxed_body = BoxBody::new(body_buf.join(""));
-            let mut response = Response::new(boxed_body);
-            let mut headers = HeaderMap::new();
-            headers_raw.into_iter().for_each(|(key, value)| {
-                let header_name: HeaderName = key.parse().unwrap();
-                headers.insert(header_name, value.parse().unwrap());
-            });
-            *response.headers_mut() = headers;
-            *response.status_mut() = StatusCode::from_u16(status).unwrap();
-            Ok(response)
-        } else {
-            let mut response = Response::new(BoxBody::new(Empty::new()));
-            *response.status_mut() = StatusCode::BAD_REQUEST;
-            Ok(response)
+            _ => match receiver.await {
+                Ok(response) => Ok(response.into()),
+                Err(err) => {
+                    error!("Recv Error occurred: {}", err);
+                    let mut response = Response::new(BoxBody::new(Empty::new()));
+                    *response.status_mut() = StatusCode::BAD_REQUEST;
+                    Ok(response)
+                }
+            },
         }
     }
 
@@ -123,60 +160,86 @@ impl Server {
             .build()
             .expect("Failed to build Tokio runtime");
 
-        runtime.block_on(async {
-            let server = Arc::new(Builder::new(TokioExecutor::new()));
-            let listeners: Vec<Listener> = self
-                .binds
-                .lock()
-                .iter()
-                .cloned()
-                .map(Listener::from)
-                .collect::<Vec<_>>();
+        let (sender, receiver) = crossbeam::channel::bounded(1000);
+        let receiver_ref = Arc::new(receiver);
+        let sender_ref = Arc::new(sender);
+        let app = self.app;
 
-            let mut set = JoinSet::new();
+        info!(
+            "Starting Itsi Server on {:?}. Threads: {}",
+            self.binds.lock(),
+            self.threads
+        );
 
-            for listener in listeners {
-                let app = self.app;
-                let server_clone = server.clone();
-                let listener_clone = Arc::new(listener);
-                let script_name = self.script_name.clone();
-
-                set.spawn(async move {
-                    loop {
-                        let server = server_clone.clone();
-                        let listener = listener_clone.clone();
-                        let script_name = script_name.clone();
-                        let (stream, addr) = match listener.accept().await {
-                            Ok(stream) => stream,
-                            Err(e) => {
-                                error!("Failed to accept connection: {:?}", e);
-                                continue;
-                            }
-                        };
-
-                        tokio::spawn(async move {
-                            if let Err(e) = server
-                                .serve_connection_with_upgrades(
-                                    stream,
-                                    service_fn(move |hyper_request: Request<Incoming>| {
-                                        Server::process_request(
-                                            hyper_request,
-                                            app,
-                                            script_name.clone(),
-                                            listener.clone(),
-                                            addr.clone(),
-                                        )
-                                    }),
-                                )
-                                .await
-                            {
-                                info!("Closed connection due to: {:?}", e);
-                            }
-                        });
-                    }
+        call_without_gvl(|| {
+            call_with_gvl(|| {
+                (0..=self.threads).for_each(|id| {
+                    let receiver = receiver_ref.clone();
+                    info!("Creating worker thread {}", id);
+                    create_ruby_thread(move || {
+                        info!("Creating Ruby thread!");
+                        ThreadWorker { id, app, receiver }.run();
+                        0
+                    });
                 });
-            }
-            while let Some(_res) = set.join_next().await {}
-        })
+            });
+
+            runtime.block_on(async {
+                let server = Arc::new(Builder::new(TokioExecutor::new()));
+                let listeners: Vec<Listener> = self
+                    .binds
+                    .lock()
+                    .iter()
+                    .cloned()
+                    .map(Listener::from)
+                    .collect::<Vec<_>>();
+
+                let mut set = JoinSet::new();
+
+                for listener in listeners {
+                    let server_clone = server.clone();
+                    let listener_clone = Arc::new(listener);
+                    let script_name = self.script_name.clone();
+                    let sender = sender_ref.clone();
+
+                    set.spawn(async move {
+                        loop {
+                            let server = server_clone.clone();
+                            let listener = listener_clone.clone();
+                            let script_name = script_name.clone();
+                            let sender = sender.clone();
+                            let (stream, addr) = match listener.accept().await {
+                                Ok(stream) => stream,
+                                Err(e) => {
+                                    error!("Failed to accept connection: {:?}", e);
+                                    continue;
+                                }
+                            };
+
+                            tokio::spawn(async move {
+                                if let Err(e) = server
+                                    .serve_connection_with_upgrades(
+                                        stream,
+                                        service_fn(move |hyper_request: Request<Incoming>| {
+                                            Server::process_request(
+                                                hyper_request,
+                                                sender.clone(),
+                                                script_name.clone(),
+                                                listener.clone(),
+                                                addr.clone(),
+                                            )
+                                        }),
+                                    )
+                                    .await
+                                {
+                                    info!("Closed connection due to: {:?}", e);
+                                }
+                            });
+                        }
+                    });
+                }
+                while let Some(_res) = set.join_next().await {}
+            })
+        });
     }
 }

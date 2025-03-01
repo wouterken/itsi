@@ -4,6 +4,7 @@ use server::itsi_server::Server;
 use stream_writer::StreamWriter;
 
 pub mod request;
+pub mod response;
 pub mod server;
 pub mod stream_writer;
 

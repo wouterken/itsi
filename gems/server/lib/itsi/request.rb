@@ -1,7 +1,4 @@
 # frozen_string_literal: true
-
-require "stringio"
-
 module Itsi
   class Request
     def to_env

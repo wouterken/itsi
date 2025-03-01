@@ -1,9 +1,15 @@
 use std::{os::raw::c_void, ptr::null_mut};
 
 use rb_sys::{
-    rb_thread_call_with_gvl, rb_thread_call_without_gvl, rb_thread_create, rb_thread_wakeup,
+    rb_thread_call_with_gvl, rb_thread_call_without_gvl, rb_thread_create, rb_thread_schedule,
+    rb_thread_wakeup,
 };
 
+pub fn schedule_thread() {
+    unsafe {
+        rb_thread_schedule();
+    };
+}
 pub fn create_ruby_thread<F>(f: F)
 where
     F: FnOnce() -> u64 + Send + 'static,
@@ -27,6 +33,7 @@ where
     // Call rb_thread_create with our trampoline and boxed closure.
     unsafe {
         rb_thread_wakeup(rb_thread_create(Some(trampoline::<F>), ptr));
+        rb_thread_schedule();
     }
 }
 

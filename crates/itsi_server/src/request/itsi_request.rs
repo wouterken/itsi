@@ -1,11 +1,23 @@
 use std::{collections::HashMap, sync::Arc};
 
-use crate::server::listener::{Listener, SockAddr};
+use crate::{
+    response::itsi_response::ItsiResponse,
+    server::listener::{Listener, SockAddr},
+};
 use bytes::Bytes;
 use http::request::Parts;
 use http_body_util::BodyExt;
 use hyper::{body::Incoming, Request};
-use magnus::error::Result;
+use itsi_error::Result;
+use itsi_tracing::{debug, error, info};
+use magnus::error::Result as MagnusResult;
+use magnus::{
+    value::{LazyId, Opaque, ReprValue},
+    RClass, Ruby, Value,
+};
+use tokio::sync::oneshot;
+
+static ID_CALL: LazyId = LazyId::new("call");
 
 #[magnus::wrap(class = "Itsi::Request", free_immediately, size)]
 #[derive(Debug)]
@@ -22,16 +34,50 @@ pub struct ItsiRequest {
     pub remote_addr: String,
     pub port: u16,
     pub body: Bytes,
-    pub parts: Parts,
+    pub parts: Arc<Parts>,
+    pub sender: Option<oneshot::Sender<ItsiResponse>>,
 }
 
 impl ItsiRequest {
+    pub fn process(mut self, _ruby: &Ruby, server: RClass, app: Opaque<Value>) -> Result<()> {
+        let sender = self.sender.take().expect("sender must be present");
+        let parts = self.parts.clone();
+
+        match server.funcall::<_, _, (u16, Vec<(String, String)>, Value)>(*ID_CALL, (app, self)) {
+            Ok((status, headers, body)) => {
+                let body_string = body
+                    .enumeratorize("each", ())
+                    .map(|v| v.unwrap().to_string())
+                    .collect::<Vec<String>>()
+                    .join("");
+
+                body.check_funcall::<_, _, Value>("close", ());
+
+                let response = ItsiResponse {
+                    status,
+                    headers,
+                    body: body_string,
+                    parts,
+                };
+                debug!("Request processed. Sending response back to accept thread.");
+                if let Err(err) = sender.send(response) {
+                    info!("Response Dropped {:?}", err)
+                }
+            }
+            Err(err) => {
+                error!("Error processing request: {}", err);
+            }
+        }
+
+        Ok(())
+    }
+
     pub(crate) async fn build_from(
         request: Request<Incoming>,
         sock_addr: SockAddr,
         script_name: String,
         listener: Arc<Listener>,
-    ) -> Self {
+    ) -> (Self, oneshot::Receiver<ItsiResponse>) {
         let (parts, body) = request.into_parts();
         let method = parts.method.to_string();
         let port = parts.uri.port_u16().unwrap_or(listener.port());
@@ -78,66 +124,71 @@ impl ItsiRequest {
         let version = format!("{:?}", parts.version);
         let body = body.collect().await.unwrap().to_bytes();
 
-        Self {
-            remote_addr: sock_addr.to_string(),
-            body,
-            parts,
-            script_name,
-            query_string,
-            method,
-            headers,
-            path,
-            version,
-            rack_protocol,
-            host,
-            scheme,
-            port,
-        }
+        let (sender, receiver) = oneshot::channel();
+        (
+            Self {
+                remote_addr: sock_addr.to_string(),
+                body,
+                script_name,
+                query_string,
+                method,
+                headers,
+                path,
+                version,
+                rack_protocol,
+                host,
+                scheme,
+                port,
+                parts: Arc::new(parts),
+                sender: Some(sender),
+            },
+            receiver,
+        )
     }
 }
 
 impl ItsiRequest {
-    pub(crate) fn path(&self) -> Result<String> {
+    pub(crate) fn path(&self) -> MagnusResult<String> {
         Ok(self.path.clone())
     }
 
-    pub(crate) fn script_name(&self) -> Result<String> {
+    pub(crate) fn script_name(&self) -> MagnusResult<String> {
         Ok(self.script_name.clone())
     }
 
-    pub(crate) fn query_string(&self) -> Result<String> {
+    pub(crate) fn query_string(&self) -> MagnusResult<String> {
         Ok(self.query_string.clone())
     }
 
-    pub(crate) fn method(&self) -> Result<String> {
+    pub(crate) fn method(&self) -> MagnusResult<String> {
         Ok(self.method.clone())
     }
 
-    pub(crate) fn version(&self) -> Result<String> {
+    pub(crate) fn version(&self) -> MagnusResult<String> {
         Ok(self.version.clone())
     }
 
-    pub(crate) fn rack_protocol(&self) -> Result<Vec<String>> {
+    pub(crate) fn rack_protocol(&self) -> MagnusResult<Vec<String>> {
         Ok(self.rack_protocol.clone())
     }
 
-    pub(crate) fn host(&self) -> Result<String> {
+    pub(crate) fn host(&self) -> MagnusResult<String> {
         Ok(self.host.clone())
     }
 
-    pub(crate) fn headers(&self) -> Result<HashMap<String, String>> {
+    pub(crate) fn headers(&self) -> MagnusResult<HashMap<String, String>> {
         Ok(self.headers.clone())
     }
 
-    pub(crate) fn remote_addr(&self) -> Result<String> {
+    pub(crate) fn remote_addr(&self) -> MagnusResult<String> {
         Ok(self.remote_addr.clone())
     }
 
-    pub(crate) fn port(&self) -> Result<u16> {
+    pub(crate) fn port(&self) -> MagnusResult<u16> {
         Ok(self.port)
     }
 
-    pub(crate) fn body(&self) -> Result<Bytes> {
+    pub(crate) fn body(&self) -> MagnusResult<Bytes> {
         Ok(self.body.clone())
     }
 }
