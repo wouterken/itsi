@@ -1,25 +1,27 @@
-use super::{
-    bind::Bind,
-    listener::{Listener, SockAddr},
+use super::{bind::Bind, listener::Listener};
+use crate::{
+    request::itsi_request::ItsiRequest,
+    server::{
+        lifecycle_event::LifecycleEvent,
+        serve_strategy::{ServeStrategy, SingleMode},
+        signal::handle_signals,
+        thread_worker::ThreadWorker,
+    },
 };
-use crate::{request::itsi_request::ItsiRequest, ITSI_SERVER};
-use bytes::Bytes;
-use crossbeam::channel::{Receiver, Sender};
 use derive_more::Debug;
-use http_body_util::{combinators::BoxBody, Empty};
-use hyper::{body::Incoming, service::service_fn, Request, Response, StatusCode};
 use hyper_util::{rt::TokioExecutor, server::conn::auto::Builder};
-use itsi_rb_helpers::{call_with_gvl, call_without_gvl, create_ruby_thread};
-use itsi_tracing::{debug, error, info};
+use itsi_error::ItsiError;
+use itsi_rb_helpers::call_without_gvl;
+use itsi_tracing::{error, info};
 use magnus::{
     error::Result,
     scan_args::{get_kwargs, scan_args, Args, KwArgs},
     value::Opaque,
-    RHash, Ruby, Value,
+    RHash, Value,
 };
 use parking_lot::Mutex;
-use std::{convert::Infallible, sync::Arc};
-use tokio::runtime::Builder as RuntimeBuilder;
+use std::{cmp::max, sync::Arc};
+use tokio::runtime::{Builder as RuntimeBuilder, Runtime};
 use tokio::task::JoinSet;
 
 static DEFAULT_BIND: &str = "localhost:3000";
@@ -42,39 +44,6 @@ pub struct Server {
 pub enum RequestJob {
     ProcessRequest(ItsiRequest),
     Shutdown,
-}
-
-struct ThreadWorker {
-    id: u16,
-    app: Opaque<Value>,
-    receiver: Arc<Receiver<RequestJob>>,
-}
-
-impl ThreadWorker {
-    fn run(&self) -> u64 {
-        debug!("Starting thread worker {}", self.id);
-        let ruby = Ruby::get().unwrap();
-        let server = ruby.get_inner(&ITSI_SERVER);
-
-        call_without_gvl(|| loop {
-            match self.receiver.recv() {
-                Ok(RequestJob::ProcessRequest(request)) => {
-                    debug!("Incoming request for worker {}", self.id);
-                    match call_with_gvl(|| request.process(&ruby, server, self.app)) {
-                        Ok(_) => {}
-                        Err(err) => error!("Request processing failed: {}", err),
-                    }
-                }
-                Ok(RequestJob::Shutdown) => {
-                    debug!("Shutting down thread worker {}", self.id);
-                    break;
-                }
-                Err(err) => error!("ThreadWorker {}: {}", self.id, err),
-            }
-        });
-
-        0
-    }
 }
 
 impl Server {
@@ -101,8 +70,8 @@ impl Server {
         )?;
         let server = Server {
             app: Opaque::from(args.required.0),
-            workers: args.optional.0.unwrap_or(1),
-            threads: args.optional.1.unwrap_or(1),
+            workers: max(args.optional.0.unwrap_or(1), 1),
+            threads: max(args.optional.1.unwrap_or(1), 1),
             shutdown_timeout: args.optional.2.unwrap_or(5.0),
             script_name: args.optional.3.unwrap_or("".to_string()),
             binds: Mutex::new(
@@ -117,51 +86,61 @@ impl Server {
         Ok(server)
     }
 
-    pub(crate) async fn process_request(
-        hyper_request: Request<Incoming>,
-        sender: Arc<Sender<RequestJob>>,
-        script_name: String,
-        listener: Arc<Listener>,
-        addr: SockAddr,
-    ) -> itsi_error::Result<Response<BoxBody<Bytes, Infallible>>> {
-        let (request, receiver) =
-            ItsiRequest::build_from(hyper_request, addr, script_name, listener).await;
-
-        debug!("Sending request {:?} to worker thread", request);
-        match sender.send(RequestJob::ProcessRequest(request)) {
-            Err(err) => {
-                error!("Error occurred: {}", err);
-                let mut response = Response::new(BoxBody::new(Empty::new()));
-                *response.status_mut() = StatusCode::BAD_REQUEST;
-                Ok(response)
-            }
-            _ => match receiver.await {
-                Ok(response) => Ok(response.into()),
-                Err(err) => {
-                    error!("Recv Error occurred: {}", err);
-                    let mut response = Response::new(BoxBody::new(Empty::new()));
-                    *response.status_mut() = StatusCode::BAD_REQUEST;
-                    Ok(response)
-                }
-            },
-        }
-    }
-
-    pub fn start(&self) {
+    pub fn build_runtime(&self) -> Runtime {
         let mut builder: RuntimeBuilder = RuntimeBuilder::new_current_thread();
-        let runtime = builder
+        builder
             .thread_name("itsi-server-accept-loop")
             .thread_stack_size(3 * 1024 * 1024)
             .enable_io()
             .enable_time()
             .build()
-            .expect("Failed to build Tokio runtime");
+            .expect("Failed to build Tokio runtime")
+    }
 
+    pub fn build_thread_workers(
+        &self,
+    ) -> (
+        Arc<Vec<ThreadWorker>>,
+        Arc<crossbeam::channel::Sender<RequestJob>>,
+    ) {
         let (sender, receiver) = crossbeam::channel::bounded(1000);
         let receiver_ref = Arc::new(receiver);
         let sender_ref = Arc::new(sender);
-        let app = self.app;
+        (
+            Arc::new(
+                (1..=self.threads)
+                    .map(|id| {
+                        info!("Creating worker thread {}", id);
+                        ThreadWorker::new(id, self.app, receiver_ref.clone(), sender_ref.clone())
+                    })
+                    .collect::<Vec<_>>(),
+            ),
+            sender_ref,
+        )
+    }
 
+    pub(crate) fn build_listeners(&self) -> Vec<Listener> {
+        self.binds
+            .lock()
+            .iter()
+            .cloned()
+            .map(Listener::from)
+            .collect::<Vec<_>>()
+    }
+
+    pub(crate) fn build_strategy(&self) -> ServeStrategy {
+        let server = Builder::new(TokioExecutor::new());
+        let (workers, sender) = self.build_thread_workers();
+        ServeStrategy::Single(Arc::new(SingleMode {
+            server,
+            workers,
+            sender,
+            script_name: self.script_name.clone(),
+            shutdown_timeout: self.shutdown_timeout,
+        }))
+    }
+
+    pub fn start(&self) {
         info!(
             "Starting Itsi Server on {:?}. Threads: {}",
             self.binds.lock(),
@@ -169,71 +148,56 @@ impl Server {
         );
 
         call_without_gvl(|| {
-            (0..=self.threads).for_each(|id| {
-                let receiver = receiver_ref.clone();
-                info!("Creating worker thread {}", id);
-                create_ruby_thread(move || {
-                    info!("Creating Ruby thread!");
-                    ThreadWorker { id, app, receiver }.run();
-                    0
-                });
-            });
+            let (lifecycle_tx, _) = tokio::sync::broadcast::channel::<LifecycleEvent>(100);
+            let lifecycle_tx = Arc::new(lifecycle_tx);
+            let strategy = Arc::new(self.build_strategy());
+            info!("Initialized strategy");
+            let mut listener_task_set = JoinSet::new();
 
-            runtime.block_on(async {
-                let server = Arc::new(Builder::new(TokioExecutor::new()));
-                let listeners: Vec<Listener> = self
-                    .binds
-                    .lock()
-                    .iter()
-                    .cloned()
-                    .map(Listener::from)
-                    .collect::<Vec<_>>();
-
-                let mut set = JoinSet::new();
-
-                for listener in listeners {
-                    let server_clone = server.clone();
-                    let listener_clone = Arc::new(listener);
-                    let script_name = self.script_name.clone();
-                    let sender = sender_ref.clone();
-
-                    set.spawn(async move {
+            self.build_runtime().block_on(async {
+                let signals_task = tokio::spawn(handle_signals(lifecycle_tx.clone()));
+                info!("Initialized signals task");
+                for listener in self.build_listeners() {
+                    info!("Initialized listener");
+                    let listener = Arc::new(listener);
+                    let strategy = strategy.clone();
+                    let mut lifecycle_rx = lifecycle_tx.subscribe();
+                    info!("Initialized listener");
+                    listener_task_set.spawn(async move {
+                        let listener = listener.clone();
+                        let strategy = strategy.clone();
                         loop {
-                            let server = server_clone.clone();
-                            let listener = listener_clone.clone();
-                            let script_name = script_name.clone();
-                            let sender = sender.clone();
-                            let (stream, addr) = match listener.accept().await {
-                                Ok(stream) => stream,
-                                Err(e) => {
-                                    error!("Failed to accept connection: {:?}", e);
-                                    continue;
-                                }
-                            };
+                          info!("In select loop");
+                            tokio::select! {
+                                accept_result = listener.accept() => match accept_result {
+                                  Ok(accept_result) => {
+                                    if let Err(e) = strategy.serve_connection(accept_result, listener.clone()){
+                                      error!("Error in serve_connection {:?}", e)
+                                    }
+                                  },
+                                  Err(e) => error!("Error in listener.accept {:?}", e),
+                              },
+                                lifecycle_event = lifecycle_rx.recv() => match lifecycle_event{
+                                  Ok(lifecycle_event) => {
+                                    if let Err(e) = strategy.handle_lifecycle_event(lifecycle_event).await{
+                                      match e {
+                                        ItsiError::Break() => break,
+                                        _ => error!("Error in handle_lifecycle_event {:?}", e)
+                                      }
+                                    }
 
-                            tokio::spawn(async move {
-                                if let Err(e) = server
-                                    .serve_connection_with_upgrades(
-                                        stream,
-                                        service_fn(move |hyper_request: Request<Incoming>| {
-                                            Server::process_request(
-                                                hyper_request,
-                                                sender.clone(),
-                                                script_name.clone(),
-                                                listener.clone(),
-                                                addr.clone(),
-                                            )
-                                        }),
-                                    )
-                                    .await
-                                {
-                                    debug!("Closed connection due to: {:?}", e);
-                                }
-                            });
+                                  },
+                                  Err(e) => error!("Error receiving lifecycle_event: {:?}", e),
+                              }
+                            }
                         }
                     });
                 }
-                while let Some(_res) = set.join_next().await {}
+
+                while let Some(_res) = listener_task_set.join_next().await {}
+                if let Err(e) =  signals_task.await {
+                    error!("Error closing server: {:?}", e);
+                }
             })
         });
     }

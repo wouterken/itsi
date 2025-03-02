@@ -1,5 +1,6 @@
 use std::{os::raw::c_void, ptr::null_mut};
 
+use magnus::{Ruby, Thread, Value, rb_sys::FromRawValue};
 use rb_sys::{
     rb_thread_call_with_gvl, rb_thread_call_without_gvl, rb_thread_create, rb_thread_schedule,
     rb_thread_wakeup,
@@ -10,7 +11,7 @@ pub fn schedule_thread() {
         rb_thread_schedule();
     };
 }
-pub fn create_ruby_thread<F>(f: F)
+pub fn create_ruby_thread<F>(f: F) -> Thread
 where
     F: FnOnce() -> u64 + Send + 'static,
 {
@@ -32,8 +33,10 @@ where
 
     // Call rb_thread_create with our trampoline and boxed closure.
     unsafe {
-        rb_thread_wakeup(rb_thread_create(Some(trampoline::<F>), ptr));
+        let thread = rb_thread_create(Some(trampoline::<F>), ptr);
+        rb_thread_wakeup(thread);
         rb_thread_schedule();
+        Thread::from_value(Value::from_raw(thread)).unwrap()
     }
 }
 
@@ -74,18 +77,18 @@ where
 
 pub fn call_with_gvl<F, R>(f: F) -> R
 where
-    F: FnOnce() -> R,
+    F: FnOnce(Ruby) -> R,
 {
     extern "C" fn trampoline<F, R>(arg: *mut c_void) -> *mut c_void
     where
-        F: FnOnce() -> R,
+        F: FnOnce(Ruby) -> R,
     {
         // 1) Reconstruct the Box that holds our closure
         let closure_ptr = arg as *mut Option<F>;
         let closure = unsafe { (*closure_ptr).take().expect("Closure already taken") };
 
         // 2) Call the user’s closure
-        let result = closure();
+        let result = closure(Ruby::get().unwrap());
 
         // 3) Box up the result so we can return a pointer to it
         let boxed_result = Box::new(result);

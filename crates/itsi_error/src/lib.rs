@@ -14,6 +14,8 @@ pub enum ItsiError {
     ArgumentError(String),
     #[error("Jump")]
     Jump(String),
+    #[error("Break")]
+    Break(),
 }
 
 impl From<ItsiError> for magnus::Error {

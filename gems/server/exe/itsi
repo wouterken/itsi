@@ -12,13 +12,12 @@ DEFAULT_OPTIONS = {
   # Number of threads per worker
   threads: 1,
   # Graceful shutdown timeout
-  shutdown_timeout: 0.3,
+  shutdown_timeout: 2,
   # Binds
-  binds: ['http://0.0.0.0:3000']
+  binds: ["http://0.0.0.0:3000"]
 }
 
 options = DEFAULT_OPTIONS.to_a.select(&:last).to_h
-
 
 # Define the option parser
 OptionParser.new do |opts|
@@ -66,7 +65,8 @@ OptionParser.new do |opts|
     options[:script_name] = script_name
   end
 
-  opts.on("-b", "--bind BIND", String, "Bind address (default: #{options[:binds].join(', ')})") do |bind|
+  opts.on("-b", "--bind BIND", String, "Bind address (default: #{options[:binds].join(", ")})") do |bind|
+    options[:binds].pop if options[:binds].first.frozen?
     options[:binds] << bind
   end
 
@@ -77,9 +77,9 @@ OptionParser.new do |opts|
 end.parse!
 
 # Parse the Rack application
-app, _ = Rack::Builder.parse_file("config.ru")
+app, = Rack::Builder.parse_file("config.ru")
 
-puts "Binds #{options[:binds].join(', ')}"
+puts "Binds #{options[:binds].join(", ")}"
 # Make sure osprey is loaded, if not already loaded by the rack_app above.
 # Start the Osprey server
 require "itsi/server"

@@ -1,20 +1,24 @@
 use crate::{
     response::itsi_response::ItsiResponse,
-    server::listener::{Listener, SockAddr},
+    server::{
+        itsi_server::RequestJob,
+        listener::{Listener, SockAddr},
+    },
 };
 use bytes::Bytes;
+use crossbeam::channel::Sender;
 use derive_more::Debug;
-use http::request::Parts;
-use http_body_util::BodyExt;
+use http::{request::Parts, Response, StatusCode};
+use http_body_util::{combinators::BoxBody, BodyExt, Empty};
 use hyper::{body::Incoming, Request};
 use itsi_error::Result;
-use itsi_tracing::{debug, error, info};
+use itsi_tracing::{debug, error};
 use magnus::error::Result as MagnusResult;
 use magnus::{
     value::{LazyId, Opaque, ReprValue},
     RClass, Ruby, Value,
 };
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, convert::Infallible, sync::Arc};
 use tokio::sync::oneshot;
 
 static ID_CALL: LazyId = LazyId::new("call");
@@ -66,6 +70,36 @@ impl ItsiRequest {
         }
 
         Ok(())
+    }
+
+    pub(crate) async fn process_request(
+        hyper_request: Request<Incoming>,
+        sender: Arc<Sender<RequestJob>>,
+        script_name: String,
+        listener: Arc<Listener>,
+        addr: SockAddr,
+    ) -> itsi_error::Result<Response<BoxBody<Bytes, Infallible>>> {
+        let (request, receiver) =
+            ItsiRequest::build_from(hyper_request, addr, script_name, listener).await;
+
+        debug!("Sending request {:?} to worker thread", request);
+        match sender.send(RequestJob::ProcessRequest(request)) {
+            Err(err) => {
+                error!("Error occurred: {}", err);
+                let mut response = Response::new(BoxBody::new(Empty::new()));
+                *response.status_mut() = StatusCode::BAD_REQUEST;
+                Ok(response)
+            }
+            _ => match receiver.await {
+                Ok(response) => Ok(response.into()),
+                Err(err) => {
+                    error!("Recv Error occurred: {}", err);
+                    let mut response = Response::new(BoxBody::new(Empty::new()));
+                    *response.status_mut() = StatusCode::BAD_REQUEST;
+                    Ok(response)
+                }
+            },
+        }
     }
 
     pub(crate) async fn build_from(

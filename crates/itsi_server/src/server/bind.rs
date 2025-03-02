@@ -1,5 +1,6 @@
 use super::{tls::configure_tls, transfer_protocol::TransferProtocol};
 use itsi_error::ItsiError;
+use itsi_tracing::info;
 use std::{
     collections::HashMap,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, ToSocketAddrs},
@@ -97,7 +98,10 @@ impl FromStr for Bind {
         } else {
             None
         };
-
+        info!(
+            "Parsed bind as {:?}:{:?}:{:?}:{:?}",
+            address, port, protocol, tls_config
+        );
         Ok(Self {
             address,
             port,
