@@ -8,16 +8,18 @@ use http::request::Parts;
 use http_body_util::BodyExt;
 use hyper::{body::Incoming, Request};
 use itsi_error::Result;
-use itsi_tracing::{debug, error, info};
+use itsi_tracing::{debug, error};
 use magnus::error::Result as MagnusResult;
 use magnus::{
     value::{LazyId, Opaque, ReprValue},
     RClass, Ruby, Value,
 };
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 use tokio::sync::oneshot;
 
 static ID_CALL: LazyId = LazyId::new("call");
+static ID_EACH: LazyId = LazyId::new("each");
+static ID_CLOSE: LazyId = LazyId::new("close");
 
 #[magnus::wrap(class = "Itsi::Request", free_immediately, size)]
 #[derive(Debug)]
@@ -26,6 +28,7 @@ pub struct ItsiRequest {
     pub body: Bytes,
     pub sender: Option<oneshot::Sender<ItsiResponse>>,
     pub remote_addr: String,
+    pub version: String,
     #[debug(skip)]
     pub(crate) listener: Arc<Listener>,
     pub script_name: String,
@@ -36,25 +39,25 @@ impl ItsiRequest {
         let sender = self.sender.take().expect("sender must be present");
         let parts = self.parts.clone();
 
-        match server.funcall::<_, _, (u16, Vec<(String, String)>, Value)>(*ID_CALL, (app, self)) {
+        match server.funcall::<_, _, (u16, Vec<String>, Value)>(*ID_CALL, (app, self)) {
             Ok((status, headers, body)) => {
                 let body_string = body
-                    .enumeratorize("each", ())
+                    .enumeratorize(*ID_EACH, ())
                     .map(|v| v.unwrap().to_string())
                     .collect::<Vec<String>>()
                     .join("");
 
-                body.check_funcall::<_, _, Value>("close", ());
+                body.check_funcall::<_, _, Value>(*ID_CLOSE, ());
 
-                let response = ItsiResponse {
+                if let Err(err) = sender.send(ItsiResponse {
                     status,
                     headers,
                     body: body_string,
                     parts,
-                };
-                debug!("Request processed. Sending response back to accept thread.");
-                if let Err(err) = sender.send(response) {
-                    info!("Response Dropped {:?}", err)
+                }) {
+                    debug!("Response Dropped {:?}", err)
+                } else {
+                    debug!("Request processed. Sending response back to accept thread.");
                 }
             }
             Err(err) => {
@@ -80,6 +83,7 @@ impl ItsiRequest {
                 body,
                 script_name,
                 listener,
+                version: format!("{:?}", &parts.version),
                 parts: Arc::new(parts),
                 sender: Some(sender),
             },
@@ -110,8 +114,8 @@ impl ItsiRequest {
         Ok(self.parts.method.as_str())
     }
 
-    pub(crate) fn version(&self) -> MagnusResult<String> {
-        Ok(format!("{:?}", self.parts.version))
+    pub(crate) fn version(&self) -> MagnusResult<&str> {
+        Ok(&self.version)
     }
 
     pub(crate) fn rack_protocol(&self) -> MagnusResult<Vec<&str>> {
@@ -140,17 +144,33 @@ impl ItsiRequest {
             .unwrap_or_else(|| self.listener.host()))
     }
 
-    pub(crate) fn headers(&self) -> MagnusResult<Vec<(&str, &str)>> {
+    pub(crate) fn scheme(&self) -> MagnusResult<String> {
+        Ok(self
+            .parts
+            .uri
+            .scheme()
+            .map(|scheme| scheme.to_string())
+            .unwrap_or_else(|| self.listener.scheme()))
+    }
+
+    pub(crate) fn headers(&self) -> MagnusResult<HashMap<String, &str>> {
         Ok(self
             .parts
             .headers
             .iter()
-            .map(|(hn, hv)| (hn.as_str(), hv.to_str().unwrap_or("")))
+            .map(|(hn, hv)| {
+                let key = match hn.as_str() {
+                    "content-length" => "CONTENT_LENGTH".to_string(),
+                    "content-type" => "CONTENT_TYPE".to_string(),
+                    _ => format!("HTTP_{}", hn.as_str().to_uppercase().replace("-", "_")),
+                };
+                (key, hv.to_str().unwrap_or(""))
+            })
             .collect())
     }
 
-    pub(crate) fn remote_addr(&self) -> MagnusResult<String> {
-        Ok(self.remote_addr.clone())
+    pub(crate) fn remote_addr(&self) -> MagnusResult<&str> {
+        Ok(&self.remote_addr)
     }
 
     pub(crate) fn port(&self) -> MagnusResult<u16> {

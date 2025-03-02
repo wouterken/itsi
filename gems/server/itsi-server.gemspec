@@ -38,7 +38,7 @@ Gem::Specification.new do |spec|
   # spec.add_dependency "example-gem", "~> 1.0"
   spec.add_dependency "libclang", "~> 14.0"
   spec.add_dependency "rb_sys", "~> 0.9.91"
-  spec.add_dependency "rack", "~> 2"
+  spec.add_dependency "rack", "~> 3"
 
   # For more information and examples about making a new gem, check out our
   # guide at: https://bundler.io/guides/creating_gem.html

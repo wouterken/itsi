@@ -22,6 +22,8 @@ use std::{convert::Infallible, sync::Arc};
 use tokio::runtime::Builder as RuntimeBuilder;
 use tokio::task::JoinSet;
 
+static DEFAULT_BIND: &str = "localhost:3000";
+
 #[magnus::wrap(class = "Itsi::Server", free_immediately, size)]
 #[derive(Debug)]
 pub struct Server {
@@ -106,7 +108,7 @@ impl Server {
             binds: Mutex::new(
                 args.optional
                     .4
-                    .unwrap_or_else(|| vec!["localhost:3000".to_string()])
+                    .unwrap_or_else(|| vec![DEFAULT_BIND.to_string()])
                     .into_iter()
                     .map(|s| s.parse().unwrap_or_else(|_| Bind::default()))
                     .collect(),
@@ -125,7 +127,7 @@ impl Server {
         let (request, receiver) =
             ItsiRequest::build_from(hyper_request, addr, script_name, listener).await;
 
-        info!("Sending request {:?} to worker thread", request);
+        debug!("Sending request {:?} to worker thread", request);
         match sender.send(RequestJob::ProcessRequest(request)) {
             Err(err) => {
                 error!("Error occurred: {}", err);
@@ -225,7 +227,7 @@ impl Server {
                                     )
                                     .await
                                 {
-                                    info!("Closed connection due to: {:?}", e);
+                                    debug!("Closed connection due to: {:?}", e);
                                 }
                             });
                         }

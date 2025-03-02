@@ -42,6 +42,7 @@ fn init(ruby: &Ruby) -> Result<()> {
     request.define_method("rack_protocol", method!(ItsiRequest::rack_protocol, 0))?;
     request.define_method("host", method!(ItsiRequest::host, 0))?;
     request.define_method("headers", method!(ItsiRequest::headers, 0))?;
+    request.define_method("scheme", method!(ItsiRequest::scheme, 0))?;
     request.define_method("remote_addr", method!(ItsiRequest::remote_addr, 0))?;
     request.define_method("port", method!(ItsiRequest::port, 0))?;
     request.define_method("body", method!(ItsiRequest::body, 0))?;

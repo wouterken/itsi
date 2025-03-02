@@ -11,12 +11,25 @@ module Itsi
       respond(app.call(request.to_env))
     end
 
-    def self.respond((status, headers, body))
-      [status, transform_headers(headers), body]
+    def self.respond(response)
+      status, headers, body = response
+      [status, to_header_pairs(headers), body]
     end
 
-    def self.transform_headers(headers)
-      headers.map { |key, value| Array(value).map { |v| [key, v] } }.flatten(1)
+    def self.to_header_pairs(headers)
+      transformed = []
+      headers.each do |key, value|
+        if value.is_a?(Array)
+          value.each do |v|
+            transformed << key
+            transformed << v
+          end
+        else
+          transformed << key
+          transformed << value
+        end
+      end
+      transformed
     end
 
     # If scheduler is enabled

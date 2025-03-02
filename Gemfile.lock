@@ -17,7 +17,7 @@ PATH
   specs:
     itsi-server (0.1.1)
       libclang (~> 14.0)
-      rack (~> 2)
+      rack (~> 3)
       rb_sys (~> 0.9.91)
 
 GEM
@@ -81,7 +81,7 @@ GEM
       date
       stringio
     racc (1.8.1)
-    rack (2.2.11)
+    rack (3.1.10)
     rainbow (3.1.1)
     rake (13.2.1)
     rake-compiler (1.2.9)

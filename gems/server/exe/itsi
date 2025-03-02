@@ -19,6 +19,7 @@ DEFAULT_OPTIONS = {
 
 options = DEFAULT_OPTIONS.to_a.select(&:last).to_h
 
+
 # Define the option parser
 OptionParser.new do |opts|
   opts.banner = "Usage: script.rb [options]"
@@ -65,6 +66,10 @@ OptionParser.new do |opts|
     options[:script_name] = script_name
   end
 
+  opts.on("-b", "--bind BIND", String, "Bind address (default: #{options[:binds].join(', ')})") do |bind|
+    options[:binds] << bind
+  end
+
   opts.on("--help", "Show this help message") do
     puts opts
     exit
@@ -74,7 +79,7 @@ end.parse!
 # Parse the Rack application
 app, _ = Rack::Builder.parse_file("config.ru")
 
-puts "App is #{app}"
+puts "Binds #{options[:binds].join(', ')}"
 # Make sure osprey is loaded, if not already loaded by the rack_app above.
 # Start the Osprey server
 require "itsi/server"
