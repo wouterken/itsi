@@ -2,30 +2,25 @@ use super::{
     bind::Bind,
     listener::{Listener, SockAddr},
 };
-use crate::{
-    request::itsi_request::ItsiRequest, response::itsi_response::ItsiResponse, ITSI_SERVER,
-};
+use crate::{request::itsi_request::ItsiRequest, ITSI_SERVER};
 use bytes::Bytes;
 use crossbeam::channel::{Receiver, Sender};
 use derive_more::Debug;
 use http_body_util::{combinators::BoxBody, Empty};
-use hyper::{
-    body::Incoming, header::HeaderName, service::service_fn, HeaderMap, Request, Response,
-    StatusCode,
-};
+use hyper::{body::Incoming, service::service_fn, Request, Response, StatusCode};
 use hyper_util::{rt::TokioExecutor, server::conn::auto::Builder};
-use itsi_rb_helpers::{call_with_gvl, call_without_gvl, create_ruby_thread, schedule_thread};
+use itsi_rb_helpers::{call_with_gvl, call_without_gvl, create_ruby_thread};
 use itsi_tracing::{debug, error, info};
 use magnus::{
     error::Result,
     scan_args::{get_kwargs, scan_args, Args, KwArgs},
-    value::{Opaque, ReprValue},
+    value::Opaque,
     RHash, Ruby, Value,
 };
 use parking_lot::Mutex;
-use std::{collections::HashMap, convert::Infallible, sync::Arc};
+use std::{convert::Infallible, sync::Arc};
+use tokio::runtime::Builder as RuntimeBuilder;
 use tokio::task::JoinSet;
-use tokio::{runtime::Builder as RuntimeBuilder, sync::oneshot};
 
 #[magnus::wrap(class = "Itsi::Server", free_immediately, size)]
 #[derive(Debug)]
@@ -172,15 +167,13 @@ impl Server {
         );
 
         call_without_gvl(|| {
-            call_with_gvl(|| {
-                (0..=self.threads).for_each(|id| {
-                    let receiver = receiver_ref.clone();
-                    info!("Creating worker thread {}", id);
-                    create_ruby_thread(move || {
-                        info!("Creating Ruby thread!");
-                        ThreadWorker { id, app, receiver }.run();
-                        0
-                    });
+            (0..=self.threads).for_each(|id| {
+                let receiver = receiver_ref.clone();
+                info!("Creating worker thread {}", id);
+                create_ruby_thread(move || {
+                    info!("Creating Ruby thread!");
+                    ThreadWorker { id, app, receiver }.run();
+                    0
                 });
             });
 

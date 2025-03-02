@@ -23,13 +23,16 @@ module Itsi
         "rack.run_once" => false,
         "rack.multipart.buffer_size" => 16_384
       }.merge(
-        headers.transform_keys do |k|
-          case k
-          when "content-length" then "CONTENT_LENGTH"
-          when "content-type" then "CONTENT_TYPE"
-          else "HTTP_#{k.upcase.tr("-", "_")}"
-          end
-        end
+        headers.map do |k,v|
+          [
+            case k
+            when "content-length" then "CONTENT_LENGTH"
+            when "content-type" then "CONTENT_TYPE"
+            else "HTTP_#{k.upcase.tr("-", "_")}"
+            end,
+            v
+          ]
+        end.to_h
       )
     end
   end
