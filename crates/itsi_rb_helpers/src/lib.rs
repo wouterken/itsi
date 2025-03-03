@@ -1,10 +1,22 @@
-use std::{os::raw::c_void, ptr::null_mut};
+use std::{os::raw::c_void, ptr::null_mut, sync::Arc};
 
-use magnus::{Ruby, Thread, Value, rb_sys::FromRawValue};
+use magnus::{
+    RArray, RClass, Ruby, Thread, Value,
+    rb_sys::FromRawValue,
+    value::{Lazy, LazyId, ReprValue},
+};
 use rb_sys::{
     rb_thread_call_with_gvl, rb_thread_call_without_gvl, rb_thread_create, rb_thread_schedule,
     rb_thread_wakeup,
 };
+
+static ID_FORK: LazyId = LazyId::new("fork");
+static ID_LIST: LazyId = LazyId::new("list");
+static ID_EQ: LazyId = LazyId::new("==");
+static ID_EXIT: LazyId = LazyId::new("exit");
+static ID_JOIN: LazyId = LazyId::new("join");
+static ID_ALIVE: LazyId = LazyId::new("alive?");
+static ID_THREAD_VARIABLE_GET: LazyId = LazyId::new("thread_variable_get");
 
 pub fn schedule_thread() {
     unsafe {
@@ -105,4 +117,60 @@ where
     // 5) Convert the returned pointer back into R
     let result_box = unsafe { Box::from_raw(raw_result_ptr as *mut R) };
     *result_box
+}
+
+pub fn fork(after_fork: Arc<Option<impl Fn()>>) -> Option<i32> {
+    let ruby = Ruby::get().unwrap();
+    let fork_result = ruby
+        .module_kernel()
+        .funcall::<_, _, Option<i32>>(*ID_FORK, ())
+        .unwrap();
+    if fork_result.is_none() {
+        if let Some(f) = &*after_fork {
+            f()
+        }
+    }
+    fork_result
+}
+
+pub fn terminate_non_fork_safe_threads() {
+    let ruby = Ruby::get().unwrap();
+    let thread_class = ruby.class_thread();
+    let current: Thread = ruby.thread_current();
+    let threads: RArray = thread_class
+        .funcall(*ID_LIST, ())
+        .expect("Failed to list Ruby threads");
+
+    let non_fork_safe_threads = threads
+        .into_iter()
+        .filter_map(|v| {
+            let v_thread = Thread::from_value(v).unwrap();
+            let non_fork_safe = !v_thread
+                .funcall::<_, _, bool>(*ID_EQ, (current,))
+                .unwrap_or(false)
+                && !v_thread
+                    .funcall::<_, _, bool>(*ID_THREAD_VARIABLE_GET, (ruby.sym_new("fork_safe"),))
+                    .unwrap_or(false);
+            if non_fork_safe { Some(v_thread) } else { None }
+        })
+        .collect::<Vec<_>>();
+
+    for thr in &non_fork_safe_threads {
+        let _: Option<Value> = thr.funcall(*ID_EXIT, ()).expect("Failed to exit thread");
+    }
+
+    for thr in &non_fork_safe_threads {
+        let _: Option<Value> = thr
+            .funcall(*ID_JOIN, (0.5_f64,))
+            .expect("Failed to join thread");
+    }
+
+    for thr in &non_fork_safe_threads {
+        let alive: bool = thr
+            .funcall(*ID_ALIVE, ())
+            .expect("Failed to check if thread is alive");
+        if alive {
+            thr.kill().expect("Failed to kill thread");
+        }
+    }
 }

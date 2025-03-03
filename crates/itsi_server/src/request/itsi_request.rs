@@ -2,7 +2,7 @@ use crate::{
     response::itsi_response::ItsiResponse,
     server::{
         itsi_server::RequestJob,
-        listener::{Listener, SockAddr},
+        listener::{SockAddr, TokioListener},
     },
 };
 use bytes::Bytes;
@@ -34,7 +34,7 @@ pub struct ItsiRequest {
     pub remote_addr: String,
     pub version: String,
     #[debug(skip)]
-    pub(crate) listener: Arc<Listener>,
+    pub(crate) listener: Arc<TokioListener>,
     pub script_name: String,
 }
 
@@ -76,7 +76,7 @@ impl ItsiRequest {
         hyper_request: Request<Incoming>,
         sender: Arc<Sender<RequestJob>>,
         script_name: String,
-        listener: Arc<Listener>,
+        listener: Arc<TokioListener>,
         addr: SockAddr,
     ) -> itsi_error::Result<Response<BoxBody<Bytes, Infallible>>> {
         let (request, receiver) =
@@ -106,7 +106,7 @@ impl ItsiRequest {
         request: Request<Incoming>,
         sock_addr: SockAddr,
         script_name: String,
-        listener: Arc<Listener>,
+        listener: Arc<TokioListener>,
     ) -> (Self, oneshot::Receiver<ItsiResponse>) {
         let (parts, body) = request.into_parts();
         let body = body.collect().await.unwrap().to_bytes();

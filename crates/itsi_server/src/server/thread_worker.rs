@@ -1,8 +1,5 @@
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
-
+use super::itsi_server::RequestJob;
+use crate::ITSI_SERVER;
 use crossbeam::channel::{Receiver, Sender};
 use itsi_rb_helpers::{call_with_gvl, call_without_gvl, create_ruby_thread};
 use itsi_tracing::{debug, error, info};
@@ -10,22 +7,46 @@ use magnus::{
     value::{Opaque, ReprValue},
     Ruby, Thread, Value,
 };
-
-use crate::ITSI_SERVER;
-
-use super::itsi_server::RequestJob;
+use std::{
+    num::NonZeroU8,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 pub struct ThreadWorker {
-    pub id: u16,
+    pub id: u8,
     pub app: Opaque<Value>,
     pub receiver: Arc<Receiver<RequestJob>>,
     pub sender: Arc<Sender<RequestJob>>,
     pub thread: Option<Opaque<Thread>>,
 }
 
+pub fn build_thread_workers(
+    threads: NonZeroU8,
+    app: Opaque<Value>,
+) -> (
+    Arc<Vec<ThreadWorker>>,
+    Arc<crossbeam::channel::Sender<RequestJob>>,
+) {
+    let (sender, receiver) = crossbeam::channel::bounded(1000);
+    let receiver_ref = Arc::new(receiver);
+    let sender_ref = Arc::new(sender);
+    (
+        Arc::new(
+            (1..=u8::from(threads))
+                .map(|id| {
+                    info!("Creating worker thread {}", id);
+                    ThreadWorker::new(id, app, receiver_ref.clone(), sender_ref.clone())
+                })
+                .collect::<Vec<_>>(),
+        ),
+        sender_ref,
+    )
+}
+
 impl ThreadWorker {
     pub fn new(
-        id: u16,
+        id: u8,
         app: Opaque<Value>,
         receiver: Arc<Receiver<RequestJob>>,
         sender: Arc<Sender<RequestJob>>,
@@ -88,7 +109,9 @@ impl ThreadWorker {
                             debug!("Shutting down thread worker {}", id);
                             break;
                         }
-                        Err(err) => error!("ThreadWorker {}: {}", id, err),
+                        Err(err) => {
+                            error!("Error receiving request job: {}", err);
+                        }
                     }
                 });
                 0

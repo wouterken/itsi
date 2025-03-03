@@ -1,3 +1,5 @@
+use std::ffi::NulError;
+
 use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, ItsiError>;
@@ -24,6 +26,12 @@ impl From<ItsiError> for magnus::Error {
     }
 }
 
+impl From<nix::errno::Errno> for ItsiError {
+    fn from(err: nix::errno::Errno) -> Self {
+        ItsiError::ArgumentError(err.to_string())
+    }
+}
+
 impl From<std::io::Error> for ItsiError {
     fn from(err: std::io::Error) -> Self {
         ItsiError::ArgumentError(err.to_string())
@@ -32,6 +40,12 @@ impl From<std::io::Error> for ItsiError {
 
 impl From<rcgen::Error> for ItsiError {
     fn from(err: rcgen::Error) -> Self {
+        ItsiError::ArgumentError(err.to_string())
+    }
+}
+
+impl From<NulError> for ItsiError {
+    fn from(err: NulError) -> Self {
         ItsiError::ArgumentError(err.to_string())
     }
 }

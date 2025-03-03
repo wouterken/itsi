@@ -8,7 +8,7 @@ require "etc"
 # Default options used when starting Osprey from the CLI using `osprey`
 DEFAULT_OPTIONS = {
   # Number of workers
-  workers: Etc.nprocessors,
+  workers: 1,
   # Number of threads per worker
   threads: 1,
   # Graceful shutdown timeout

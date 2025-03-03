@@ -1,6 +1,5 @@
-use super::{tls::configure_tls, transfer_protocol::TransferProtocol};
+use super::{bind_protocol::BindProtocol, tls::configure_tls};
 use itsi_error::ItsiError;
-use itsi_tracing::info;
 use std::{
     collections::HashMap,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, ToSocketAddrs},
@@ -27,18 +26,24 @@ impl Default for BindAddress {
 pub struct Bind {
     pub address: BindAddress,
     pub port: Option<u16>, // None for Unix Sockets
-    pub protocol: TransferProtocol,
+    pub protocol: BindProtocol,
     pub tls_config: Option<ServerConfig>,
 }
 
+/// We can build a Bind from a string in the format `protocol://host:port?options`
+/// E.g.
+/// *`https://example.com:443?tls_cert=/path/to/cert.pem&tls_key=/path/to/key.pem`
+/// *`unix:///path/to/socket.sock`
+/// *`http://example.com:80`
+/// *`https://[::]:80`
 impl FromStr for Bind {
     type Err = ItsiError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let (protocol, remainder) = if let Some((proto, rest)) = s.split_once("://") {
-            (proto.parse::<TransferProtocol>()?, rest)
+            (proto.parse::<BindProtocol>()?, rest)
         } else {
-            (TransferProtocol::Https, s)
+            (BindProtocol::Https, s)
         };
 
         let (url, options) = if let Some((base, options)) = remainder.split_once('?') {
@@ -84,24 +89,20 @@ impl FromStr for Bind {
                 .unwrap_or(BindAddress::Ip(IpAddr::V4(Ipv4Addr::UNSPECIFIED)))
         };
         let (port, address) = match protocol {
-            TransferProtocol::Http => (port.or(Some(80)), address),
-            TransferProtocol::Https => (port.or(Some(443)), address),
-            TransferProtocol::Unix => (None, BindAddress::UnixSocket(host.into())),
+            BindProtocol::Http => (port.or(Some(80)), address),
+            BindProtocol::Https => (port.or(Some(443)), address),
+            BindProtocol::Unix => (None, BindAddress::UnixSocket(host.into())),
         };
 
-        let tls_config = if let TransferProtocol::Http = protocol {
-            None
-        } else if let TransferProtocol::Https = protocol {
-            Some(configure_tls(host, &options)?)
-        } else if options.contains_key("cert") {
-            Some(configure_tls(host, &options)?)
-        } else {
-            None
+        // Use HTTPs if we've bound to an https://<address> string OR the cert option was manually provided.
+        // Otherwise, use plain old HTTP
+        let tls_config = match protocol {
+            BindProtocol::Http => None,
+            BindProtocol::Https => Some(configure_tls(host, &options)?),
+            _ if options.contains_key("cert") => Some(configure_tls(host, &options)?),
+            _ => None,
         };
-        info!(
-            "Parsed bind as {:?}:{:?}:{:?}:{:?}",
-            address, port, protocol, tls_config
-        );
+
         Ok(Self {
             address,
             port,

@@ -7,3 +7,4 @@ edition = "2024"
 thiserror = "2.0.11"
 magnus = { version = "0.7.1" }
 rcgen = "0.13.2"
+nix = "0.29.0"

@@ -1,27 +1,132 @@
 use super::bind::{Bind, BindAddress};
-use super::transfer_protocol::TransferProtocol;
-use hyper_util::rt::TokioIo;
+use super::bind_protocol::BindProtocol;
+use super::io_stream::IoStream;
 use itsi_error::Result;
 use itsi_tracing::info;
 use socket2::{Domain, Protocol, Socket, Type};
-use std::net::{IpAddr, SocketAddr, TcpListener as StdTcpListener};
-use std::pin::Pin;
+use std::net::{IpAddr, SocketAddr, TcpListener};
 use std::sync::Arc;
-use std::{os::unix::net::UnixListener as StdUnixListener, path::PathBuf};
-use tokio::net::{unix, TcpListener, TcpStream, UnixListener, UnixStream};
+use std::{os::unix::net::UnixListener, path::PathBuf};
+use tokio::net::TcpListener as TokioTcpListener;
+use tokio::net::UnixListener as TokioUnixListener;
+use tokio::net::{unix, TcpStream, UnixStream};
 use tokio_rustls::TlsAcceptor;
-
-pub(crate) trait IoStream:
-    tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + Unpin
-{
-}
-impl<T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + Unpin> IoStream for T {}
 
 pub(crate) enum Listener {
     Tcp(TcpListener),
     TcpTls((TcpListener, TlsAcceptor)),
     Unix(UnixListener),
     UnixTls((UnixListener, TlsAcceptor)),
+}
+
+pub(crate) enum TokioListener {
+    Tcp(TokioTcpListener),
+    TcpTls((TokioTcpListener, TlsAcceptor)),
+    Unix(TokioUnixListener),
+    UnixTls((TokioUnixListener, TlsAcceptor)),
+}
+
+impl TokioListener {
+    pub(crate) async fn accept(&self) -> Result<IoStream> {
+        match self {
+            TokioListener::Tcp(listener) => TokioListener::accept_tcp(listener).await,
+            TokioListener::TcpTls((listener, acceptor)) => {
+                TokioListener::accept_tls(listener, acceptor).await
+            }
+            TokioListener::Unix(stream) => TokioListener::accept_unix(stream).await,
+            TokioListener::UnixTls((listener, acceptor)) => {
+                TokioListener::accept_unix_tls(listener, acceptor).await
+            }
+        }
+    }
+
+    async fn accept_tcp(listener: &TokioTcpListener) -> Result<IoStream> {
+        let tcp_stream = listener.accept().await?;
+        Self::to_tokio_io(Stream::TcpStream(tcp_stream), None).await
+    }
+
+    async fn accept_tls(listener: &TokioTcpListener, acceptor: &TlsAcceptor) -> Result<IoStream> {
+        let tcp_stream = listener.accept().await?;
+        Self::to_tokio_io(Stream::TcpStream(tcp_stream), Some(acceptor)).await
+    }
+
+    async fn accept_unix(listener: &TokioUnixListener) -> Result<IoStream> {
+        let unix_stream = listener.accept().await?;
+        Self::to_tokio_io(Stream::UnixStream(unix_stream), None).await
+    }
+
+    async fn accept_unix_tls(
+        listener: &TokioUnixListener,
+        acceptor: &TlsAcceptor,
+    ) -> Result<IoStream> {
+        let unix_stream = listener.accept().await?;
+        Self::to_tokio_io(Stream::UnixStream(unix_stream), Some(acceptor)).await
+    }
+
+    async fn to_tokio_io(
+        input_stream: Stream,
+        tls_acceptor: Option<&TlsAcceptor>,
+    ) -> Result<IoStream> {
+        match tls_acceptor {
+            Some(acceptor) => match input_stream {
+                Stream::TcpStream((tcp_stream, socket_address)) => {
+                    match acceptor.accept(tcp_stream).await {
+                        Ok(tls_stream) => Ok(IoStream::TcpTls {
+                            stream: tls_stream,
+                            addr: SockAddr::Tcp(Arc::new(socket_address)),
+                        }),
+                        Err(err) => Err(err.into()),
+                    }
+                }
+                Stream::UnixStream((unix_stream, socket_address)) => {
+                    match acceptor.accept(unix_stream).await {
+                        Ok(tls_stream) => Ok(IoStream::UnixTls {
+                            stream: tls_stream,
+                            addr: SockAddr::Unix(Arc::new(socket_address)),
+                        }),
+                        Err(err) => Err(err.into()),
+                    }
+                }
+            },
+            None => match input_stream {
+                Stream::TcpStream((tcp_stream, socket_address)) => Ok(IoStream::Tcp {
+                    stream: tcp_stream,
+                    addr: SockAddr::Tcp(Arc::new(socket_address)),
+                }),
+                Stream::UnixStream((unix_stream, socket_address)) => Ok(IoStream::Unix {
+                    stream: unix_stream,
+                    addr: SockAddr::Unix(Arc::new(socket_address)),
+                }),
+            },
+        }
+    }
+
+    pub(crate) fn scheme(&self) -> String {
+        match self {
+            TokioListener::Tcp(_) => "http".to_string(),
+            TokioListener::TcpTls(_) => "https".to_string(),
+            TokioListener::Unix(_) => "http".to_string(),
+            TokioListener::UnixTls(_) => "https".to_string(),
+        }
+    }
+
+    pub(crate) fn port(&self) -> u16 {
+        match self {
+            TokioListener::Tcp(listener) => listener.local_addr().unwrap().port(),
+            TokioListener::TcpTls((listener, _)) => listener.local_addr().unwrap().port(),
+            TokioListener::Unix(_) => 0,
+            TokioListener::UnixTls(_) => 0,
+        }
+    }
+
+    pub(crate) fn host(&self) -> String {
+        match self {
+            TokioListener::Tcp(listener) => listener.local_addr().unwrap().ip().to_string(),
+            TokioListener::TcpTls((listener, _)) => listener.local_addr().unwrap().ip().to_string(),
+            TokioListener::Unix(_) => "unix".to_string(),
+            TokioListener::UnixTls(_) => "unix".to_string(),
+        }
+    }
 }
 
 enum Stream {
@@ -47,111 +152,22 @@ impl std::fmt::Display for SockAddr {
 }
 
 impl Listener {
-    pub(crate) async fn accept(&self) -> Result<(TokioIo<Pin<Box<dyn IoStream>>>, SockAddr)> {
+    pub fn to_tokio_listener(&self) -> TokioListener {
         match self {
-            Listener::Tcp(listener) => Listener::accept_tcp(listener).await,
-            Listener::TcpTls((listener, acceptor)) => {
-                Listener::accept_tls(listener, acceptor).await
-            }
-            Listener::Unix(stream) => Listener::accept_unix(stream).await,
-            Listener::UnixTls((listener, acceptor)) => {
-                Listener::accept_unix_tls(listener, acceptor).await
-            }
-        }
-    }
-
-    async fn to_tokio_io(
-        input_stream: Stream,
-        tls_acceptor: Option<&TlsAcceptor>,
-    ) -> Result<(TokioIo<Pin<Box<dyn IoStream>>>, SockAddr)> {
-        match tls_acceptor {
-            Some(acceptor) => match input_stream {
-                Stream::TcpStream((tcp_stream, socket_address)) => {
-                    match acceptor.accept(tcp_stream).await {
-                        Ok(tls_stream) => Ok((
-                            TokioIo::new(Box::pin(tls_stream) as Pin<Box<dyn IoStream>>),
-                            SockAddr::Tcp(Arc::new(socket_address)),
-                        )),
-                        Err(err) => Err(err.into()),
-                    }
-                }
-                Stream::UnixStream((unix_stream, socket_address)) => {
-                    match acceptor.accept(unix_stream).await {
-                        Ok(tls_stream) => Ok((
-                            TokioIo::new(Box::pin(tls_stream) as Pin<Box<dyn IoStream>>),
-                            SockAddr::Unix(Arc::new(socket_address)),
-                        )),
-                        Err(err) => Err(err.into()),
-                    }
-                }
-            },
-            None => match input_stream {
-                Stream::TcpStream((tcp_stream, socket_address)) => Ok((
-                    TokioIo::new(Box::pin(tcp_stream) as Pin<Box<dyn IoStream>>),
-                    SockAddr::Tcp(Arc::new(socket_address)),
-                )),
-                Stream::UnixStream((unix_stream, socket_address)) => Ok((
-                    TokioIo::new(Box::pin(unix_stream) as Pin<Box<dyn IoStream>>),
-                    SockAddr::Unix(Arc::new(socket_address)),
-                )),
-            },
-        }
-    }
-
-    async fn accept_tcp(
-        listener: &TcpListener,
-    ) -> Result<(TokioIo<Pin<Box<dyn IoStream>>>, SockAddr)> {
-        let tcp_stream = listener.accept().await?;
-        Self::to_tokio_io(Stream::TcpStream(tcp_stream), None).await
-    }
-
-    async fn accept_tls(
-        listener: &TcpListener,
-        acceptor: &TlsAcceptor,
-    ) -> Result<(TokioIo<Pin<Box<dyn IoStream>>>, SockAddr)> {
-        let tcp_stream = listener.accept().await?;
-        Self::to_tokio_io(Stream::TcpStream(tcp_stream), Some(acceptor)).await
-    }
-
-    async fn accept_unix(
-        listener: &UnixListener,
-    ) -> Result<(TokioIo<Pin<Box<dyn IoStream>>>, SockAddr)> {
-        let unix_stream = listener.accept().await?;
-        Self::to_tokio_io(Stream::UnixStream(unix_stream), None).await
-    }
-
-    async fn accept_unix_tls(
-        listener: &UnixListener,
-        acceptor: &TlsAcceptor,
-    ) -> Result<(TokioIo<Pin<Box<dyn IoStream>>>, SockAddr)> {
-        let unix_stream = listener.accept().await?;
-        Self::to_tokio_io(Stream::UnixStream(unix_stream), Some(acceptor)).await
-    }
-
-    pub(crate) fn scheme(&self) -> String {
-        match self {
-            Listener::Tcp(_) => "http".to_string(),
-            Listener::TcpTls(_) => "https".to_string(),
-            Listener::Unix(_) => "http".to_string(),
-            Listener::UnixTls(_) => "https".to_string(),
-        }
-    }
-
-    pub(crate) fn port(&self) -> u16 {
-        match self {
-            Listener::Tcp(listener) => listener.local_addr().unwrap().port(),
-            Listener::TcpTls((listener, _)) => listener.local_addr().unwrap().port(),
-            Listener::Unix(_) => 0,
-            Listener::UnixTls(_) => 0,
-        }
-    }
-
-    pub(crate) fn host(&self) -> String {
-        match self {
-            Listener::Tcp(listener) => listener.local_addr().unwrap().ip().to_string(),
-            Listener::TcpTls((listener, _)) => listener.local_addr().unwrap().ip().to_string(),
-            Listener::Unix(_) => "unix".to_string(),
-            Listener::UnixTls(_) => "unix".to_string(),
+            Listener::Tcp(listener) => TokioListener::Tcp(
+                TokioTcpListener::from_std(TcpListener::try_clone(listener).unwrap()).unwrap(),
+            ),
+            Listener::TcpTls((listener, acceptor)) => TokioListener::TcpTls((
+                TokioTcpListener::from_std(TcpListener::try_clone(listener).unwrap()).unwrap(),
+                acceptor.clone(),
+            )),
+            Listener::Unix(listener) => TokioListener::Unix(
+                TokioUnixListener::from_std(UnixListener::try_clone(listener).unwrap()).unwrap(),
+            ),
+            Listener::UnixTls((listener, acceptor)) => TokioListener::UnixTls((
+                TokioUnixListener::from_std(UnixListener::try_clone(listener).unwrap()).unwrap(),
+                acceptor.clone(),
+            )),
         }
     }
 }
@@ -160,13 +176,9 @@ impl From<Bind> for Listener {
     fn from(bind: Bind) -> Self {
         match bind.address {
             BindAddress::Ip(addr) => match bind.protocol {
-                TransferProtocol::Http => Listener::Tcp(
-                    TcpListener::from_std(connect_tcp_socket(addr, bind.port.unwrap())).unwrap(),
-                ),
-                TransferProtocol::Https => {
-                    let tcp_listener =
-                        TcpListener::from_std(connect_tcp_socket(addr, bind.port.unwrap()))
-                            .unwrap();
+                BindProtocol::Http => Listener::Tcp(connect_tcp_socket(addr, bind.port.unwrap())),
+                BindProtocol::Https => {
+                    let tcp_listener = connect_tcp_socket(addr, bind.port.unwrap());
                     let tls_acceptor = TlsAcceptor::from(Arc::new(bind.tls_config.unwrap()));
                     Listener::TcpTls((tcp_listener, tls_acceptor))
                 }
@@ -175,18 +187,15 @@ impl From<Bind> for Listener {
             BindAddress::UnixSocket(path) => match bind.tls_config {
                 Some(tls_config) => {
                     let tls_acceptor = TlsAcceptor::from(Arc::new(tls_config));
-                    Listener::UnixTls((
-                        UnixListener::from_std(connect_unix_socket(&path)).unwrap(),
-                        tls_acceptor,
-                    ))
+                    Listener::UnixTls((connect_unix_socket(&path), tls_acceptor))
                 }
-                None => Listener::Unix(UnixListener::from_std(connect_unix_socket(&path)).unwrap()),
+                None => Listener::Unix(connect_unix_socket(&path)),
             },
         }
     }
 }
 
-fn connect_tcp_socket(addr: IpAddr, port: u16) -> StdTcpListener {
+fn connect_tcp_socket(addr: IpAddr, port: u16) -> TcpListener {
     let domain = match addr {
         IpAddr::V4(_) => Domain::IPV4,
         IpAddr::V6(_) => Domain::IPV6,
@@ -204,7 +213,7 @@ fn connect_tcp_socket(addr: IpAddr, port: u16) -> StdTcpListener {
     socket.into()
 }
 
-fn connect_unix_socket(path: &PathBuf) -> StdUnixListener {
+fn connect_unix_socket(path: &PathBuf) -> UnixListener {
     let _ = std::fs::remove_file(path);
     let socket = Socket::new(Domain::UNIX, Type::STREAM, None).unwrap();
     socket.set_nonblocking(true).ok();
