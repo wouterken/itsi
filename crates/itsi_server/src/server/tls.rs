@@ -22,28 +22,24 @@ pub fn configure_tls(host: &str, query_params: &HashMap<String, String>) -> Resu
         let certs = load_certs(cert_path);
         let key = load_private_key(key_path);
         (certs, key)
-    } else if query_params
-        .get("cert")
-        .map(|v| v == "auto")
-        .unwrap_or(false)
-    {
-        let domain_param = query_params.get("domain");
+    } else {
+        let domains_param = query_params
+            .get("domains")
+            .map(|v| v.split(',').map(String::from).collect());
         let host_string = host.to_string();
-        let domain = domain_param.or_else(|| {
+        let domains = domains_param.or_else(|| {
             if host_string != "localhost" {
-                Some(&host_string)
+                Some(vec![host_string])
             } else {
                 None
             }
         });
 
-        if let Some(domain) = domain {
-            retrieve_acme_cert(domain)?
+        if let Some(domains) = domains {
+            retrieve_acme_cert(domains)?
         } else {
-            generate_ca_signed_cert(host)?
+            generate_ca_signed_cert(vec![host.to_owned()])?
         }
-    } else {
-        generate_ca_signed_cert(host)?
     };
 
     let mut config = ServerConfig::builder()
@@ -106,33 +102,50 @@ pub fn load_private_key(path: &str) -> PrivateKey {
     PrivateKey(key_data)
 }
 
-pub fn generate_ca_signed_cert(domain: &str) -> Result<(Vec<Certificate>, PrivateKey)> {
+pub fn generate_ca_signed_cert(domains: Vec<String>) -> Result<(Vec<Certificate>, PrivateKey)> {
     info!("Generating New Itsi CA - Self signed Certificate. Use `itsi ca export` to export the CA certificate for import into your local trust store.");
 
-    let ca_kp = KeyPair::from_pem(ITS_CA_KEY).unwrap();
-    let params = CertificateParams::from_ca_cert_pem(ITS_CA_CERT).unwrap();
+    let ca_kp = KeyPair::from_pem(ITS_CA_KEY).expect("Failed to load embedded CA key");
+    let ca_cert = CertificateParams::from_ca_cert_pem(ITS_CA_CERT)
+        .expect("Failed to parse embedded CA certificate")
+        .self_signed(&ca_kp)
+        .expect("Failed to self-sign embedded CA cert");
 
-    let ca_cert = params.self_signed(&ca_kp).unwrap();
-    let ee_key = KeyPair::generate().unwrap();
+    let ee_key = KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256).unwrap();
     let mut ee_params = CertificateParams::default();
 
-    // Set the domain in the subject alternative names (SAN)
-    ee_params.subject_alt_names = vec![SanType::DnsName(domain.try_into()?)];
-    // Optionally, set the Common Name (CN) in the distinguished name:
+    info!(
+        "Generated certificate will be valid for domains {:?}",
+        domains
+    );
+    use std::net::IpAddr;
+
+    ee_params.subject_alt_names = domains
+        .iter()
+        .map(|domain| {
+            if let Ok(ip) = domain.parse::<IpAddr>() {
+                SanType::IpAddress(ip)
+            } else {
+                SanType::DnsName(domain.clone().try_into().unwrap())
+            }
+        })
+        .collect();
+
     ee_params
         .distinguished_name
-        .push(DnType::CommonName, domain);
+        .push(DnType::CommonName, domains[0].clone());
 
     ee_params.use_authority_key_identifier_extension = true;
 
-    let ee_cert = ee_params.signed_by(&ee_key, &ca_cert, &ee_key).unwrap();
+    let ee_cert = ee_params.signed_by(&ee_key, &ca_cert, &ca_kp).unwrap();
     let ee_cert_der = ee_cert.der().to_vec();
     let ee_cert = Certificate(ee_cert_der);
-    Ok((vec![ee_cert], PrivateKey(ee_key.serialize_der())))
+    let ca_cert = Certificate(ca_cert.der().to_vec());
+    Ok((vec![ee_cert, ca_cert], PrivateKey(ee_key.serialize_der())))
 }
 
-/// Retrieves an ACME certificate for a given domain.
-pub fn retrieve_acme_cert(domain: &str) -> Result<(Vec<Certificate>, PrivateKey)> {
-    warn!("Retrieving ACME cert for {}", domain);
-    generate_ca_signed_cert(domain)
+/// TODO: Retrieves an ACME certificate for a given domain.
+pub fn retrieve_acme_cert(domains: Vec<String>) -> Result<(Vec<Certificate>, PrivateKey)> {
+    warn!("Retrieving ACME cert for {}", domains.join(", "));
+    generate_ca_signed_cert(domains)
 }

@@ -3,11 +3,11 @@ use itsi_error::Result;
 use itsi_rb_helpers::{call_with_gvl, fork};
 use itsi_tracing::error;
 use nix::{
-    libc::kill,
+    libc::{kill, setpgid},
     sys::socket::{socketpair, AddressFamily, SockFlag, SockType},
 };
 use parking_lot::Mutex;
-use signal_hook::consts::signal::*;
+use signal_hook::{consts::signal::*, low_level::exit};
 use std::{os::fd::OwnedFd, sync::Arc};
 
 #[derive(Default)]
@@ -36,6 +36,9 @@ impl ProcessWorker {
             }
             None => {
                 drop(parent_fd);
+
+                unsafe { setpgid(0, 0) };
+
                 if let Err(e) = Arc::new(SingleMode::new(
                     cluster_template.app,
                     cluster_template.listeners.clone(),
@@ -48,7 +51,19 @@ impl ProcessWorker {
                 {
                     error!("Failed to boot into worker mode: {}", e);
                 }
+                exit(0)
             }
+        }
+    }
+
+    pub(crate) fn shutdown(&self) {
+        let child_pid = *self.child_pid.lock();
+        if let Some(pid) = child_pid {
+            unsafe {
+                kill(pid, SIGTERM);
+            };
+            *self.child_pid.lock() = None;
+            *self.child_fd.lock() = None;
         }
     }
 }

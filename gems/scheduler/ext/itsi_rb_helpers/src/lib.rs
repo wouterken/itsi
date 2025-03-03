@@ -15,10 +15,8 @@ static ID_LIST: LazyId = LazyId::new("list");
 static ID_EQ: LazyId = LazyId::new("==");
 static ID_EXIT: LazyId = LazyId::new("exit");
 static ID_JOIN: LazyId = LazyId::new("join");
-static ID_KILL: LazyId = LazyId::new("kill");
 static ID_ALIVE: LazyId = LazyId::new("alive?");
 static ID_THREAD_VARIABLE_GET: LazyId = LazyId::new("thread_variable_get");
-static THREAD_CLASS: Lazy<RClass> = Lazy::new(|ruby| ruby.class_thread());
 
 pub fn schedule_thread() {
     unsafe {

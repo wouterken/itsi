@@ -5,6 +5,7 @@ use crate::{
         itsi_server::RequestJob,
         lifecycle_event::LifecycleEvent,
         listener::{Listener, TokioListener},
+        signal::handle_signals,
         thread_worker::{build_thread_workers, ThreadWorker},
     },
 };
@@ -73,6 +74,7 @@ impl SingleMode {
         let self_ref = Arc::new(self);
 
         self_ref.build_runtime().block_on(async {
+          let signals_task = tokio::spawn(handle_signals(lifecycle_tx.clone()));
           for listener in self_ref.listeners.clone().iter() {
               let listener = Arc::new(listener.to_tokio_listener());
               let mut lifecycle_rx = lifecycle_tx.subscribe();
@@ -105,13 +107,15 @@ impl SingleMode {
                     }
                 }
             });
+
           }
 
           while let Some(_res) = listener_task_set.join_next().await {}
+          if let Err(e) =  signals_task.await {
+              error!("Error closing server: {:?}", e);
+          }
         });
-        // if let Err(e) = signals_task.await {
-        //     error!("Error closing server: {:?}", e);
-        // }
+
         Ok(())
     }
 

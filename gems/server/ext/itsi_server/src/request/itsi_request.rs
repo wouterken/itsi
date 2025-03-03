@@ -2,7 +2,7 @@ use crate::{
     response::itsi_response::ItsiResponse,
     server::{
         itsi_server::RequestJob,
-        listener::{Listener, SockAddr, TokioListener},
+        listener::{SockAddr, TokioListener},
     },
 };
 use bytes::Bytes;
