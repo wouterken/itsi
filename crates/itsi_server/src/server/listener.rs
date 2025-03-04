@@ -172,13 +172,15 @@ impl Listener {
     }
 }
 
-impl From<Bind> for Listener {
-    fn from(bind: Bind) -> Self {
-        match bind.address {
+impl TryFrom<Bind> for Listener {
+    type Error = itsi_error::ItsiError;
+
+    fn try_from(bind: Bind) -> std::result::Result<Self, Self::Error> {
+        let bound = match bind.address {
             BindAddress::Ip(addr) => match bind.protocol {
-                BindProtocol::Http => Listener::Tcp(connect_tcp_socket(addr, bind.port.unwrap())),
+                BindProtocol::Http => Listener::Tcp(connect_tcp_socket(addr, bind.port.unwrap())?),
                 BindProtocol::Https => {
-                    let tcp_listener = connect_tcp_socket(addr, bind.port.unwrap());
+                    let tcp_listener = connect_tcp_socket(addr, bind.port.unwrap())?;
                     let tls_acceptor = TlsAcceptor::from(Arc::new(bind.tls_config.unwrap()));
                     Listener::TcpTls((tcp_listener, tls_acceptor))
                 }
@@ -187,41 +189,42 @@ impl From<Bind> for Listener {
             BindAddress::UnixSocket(path) => match bind.tls_config {
                 Some(tls_config) => {
                     let tls_acceptor = TlsAcceptor::from(Arc::new(tls_config));
-                    Listener::UnixTls((connect_unix_socket(&path), tls_acceptor))
+                    Listener::UnixTls((connect_unix_socket(&path)?, tls_acceptor))
                 }
-                None => Listener::Unix(connect_unix_socket(&path)),
+                None => Listener::Unix(connect_unix_socket(&path)?),
             },
-        }
+        };
+        Ok(bound)
     }
 }
 
-fn connect_tcp_socket(addr: IpAddr, port: u16) -> TcpListener {
+fn connect_tcp_socket(addr: IpAddr, port: u16) -> Result<TcpListener> {
     let domain = match addr {
         IpAddr::V4(_) => Domain::IPV4,
         IpAddr::V6(_) => Domain::IPV6,
     };
-    let socket = Socket::new(domain, Type::STREAM, Some(Protocol::TCP)).unwrap();
+    let socket = Socket::new(domain, Type::STREAM, Some(Protocol::TCP))?;
     let socket_address: SocketAddr = SocketAddr::new(addr, port);
     socket.set_reuse_address(true).ok();
     socket.set_reuse_port(true).ok();
     socket.set_nonblocking(true).ok();
     socket.set_nodelay(true).ok();
     socket.set_recv_buffer_size(1_048_576).ok();
-    info!("Binding to {}", socket_address);
-    socket.bind(&socket_address.into()).unwrap();
-    socket.listen(1024).unwrap();
-    socket.into()
+    socket.bind(&socket_address.into())?;
+    socket.listen(1024)?;
+    info!("Listening to {}", socket_address);
+    Ok(socket.into())
 }
 
-fn connect_unix_socket(path: &PathBuf) -> UnixListener {
+fn connect_unix_socket(path: &PathBuf) -> Result<UnixListener> {
     let _ = std::fs::remove_file(path);
-    let socket = Socket::new(Domain::UNIX, Type::STREAM, None).unwrap();
+    let socket = Socket::new(Domain::UNIX, Type::STREAM, None)?;
     socket.set_nonblocking(true).ok();
-    let socket_address = socket2::SockAddr::unix(path).unwrap();
+    let socket_address = socket2::SockAddr::unix(path)?;
 
     info!("Binding to {:?}", path);
-    socket.bind(&socket_address).unwrap();
-    socket.listen(1024).unwrap();
+    socket.bind(&socket_address)?;
+    socket.listen(1024)?;
 
-    socket.into()
+    Ok(socket.into())
 }

@@ -8,7 +8,6 @@ use std::{
 };
 use tokio_rustls::rustls::ServerConfig;
 
-// Support binding to either IP or Unix Socket
 #[derive(Debug, Clone)]
 pub enum BindAddress {
     Ip(IpAddr),
@@ -86,7 +85,10 @@ impl FromStr for Bind {
         } else {
             resolve_hostname(host)
                 .map(BindAddress::Ip)
-                .unwrap_or(BindAddress::Ip(IpAddr::V4(Ipv4Addr::UNSPECIFIED)))
+                .ok_or(ItsiError::ArgumentError(format!(
+                    "Failed to resolve hostname {}",
+                    host
+                )))?
         };
         let (port, address) = match protocol {
             BindProtocol::Http => (port.or(Some(80)), address),

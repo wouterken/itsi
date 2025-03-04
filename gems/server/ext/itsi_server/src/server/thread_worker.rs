@@ -10,7 +10,14 @@ use magnus::{
     Ruby, Thread, Value,
 };
 use nix::unistd::Pid;
-use std::{num::NonZeroU8, sync::Arc, time::Instant};
+use std::{
+    num::NonZeroU8,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Instant,
+};
 use tracing::instrument;
 pub struct ThreadWorker {
     pub id: String,
@@ -82,14 +89,16 @@ impl ThreadWorker {
     }
 
     pub fn request_shutdown(&self) {
-        info!("Sending shutdown to worker {}", self.id);
         match self.sender.send(RequestJob::Shutdown) {
             Ok(_) => {}
             Err(err) => error!("Failed to send shutdown request: {}", err),
         };
+        info!("Requesting shutdown for worker thread {}", self.id);
     }
 
     pub fn poll_shutdown(&self, deadline: Instant) -> bool {
+        info!("Polling worker thread {} for shutdown", self.id);
+
         call_with_gvl(|_ruby| {
             if let Some(thread) = self.thread.as_value() {
                 if Instant::now() > deadline {
@@ -101,6 +110,8 @@ impl ThreadWorker {
                 }
             }
             self.thread.clear();
+            info!("Thread {} has been shut down", self.id);
+
             false
         })
     }
@@ -113,7 +124,6 @@ impl ThreadWorker {
             let thread = create_ruby_thread(move || {
                 let ruby = Ruby::get().unwrap();
                 let server = ruby.get_inner(&ITSI_SERVER);
-
                 call_without_gvl(|| loop {
                     match receiver.recv() {
                         Ok(RequestJob::ProcessRequest(request)) => {

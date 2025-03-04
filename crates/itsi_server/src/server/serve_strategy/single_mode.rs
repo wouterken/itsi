@@ -19,7 +19,7 @@ use hyper_util::{
 use itsi_error::{ItsiError, Result};
 use itsi_tracing::{debug, error, info};
 use magnus::{value::Opaque, Value};
-use nix::{libc::exit, unistd::Pid};
+use nix::unistd::Pid;
 use std::{
     num::NonZeroU8,
     pin::Pin,
@@ -87,21 +87,26 @@ impl SingleMode {
               let mut lifecycle_rx = lifecycle_tx.subscribe();
               let self_ref = self_ref.clone();
               let listener = listener.clone();
+              let (shutdown_sender, mut shutdown_receiver) = tokio::sync::watch::channel(());
+
               listener_task_set.spawn(async move {
                 let strategy = self_ref.clone();
                 loop {
                     tokio::select! {
                         accept_result = listener.accept() => match accept_result {
                           Ok(accept_result) => {
-                            if let Err(e) = strategy.serve_connection(accept_result, listener.clone()).await {
+                            if let Err(e) = strategy.serve_connection(accept_result, listener.clone(), shutdown_receiver.clone()).await {
                               error!("Error in serve_connection {:?}", e)
                             }
                           },
-                          Err(e) => info!("Listener.accept failed {:?}", e),
-                      },
+                          Err(e) => debug!("Listener.accept failed {:?}", e),
+                        },
+                        _ = shutdown_receiver.changed() => {
+                          break;
+                        }
                         lifecycle_event = lifecycle_rx.recv() => match lifecycle_event{
                           Ok(lifecycle_event) => {
-                            if let Err(e) = strategy.handle_lifecycle_event(lifecycle_event).await{
+                            if let Err(e) = strategy.handle_lifecycle_event(lifecycle_event, shutdown_sender.clone()).await{
                               match e {
                                 ItsiError::Break() => break,
                                 _ => error!("Error in handle_lifecycle_event {:?}", e)
@@ -130,49 +135,78 @@ impl SingleMode {
         &self,
         stream: IoStream,
         listener: Arc<TokioListener>,
+        mut shutdown_channel: tokio::sync::watch::Receiver<()>,
     ) -> Result<()> {
         let sender_clone = self.sender.clone();
         let addr = stream.addr();
         let io: TokioIo<Pin<Box<IoStream>>> = TokioIo::new(Box::pin(stream));
         let script_name = self.script_name.clone();
-        let mut server = self.server.clone();
+        let server = self.server.clone();
         tokio::spawn(async move {
-            let serve = server
-                .http1()
-                .timer(TokioTimer::new())
-                .header_read_timeout(Duration::from_secs(1))
-                .serve_connection_with_upgrades(
-                    io,
-                    service_fn(move |hyper_request: Request<Incoming>| {
-                        ItsiRequest::process_request(
-                            hyper_request,
-                            sender_clone.clone(),
-                            script_name.clone(),
-                            listener.clone(),
-                            addr.clone(),
-                        )
-                    }),
-                )
-                .await;
-            if let Err(e) = serve {
-                debug!("Closed connection due to: {:?}", e);
+            let mut server = server.clone();
+            let mut binding = server.http1();
+            let mut serve = Box::pin(
+                binding
+                    .timer(TokioTimer::new())
+                    .header_read_timeout(Duration::from_secs(1))
+                    .serve_connection_with_upgrades(
+                        io,
+                        service_fn(move |hyper_request: Request<Incoming>| {
+                            ItsiRequest::process_request(
+                                hyper_request,
+                                sender_clone.clone(),
+                                script_name.clone(),
+                                listener.clone(),
+                                addr.clone(),
+                            )
+                        }),
+                    ),
+            );
+
+            tokio::select! {
+                // Await the connection finishing naturally.
+                res = &mut serve => {
+                    if let Err(e) = res {
+                        debug!("Connection finished with error: {:?}", e);
+                    }
+                },
+                // A lifecycle event triggers shutdown.
+                _ = shutdown_channel.changed() => {
+                    // Initiate graceful shutdown.
+                    serve.as_mut().graceful_shutdown();
+                    // Now await the connection to finish shutting down.
+                    if let Err(e) = serve.await {
+                        debug!("Connection shutdown error: {:?}", e);
+                    }
+                }
             }
         });
         Ok(())
     }
 
-    pub async fn handle_lifecycle_event(&self, lifecycle_event: LifecycleEvent) -> Result<()> {
+    pub async fn handle_lifecycle_event(
+        &self,
+        lifecycle_event: LifecycleEvent,
+        shutdown_sender: tokio::sync::watch::Sender<()>,
+    ) -> Result<()> {
         if let LifecycleEvent::Shutdown = lifecycle_event {
+            shutdown_sender
+                .send(())
+                .expect("Failed to send shutdown signal");
             let deadline = Instant::now() + Duration::from_secs_f64(self.shutdown_timeout);
             self.thread_workers
                 .iter()
                 .for_each(|worker| worker.request_shutdown());
             while Instant::now() < deadline {
+                info!("Polling worker threads for shutdown");
                 tokio::time::sleep(Duration::from_millis(10)).await;
                 let alive_threads = self
                     .thread_workers
                     .iter()
-                    .filter(|worker| worker.poll_shutdown(deadline))
+                    .filter(|worker| {
+                        info!("Checking worker status {}", worker.id);
+                        worker.poll_shutdown(deadline)
+                    })
                     .count();
                 if alive_threads == 0 {
                     break;
@@ -181,8 +215,7 @@ impl SingleMode {
             self.thread_workers.iter().for_each(|worker| {
                 worker.poll_shutdown(deadline);
             });
-            info!("Worker exited");
-            unsafe { exit(0) };
+            return Err(ItsiError::Break());
         }
         Ok(())
     }

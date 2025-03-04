@@ -6,13 +6,13 @@ pub type Result<T> = std::result::Result<T, ItsiError>;
 
 #[derive(Error, Debug)]
 pub enum ItsiError {
-    #[error("Invalid input")]
+    #[error("Invalid input {0}")]
     InvalidInput(String),
-    #[error("Internal server error")]
-    InternalServerError,
-    #[error("Unsupported protocol")]
+    #[error("Internal server error {0}")]
+    InternalServerError(String),
+    #[error("Unsupported protocol {0}")]
     UnsupportedProtocol(String),
-    #[error("Argument error")]
+    #[error("Argument error: {0}")]
     ArgumentError(String),
     #[error("Jump")]
     Jump(String),
@@ -22,7 +22,20 @@ pub enum ItsiError {
 
 impl From<ItsiError> for magnus::Error {
     fn from(err: ItsiError) -> Self {
-        magnus::Error::new(magnus::exception::runtime_error(), err.to_string())
+        match err {
+            ItsiError::InvalidInput(msg) => magnus::Error::new(magnus::exception::arg_error(), msg),
+            ItsiError::InternalServerError(msg) => {
+                magnus::Error::new(magnus::exception::exception(), msg)
+            }
+            ItsiError::UnsupportedProtocol(msg) => {
+                magnus::Error::new(magnus::exception::arg_error(), msg)
+            }
+            ItsiError::ArgumentError(msg) => {
+                magnus::Error::new(magnus::exception::arg_error(), msg)
+            }
+            ItsiError::Jump(msg) => magnus::Error::new(magnus::exception::local_jump_error(), msg),
+            ItsiError::Break() => magnus::Error::new(magnus::exception::interrupt(), "Break"),
+        }
     }
 }
 

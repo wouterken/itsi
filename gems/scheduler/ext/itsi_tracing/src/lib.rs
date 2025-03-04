@@ -3,7 +3,7 @@ pub use tracing::{debug, error, info, trace, warn};
 pub use tracing_attributes::instrument; // Explicitly export from tracing-attributes
 use tracing_subscriber::{
     EnvFilter,
-    fmt::{self, format},
+    fmt::{self},
 };
 
 #[instrument]

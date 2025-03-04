@@ -1,8 +1,8 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-require "optparse"
 require "rack"
+require "optparse"
 require "etc"
 
 # Default options used when starting Osprey from the CLI using `osprey`

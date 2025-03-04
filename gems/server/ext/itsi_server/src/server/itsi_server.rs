@@ -49,7 +49,9 @@ pub enum RequestJob {
 }
 
 impl Server {
+    #[instrument(name = "Itsi", skip_all)]
     pub fn new(args: &[Value]) -> Result<Self> {
+        info!("Starting up {:?}", args);
         type OptionalArgs = (
             Option<u8>,
             Option<u8>,
@@ -78,6 +80,7 @@ impl Server {
                 "use_scheduler",
             ],
         )?;
+
         let server = Server {
             app: Opaque::from(args.required.0),
             workers: max(args.optional.0.unwrap_or(1), 1),
@@ -89,8 +92,8 @@ impl Server {
                     .4
                     .unwrap_or_else(|| vec![DEFAULT_BIND.to_string()])
                     .into_iter()
-                    .map(|s| s.parse().unwrap_or_else(|_| Bind::default()))
-                    .collect(),
+                    .map(|s| s.parse())
+                    .collect::<itsi_error::Result<Vec<Bind>>>()?,
             ),
             before_fork: Mutex::new(args.optional.5.map(|p| {
                 let opaque_proc = Opaque::from(p);
@@ -114,23 +117,26 @@ impl Server {
         Ok(server)
     }
 
-    pub(crate) fn listeners(&self) -> Arc<Vec<Arc<Listener>>> {
-        Arc::new(
-            self.binds
-                .lock()
-                .iter()
-                .cloned()
-                .map(Listener::from)
-                .map(Arc::new)
-                .collect::<Vec<_>>(),
-        )
+    #[instrument(name = "Bind", skip_all, fields(binds=format!("{:?}", self.binds.lock())))]
+    pub(crate) fn listeners(&self) -> Result<Arc<Vec<Arc<Listener>>>> {
+        let listeners = self
+            .binds
+            .lock()
+            .iter()
+            .cloned()
+            .map(Listener::try_from)
+            .collect::<std::result::Result<Vec<Listener>, _>>()?
+            .into_iter()
+            .map(Arc::new)
+            .collect::<Vec<_>>();
+        Ok(Arc::new(listeners))
     }
 
-    pub(crate) fn build_strategy(&self) -> ServeStrategy {
-        if self.workers == 1 {
+    pub(crate) fn build_strategy(&self) -> Result<ServeStrategy> {
+        let strategy = if self.workers == 1 {
             ServeStrategy::Single(Arc::new(SingleMode::new(
                 self.app,
-                self.listeners(),
+                self.listeners()?,
                 Builder::new(TokioExecutor::new()),
                 NonZero::new(self.threads).unwrap(),
                 self.script_name.clone(),
@@ -146,27 +152,23 @@ impl Server {
             };
             ServeStrategy::Cluster(Arc::new(ClusterMode::new(
                 self.app,
-                self.listeners(),
+                self.listeners()?,
                 Builder::new(TokioExecutor::new()),
                 self.script_name.clone(),
                 NonZero::new(self.threads).unwrap(),
                 NonZero::new(self.workers).unwrap(),
                 lifecycle_hooks,
             )))
-        }
+        };
+        Ok(strategy)
     }
 
-    pub fn start(&self) {
-        info!(
-            "Starting Itsi Server on {:?}. Threads: {}",
-            self.binds.lock(),
-            self.threads
-        );
-
+    pub fn start(&self) -> Result<()> {
         call_without_gvl(|| {
-            if let Err(e) = self.build_strategy().run() {
+            if let Err(e) = self.build_strategy()?.run() {
                 error!("Error running server: {}", e);
             }
-        });
+            Ok(())
+        })
     }
 }
