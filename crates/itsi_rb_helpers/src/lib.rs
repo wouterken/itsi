@@ -1,10 +1,14 @@
+use std::marker::PhantomData;
+use std::sync::Mutex;
 use std::{os::raw::c_void, ptr::null_mut, sync::Arc};
 
+use magnus::rb_sys::AsRawValue;
 use magnus::{
-    RArray, RClass, Ruby, Thread, Value,
+    RArray, Ruby, Thread, Value,
     rb_sys::FromRawValue,
-    value::{Lazy, LazyId, ReprValue},
+    value::{LazyId, ReprValue},
 };
+use rb_sys::bindings::uncategorized::{rb_gc_register_address, rb_gc_unregister_address};
 use rb_sys::{
     rb_thread_call_with_gvl, rb_thread_call_without_gvl, rb_thread_create, rb_thread_schedule,
     rb_thread_wakeup,
@@ -17,6 +21,76 @@ static ID_EXIT: LazyId = LazyId::new("exit");
 static ID_JOIN: LazyId = LazyId::new("join");
 static ID_ALIVE: LazyId = LazyId::new("alive?");
 static ID_THREAD_VARIABLE_GET: LazyId = LazyId::new("thread_variable_get");
+
+use rb_sys::VALUE;
+
+pub struct RetainedValueInner<T> {
+    inner: Box<VALUE>,
+    _marker: PhantomData<T>, // Phantom type parameter
+}
+
+#[derive(Clone)]
+pub struct RetainedValue<T>
+where
+    T: ReprValue,
+{
+    inner: Arc<Mutex<Option<Arc<RetainedValueInner<T>>>>>,
+}
+
+unsafe impl<T> Send for RetainedValueInner<T> where T: ReprValue {}
+unsafe impl<T> Sync for RetainedValueInner<T> where T: ReprValue {}
+
+impl<T> RetainedValueInner<T>
+where
+    T: ReprValue,
+{
+    pub fn new(value: T) -> Self {
+        let mut value = Box::new(value.as_raw());
+        let ptr: *mut VALUE = &mut *value as *mut VALUE;
+        unsafe { rb_gc_register_address(ptr) };
+        RetainedValueInner {
+            inner: value,
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<T> RetainedValue<T>
+where
+    T: ReprValue,
+{
+    pub fn new(value: T) -> Self {
+        let inner = Arc::new(Mutex::new(Some(Arc::new(RetainedValueInner::new(value)))));
+        RetainedValue { inner }
+    }
+
+    pub fn empty() -> Self {
+        RetainedValue {
+            inner: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    pub fn as_value(&self) -> Option<T> {
+        {
+            let guard = self.inner.lock().unwrap();
+            guard
+                .as_ref()
+                .map(|inner| unsafe { T::from_value_unchecked(Value::from_raw(*inner.inner)) })
+        }
+    }
+
+    pub fn clear(&self) {
+        self.inner.lock().unwrap().take();
+    }
+}
+
+impl<T> Drop for RetainedValueInner<T> {
+    fn drop(&mut self) {
+        unsafe {
+            rb_gc_unregister_address(&mut *self.inner as *mut VALUE);
+        }
+    }
+}
 
 pub fn schedule_thread() {
     unsafe {
@@ -133,6 +207,27 @@ pub fn fork(after_fork: Arc<Option<impl Fn()>>) -> Option<i32> {
     fork_result
 }
 
+pub fn soft_kill_threads(threads: Vec<Thread>) {
+    for thr in &threads {
+        let _: Option<Value> = thr.funcall(*ID_EXIT, ()).expect("Failed to exit thread");
+    }
+
+    for thr in &threads {
+        let _: Option<Value> = thr
+            .funcall(*ID_JOIN, (0.5_f64,))
+            .expect("Failed to join thread");
+    }
+
+    for thr in &threads {
+        let alive: bool = thr
+            .funcall(*ID_ALIVE, ())
+            .expect("Failed to check if thread is alive");
+        if alive {
+            thr.kill().expect("Failed to kill thread");
+        }
+    }
+}
+
 pub fn terminate_non_fork_safe_threads() {
     let ruby = Ruby::get().unwrap();
     let thread_class = ruby.class_thread();
@@ -155,22 +250,5 @@ pub fn terminate_non_fork_safe_threads() {
         })
         .collect::<Vec<_>>();
 
-    for thr in &non_fork_safe_threads {
-        let _: Option<Value> = thr.funcall(*ID_EXIT, ()).expect("Failed to exit thread");
-    }
-
-    for thr in &non_fork_safe_threads {
-        let _: Option<Value> = thr
-            .funcall(*ID_JOIN, (0.5_f64,))
-            .expect("Failed to join thread");
-    }
-
-    for thr in &non_fork_safe_threads {
-        let alive: bool = thr
-            .funcall(*ID_ALIVE, ())
-            .expect("Failed to check if thread is alive");
-        if alive {
-            thr.kill().expect("Failed to kill thread");
-        }
-    }
+    soft_kill_threads(non_fork_safe_threads);
 }

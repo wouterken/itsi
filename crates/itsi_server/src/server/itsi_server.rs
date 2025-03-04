@@ -20,6 +20,7 @@ use magnus::{
 };
 use parking_lot::Mutex;
 use std::{cmp::max, num::NonZero, sync::Arc};
+use tracing::instrument;
 
 static DEFAULT_BIND: &str = "localhost:3000";
 
@@ -57,6 +58,8 @@ impl Server {
             Option<Vec<String>>,
             Option<Proc>,
             Option<Proc>,
+            Option<Value>,
+            Option<bool>,
         );
 
         let scan_args: Args<(), (), (), (), RHash, ()> = scan_args(args)?;
@@ -71,6 +74,8 @@ impl Server {
                 "binds",
                 "before_fork",
                 "after_fork",
+                "scheduler_class",
+                "use_scheduler",
             ],
         )?;
         let server = Server {

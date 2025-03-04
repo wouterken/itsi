@@ -1,16 +1,18 @@
 use crate::server::{
-    lifecycle_event::{self, LifecycleEvent},
-    listener::Listener,
-    process_worker::ProcessWorker,
+    lifecycle_event::LifecycleEvent, listener::Listener, process_worker::ProcessWorker,
     signal::handle_signals,
 };
 use hyper_util::{rt::TokioExecutor, server::conn::auto::Builder};
 use itsi_error::{ItsiError, Result};
-use itsi_tracing::{error, info};
+use itsi_tracing::{error, info, warn};
 use magnus::{value::Opaque, Value};
-use std::{num::NonZeroU8, sync::Arc};
-use tokio::runtime::{Builder as RuntimeBuilder, Runtime};
-
+use std::{num::NonZeroU8, sync::Arc, time::Duration};
+use tokio::{
+    runtime::{Builder as RuntimeBuilder, Runtime},
+    sync::Mutex,
+    time::sleep,
+};
+use tracing::instrument;
 pub(crate) struct ClusterMode {
     pub app: Opaque<Value>,
     pub server: Builder<TokioExecutor>,
@@ -70,12 +72,51 @@ impl ClusterMode {
     }
 
     pub async fn handle_lifecycle_event(&self, lifecycle_event: LifecycleEvent) -> Result<()> {
-        self.process_workers
-            .iter()
-            .for_each(|worker| worker.shutdown());
+        match lifecycle_event {
+            LifecycleEvent::Shutdown => self.shutdown().await,
+            LifecycleEvent::Start => todo!(),
+            LifecycleEvent::Restart => todo!(),
+        }
+    }
+
+    pub async fn shutdown(&self) -> Result<()> {
+        let shutdown_timeout = self.lifecycle.shutdown_timeout;
+        let workers = self.process_workers.clone();
+
+        workers.iter().for_each(|worker| worker.request_shutdown());
+
+        let remaining_children = Arc::new(Mutex::new(workers.len()));
+        let monitor_handle = {
+            let remaining_children: Arc<Mutex<usize>> = Arc::clone(&remaining_children);
+            let mut workers = workers.clone();
+            tokio::spawn(async move {
+                loop {
+                    // Check if all workers have exited
+                    let mut remaining = remaining_children.lock().await;
+                    workers.retain(|worker| worker.is_alive());
+                    *remaining = workers.len();
+                    if *remaining == 0 {
+                        break;
+                    }
+                    sleep(Duration::from_millis(100)).await;
+                }
+            })
+        };
+
+        tokio::select! {
+            _ = monitor_handle => {
+              info!("All children exited early, exit normally")
+            }
+            _ = sleep(Duration::from_secs_f64(shutdown_timeout)) => {
+                warn!("Graceful shutdown timeout reached, force killing remaining children");
+                workers.iter().for_each(|worker| worker.force_kill());
+            }
+        }
+
         Err(ItsiError::Break())
     }
 
+    #[instrument(skip(self), fields(mode = "cluster"))]
     pub fn run(self: Arc<Self>) -> Result<()> {
         self.process_workers
             .iter()
@@ -99,7 +140,7 @@ impl ClusterMode {
                           }
 
                         },
-                        Err(e) => (),//error!("Error receiving lifecycle_event: {:?}", e),
+                        Err(e) => error!("Error receiving lifecycle_event: {:?}", e),
                     }
                 }
             }

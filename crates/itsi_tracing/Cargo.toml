@@ -9,4 +9,8 @@ tracing-subscriber = { version = "0.3.19", features = [
   "env-filter",
   "std",
   "fmt",
+  "json",
+  "ansi",
 ] }
+tracing-attributes = "0.1"
+atty = "0.2.14"

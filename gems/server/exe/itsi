@@ -12,9 +12,17 @@ DEFAULT_OPTIONS = {
   # Number of threads per worker
   threads: 1,
   # Graceful shutdown timeout
-  shutdown_timeout: 2,
+  shutdown_timeout: 5,
   # Binds
-  binds: ["http://0.0.0.0:3000"]
+  binds: ["http://0.0.0.0:3000"],
+  # Preload
+  preload: true,
+  # Rackup file
+  rackup_file: "config.ru",
+  # Use scheduler
+  use_scheduler: false,
+  # Scheduler class
+  scheduler_class: "Itsi::Scheduler"
 }
 
 options = DEFAULT_OPTIONS.to_a.select(&:last).to_h
@@ -39,9 +47,21 @@ OptionParser.new do |opts|
     options[:port] = p
   end
 
+  opts.on("-r", "--rackup_file FILE", String, "Rackup file to use (default: #{options[:rackup_file]})") do |rf|
+    options[:rackup_file] = rf
+  end
+
   opts.on("-f", "--use_fiber_scheduler PORT", TrueClass,
           "Port for the application (default: #{options[:use_scheduler]})") do |p|
     options[:use_scheduler] = p
+  end
+
+  opts.on("--scheduler_class CLASS", String, "Scheduler class to use (default: #{options[:scheduler_class]})") do |scheduler_class|
+    options[:scheduler_class] =  Kernel.const_get(scheduler_class)
+  end
+
+  opts.on("--no-preload", FalseClass, "Disable preloading the application") do |no_preload|
+    options[:preload] = no_preload
   end
 
   opts.on("--http_port HTTP_PORT", Integer, "HTTP port for the application (default: #{options[:http_port]})") do |hp|
@@ -76,14 +96,25 @@ OptionParser.new do |opts|
   end
 end.parse!
 
-# Parse the Rack application
-app, = Rack::Builder.parse_file("config.ru")
+# Rack app loader, invoked per worker.
+# This is a no-op if preloading is enabled (we just return the preloaded app).
+preloader = if options[:preload]
+  Rack::Builder.parse_file(options[:rackup_file]).method(:itself).to_proc
+else
+ ->{
+   Rack::Builder.parse_file(options[:rackup_file])
+ }
+end
 
-puts "Binds #{options[:binds].join(", ")}"
 # Make sure osprey is loaded, if not already loaded by the rack_app above.
 # Start the Osprey server
 require "itsi/server"
-Itsi::Server.new(
-  app: app,
-  **options
-).start
+
+begin
+  Itsi::Server.new(
+    app: preloader,
+    **options.except(:preload, :rackup_file)
+  ).start
+rescue Interrupt
+  # Shutdown
+end

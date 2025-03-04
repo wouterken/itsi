@@ -1,44 +1,49 @@
 use super::serve_strategy::{cluster_mode::ClusterMode, single_mode::SingleMode};
-use itsi_error::Result;
 use itsi_rb_helpers::{call_with_gvl, fork};
 use itsi_tracing::error;
 use nix::{
-    libc::{kill, setpgid},
-    sys::socket::{socketpair, AddressFamily, SockFlag, SockType},
+    errno::Errno,
+    sys::{
+        signal::{
+            kill,
+            Signal::{SIGKILL, SIGTERM},
+        },
+        wait::{waitpid, WaitPidFlag, WaitStatus},
+    },
+    unistd::{setpgid, Pid},
 };
 use parking_lot::Mutex;
-use signal_hook::{consts::signal::*, low_level::exit};
-use std::{os::fd::OwnedFd, sync::Arc};
+use signal_hook::low_level::exit;
+use std::{process, sync::Arc};
+use tracing::instrument;
 
-#[derive(Default)]
+#[derive(Default, Clone, Debug)]
 pub struct ProcessWorker {
     pub worker_id: u8,
-    pub child_pid: Mutex<Option<i32>>,
-    pub child_fd: Mutex<Option<OwnedFd>>,
+    pub child_pid: Arc<Mutex<Option<Pid>>>,
 }
 
 impl ProcessWorker {
+    #[instrument(skip(self, cluster_template), fields(self.worker_id = %self.worker_id))]
     pub(crate) fn boot(&self, cluster_template: Arc<ClusterMode>) {
         let child_pid = *self.child_pid.lock();
         if let Some(pid) = child_pid {
-            unsafe {
-                kill(pid, SIGTERM);
-            };
+            if let Err(e) = kill(pid, SIGTERM) {
+                error!("Failed to send SIGTERM to process {}: {}", pid, e);
+            }
             *self.child_pid.lock() = None;
-            *self.child_fd.lock() = None;
         }
-        let (parent_fd, child_fd) = setup_ipc_channel().expect("Failed to set up IPC channel");
         match call_with_gvl(|_ruby| fork(cluster_template.lifecycle.after_fork.clone())) {
             Some(pid) => {
-                drop(child_fd);
-                *self.child_pid.lock() = Some(pid);
-                *self.child_fd.lock() = Some(parent_fd);
+                *self.child_pid.lock() = Some(Pid::from_raw(pid));
             }
             None => {
-                drop(parent_fd);
-
-                unsafe { setpgid(0, 0) };
-
+                if let Err(e) = setpgid(
+                    Pid::from_raw(process::id() as i32),
+                    Pid::from_raw(process::id() as i32),
+                ) {
+                    error!("Failed to set process group ID: {}", e);
+                }
                 if let Err(e) = Arc::new(SingleMode::new(
                     cluster_template.app,
                     cluster_template.listeners.clone(),
@@ -56,23 +61,40 @@ impl ProcessWorker {
         }
     }
 
-    pub(crate) fn shutdown(&self) {
+    pub(crate) fn request_shutdown(&self) {
         let child_pid = *self.child_pid.lock();
         if let Some(pid) = child_pid {
-            unsafe {
-                kill(pid, SIGTERM);
-            };
-            *self.child_pid.lock() = None;
-            *self.child_fd.lock() = None;
+            if let Err(e) = kill(pid, SIGTERM) {
+                error!("Failed to send SIGTERM to process {}: {}", pid, e);
+            }
         }
     }
-}
 
-fn setup_ipc_channel() -> Result<(OwnedFd, OwnedFd)> {
-    Ok(socketpair(
-        AddressFamily::Unix,
-        SockType::Stream,
-        None,
-        SockFlag::empty(),
-    )?)
+    pub(crate) fn force_kill(&self) {
+        let child_pid = *self.child_pid.lock();
+        if let Some(pid) = child_pid {
+            if let Err(e) = kill(pid, SIGKILL) {
+                error!("Failed to force kill process {}: {}", pid, e);
+            }
+        }
+    }
+
+    pub(crate) fn is_alive(&self) -> bool {
+        let child_pid = *self.child_pid.lock();
+        if let Some(pid) = child_pid {
+            match waitpid(pid, Some(WaitPidFlag::WNOHANG)) {
+                Ok(WaitStatus::Exited(_, _)) | Ok(WaitStatus::Signaled(_, _, _)) => {
+                    return false;
+                }
+                Ok(WaitStatus::StillAlive) | Ok(_) => {}
+                Err(_) => return false,
+            }
+            match kill(pid, None) {
+                Ok(_) => true,
+                Err(errno) => !matches!(errno, Errno::ESRCH),
+            }
+        } else {
+            false
+        }
+    }
 }

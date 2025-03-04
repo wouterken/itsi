@@ -1,42 +1,61 @@
 use super::itsi_server::RequestJob;
 use crate::ITSI_SERVER;
 use crossbeam::channel::{Receiver, Sender};
-use itsi_rb_helpers::{call_with_gvl, call_without_gvl, create_ruby_thread};
-use itsi_tracing::{debug, error, info};
+use itsi_rb_helpers::{
+    call_with_gvl, call_without_gvl, create_ruby_thread, soft_kill_threads, RetainedValue,
+};
+use itsi_tracing::{debug, error, info, warn};
 use magnus::{
-    value::{Opaque, ReprValue},
+    value::{InnerValue, LazyId, Opaque, ReprValue},
     Ruby, Thread, Value,
 };
-use std::{
-    num::NonZeroU8,
-    sync::Arc,
-    time::{Duration, Instant},
-};
-
+use nix::unistd::Pid;
+use std::{num::NonZeroU8, sync::Arc, time::Instant};
+use tracing::instrument;
 pub struct ThreadWorker {
-    pub id: u8,
+    pub id: String,
     pub app: Opaque<Value>,
     pub receiver: Arc<Receiver<RequestJob>>,
     pub sender: Arc<Sender<RequestJob>>,
-    pub thread: Option<Opaque<Thread>>,
+    pub thread: RetainedValue<Thread>,
 }
 
+static ID_CALL: LazyId = LazyId::new("call");
+
+pub fn load_app(app: Opaque<Value>) -> Opaque<Value> {
+    call_with_gvl(|ruby| {
+        let app = app.get_inner_with(&ruby);
+        Opaque::from(
+            app.funcall::<_, _, Value>(*ID_CALL, ())
+                .expect("Couldn't load app"),
+        )
+    })
+}
+
+#[instrument(skip(threads, app))]
 pub fn build_thread_workers(
+    pid: Pid,
     threads: NonZeroU8,
     app: Opaque<Value>,
 ) -> (
     Arc<Vec<ThreadWorker>>,
     Arc<crossbeam::channel::Sender<RequestJob>>,
 ) {
-    let (sender, receiver) = crossbeam::channel::bounded(1000);
+    let (sender, receiver) = crossbeam::channel::bounded(20);
     let receiver_ref = Arc::new(receiver);
     let sender_ref = Arc::new(sender);
+    let app = load_app(app);
     (
         Arc::new(
             (1..=u8::from(threads))
                 .map(|id| {
                     info!("Creating worker thread {}", id);
-                    ThreadWorker::new(id, app, receiver_ref.clone(), sender_ref.clone())
+                    ThreadWorker::new(
+                        format!("{:?}#{:?}", pid, id),
+                        app,
+                        receiver_ref.clone(),
+                        sender_ref.clone(),
+                    )
                 })
                 .collect::<Vec<_>>(),
         ),
@@ -46,7 +65,7 @@ pub fn build_thread_workers(
 
 impl ThreadWorker {
     pub fn new(
-        id: u8,
+        id: String,
         app: Opaque<Value>,
         receiver: Arc<Receiver<RequestJob>>,
         sender: Arc<Sender<RequestJob>>,
@@ -56,43 +75,42 @@ impl ThreadWorker {
             app,
             receiver,
             sender,
-            thread: None,
+            thread: RetainedValue::empty(),
         };
         worker.run();
         worker
     }
 
-    pub async fn shutdown(&self, timeout: f64) {
+    pub fn request_shutdown(&self) {
         info!("Sending shutdown to worker {}", self.id);
         match self.sender.send(RequestJob::Shutdown) {
             Ok(_) => {}
             Err(err) => error!("Failed to send shutdown request: {}", err),
         };
-        call_with_gvl(|ruby| {
-            let hard_kill_deadline =
-                Instant::now() + Duration::from_millis((timeout * 1000.0) as u64);
-            if let Some(opaque) = self.thread {
-                let thread = ruby.get_inner_ref(&opaque);
-                while Instant::now() < hard_kill_deadline {
-                    if thread.funcall::<_, _, bool>("alive?", ()).unwrap_or(false) {
-                        call_without_gvl(|| {
-                            std::thread::sleep(Duration::from_millis(10));
-                        });
-                    } else {
-                        break;
-                    }
+    }
+
+    pub fn poll_shutdown(&self, deadline: Instant) -> bool {
+        call_with_gvl(|_ruby| {
+            if let Some(thread) = self.thread.as_value() {
+                if Instant::now() > deadline {
+                    warn!("Worker thread {} timed out. Killing thread", self.id);
+                    soft_kill_threads(vec![thread]);
                 }
-                thread.kill().ok();
-            };
-        });
+                if thread.funcall::<_, _, bool>("alive?", ()).unwrap_or(false) {
+                    return true;
+                }
+            }
+            self.thread.clear();
+            false
+        })
     }
 
     pub fn run(&mut self) {
-        let id = self.id;
+        let id = self.id.clone();
         let app = self.app;
         let receiver = self.receiver.clone();
         call_with_gvl(|_ruby| {
-            self.thread = Some(Opaque::from(create_ruby_thread(move || {
+            let thread = create_ruby_thread(move || {
                 let ruby = Ruby::get().unwrap();
                 let server = ruby.get_inner(&ITSI_SERVER);
 
@@ -115,7 +133,8 @@ impl ThreadWorker {
                     }
                 });
                 0
-            })))
+            });
+            self.thread = RetainedValue::new(thread);
         });
     }
 }

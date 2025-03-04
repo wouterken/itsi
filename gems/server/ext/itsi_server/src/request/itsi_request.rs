@@ -12,7 +12,7 @@ use http::{request::Parts, Response, StatusCode};
 use http_body_util::{combinators::BoxBody, BodyExt, Empty};
 use hyper::{body::Incoming, Request};
 use itsi_error::Result;
-use itsi_tracing::{debug, error};
+use itsi_tracing::{debug, error, warn};
 use magnus::error::Result as MagnusResult;
 use magnus::{
     value::{LazyId, Opaque, ReprValue},
@@ -39,7 +39,7 @@ pub struct ItsiRequest {
 }
 
 impl ItsiRequest {
-    pub fn process(mut self, _ruby: &Ruby, server: RClass, app: Opaque<Value>) -> Result<()> {
+    pub fn process(mut self, ruby: &Ruby, server: RClass, app: Opaque<Value>) -> Result<()> {
         let sender = self.sender.take().expect("sender must be present");
         let parts = self.parts.clone();
 
@@ -65,7 +65,9 @@ impl ItsiRequest {
                 }
             }
             Err(err) => {
-                error!("Error processing request: {}", err);
+                if !err.is_kind_of(ruby.exception_fatal()) {
+                    error!("Error processing request: {}", err);
+                }
             }
         }
 
@@ -93,7 +95,7 @@ impl ItsiRequest {
             _ => match receiver.await {
                 Ok(response) => Ok(response.into()),
                 Err(err) => {
-                    error!("Recv Error occurred: {}", err);
+                    warn!("Recv Error occurred: {}", err);
                     let mut response = Response::new(BoxBody::new(Empty::new()));
                     *response.status_mut() = StatusCode::BAD_REQUEST;
                     Ok(response)

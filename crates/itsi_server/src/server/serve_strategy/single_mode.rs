@@ -10,21 +10,27 @@ use crate::{
     },
 };
 use crossbeam::channel::Sender;
-use futures::future;
 use http::Request;
 use hyper::{body::Incoming, service::service_fn};
 use hyper_util::{
-    rt::{TokioExecutor, TokioIo},
+    rt::{TokioExecutor, TokioIo, TokioTimer},
     server::conn::auto::Builder,
 };
 use itsi_error::{ItsiError, Result};
 use itsi_tracing::{debug, error, info};
 use magnus::{value::Opaque, Value};
-use std::{num::NonZeroU8, pin::Pin, sync::Arc};
+use nix::{libc::exit, unistd::Pid};
+use std::{
+    num::NonZeroU8,
+    pin::Pin,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use tokio::{
     runtime::{Builder as RuntimeBuilder, Runtime},
     task::JoinSet,
 };
+use tracing::instrument;
 
 pub struct SingleMode {
     pub server: Builder<TokioExecutor>,
@@ -44,7 +50,7 @@ impl SingleMode {
         script_name: String,
         shutdown_timeout: f64,
     ) -> Self {
-        let (thread_workers, sender) = build_thread_workers(thread_count, app);
+        let (thread_workers, sender) = build_thread_workers(Pid::this(), thread_count, app);
         Self {
             server,
             listeners,
@@ -66,6 +72,7 @@ impl SingleMode {
             .expect("Failed to build Tokio runtime")
     }
 
+    #[instrument(skip(self), fields(mode = "single"))]
     pub fn run(self: Arc<Self>) -> Result<()> {
         let (lifecycle_tx, _) = tokio::sync::broadcast::channel::<LifecycleEvent>(100);
         let lifecycle_tx = Arc::new(lifecycle_tx);
@@ -90,7 +97,7 @@ impl SingleMode {
                               error!("Error in serve_connection {:?}", e)
                             }
                           },
-                          Err(e) => error!("Error in listener.accept {:?}", e),
+                          Err(e) => info!("Listener.accept failed {:?}", e),
                       },
                         lifecycle_event = lifecycle_rx.recv() => match lifecycle_event{
                           Ok(lifecycle_event) => {
@@ -128,9 +135,12 @@ impl SingleMode {
         let addr = stream.addr();
         let io: TokioIo<Pin<Box<IoStream>>> = TokioIo::new(Box::pin(stream));
         let script_name = self.script_name.clone();
-        let server = self.server.clone();
+        let mut server = self.server.clone();
         tokio::spawn(async move {
-            if let Err(e) = server
+            let serve = server
+                .http1()
+                .timer(TokioTimer::new())
+                .header_read_timeout(Duration::from_secs(1))
                 .serve_connection_with_upgrades(
                     io,
                     service_fn(move |hyper_request: Request<Incoming>| {
@@ -143,8 +153,8 @@ impl SingleMode {
                         )
                     }),
                 )
-                .await
-            {
+                .await;
+            if let Err(e) = serve {
                 debug!("Closed connection due to: {:?}", e);
             }
         });
@@ -153,13 +163,26 @@ impl SingleMode {
 
     pub async fn handle_lifecycle_event(&self, lifecycle_event: LifecycleEvent) -> Result<()> {
         if let LifecycleEvent::Shutdown = lifecycle_event {
-            info!("Shutdown event received; exiting listener loop.");
-            let thread_workers_futures = self
-                .thread_workers
+            let deadline = Instant::now() + Duration::from_secs_f64(self.shutdown_timeout);
+            self.thread_workers
                 .iter()
-                .map(|worker| async move { worker.shutdown(self.shutdown_timeout).await });
-            future::join_all(thread_workers_futures).await;
-            return Err(ItsiError::Break());
+                .for_each(|worker| worker.request_shutdown());
+            while Instant::now() < deadline {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+                let alive_threads = self
+                    .thread_workers
+                    .iter()
+                    .filter(|worker| worker.poll_shutdown(deadline))
+                    .count();
+                if alive_threads == 0 {
+                    break;
+                }
+            }
+            self.thread_workers.iter().for_each(|worker| {
+                worker.poll_shutdown(deadline);
+            });
+            info!("Worker exited");
+            unsafe { exit(0) };
         }
         Ok(())
     }
