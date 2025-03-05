@@ -11,9 +11,10 @@ use derive_more::Debug;
 use http::{request::Parts, Response, StatusCode};
 use http_body_util::{combinators::BoxBody, BodyExt, Empty};
 use hyper::{body::Incoming, Request};
-use itsi_error::Result;
-use itsi_tracing::error;
-use magnus::error::Result as MagnusResult;
+use itsi_error::CLIENT_CONNECTION_CLOSED;
+use itsi_rb_helpers::call_with_gvl;
+use itsi_tracing::{debug, error};
+use magnus::{error::Result as MagnusResult, Error};
 use magnus::{
     value::{LazyId, Opaque, ReprValue},
     RClass, Ruby, Value,
@@ -22,6 +23,8 @@ use std::{collections::HashMap, convert::Infallible, sync::Arc};
 use tokio::sync::mpsc;
 
 static ID_CALL: LazyId = LazyId::new("call");
+static ID_MESSAGE: LazyId = LazyId::new("message");
+static ID_BACKTRACE: LazyId = LazyId::new("backtrace");
 
 #[magnus::wrap(class = "Itsi::Request", free_immediately, size)]
 #[derive(Debug)]
@@ -37,9 +40,48 @@ pub struct ItsiRequest {
 }
 
 impl ItsiRequest {
-    pub fn process(self, _ruby: &Ruby, server: RClass, app: Opaque<Value>) -> Result<()> {
-        server.funcall::<_, _, Value>(*ID_CALL, (app, self))?;
-        Ok(())
+    pub fn is_connection_closed_err(ruby: &Ruby, err: &Error) -> bool {
+        match err.error_type() {
+            magnus::error::ErrorType::Jump(_) => false,
+            magnus::error::ErrorType::Error(_, _) => false,
+            magnus::error::ErrorType::Exception(exception) => {
+                exception.is_kind_of(ruby.exception_eof_error())
+                    && err
+                        .value()
+                        .map(|v| {
+                            v.funcall::<_, _, String>(*ID_MESSAGE, ())
+                                .unwrap_or("".to_string())
+                                .eq(CLIENT_CONNECTION_CLOSED)
+                        })
+                        .unwrap_or(false)
+            }
+        }
+    }
+    pub fn process(self, ruby: &Ruby, server: RClass, app: Opaque<Value>) {
+        let response = self.response.clone();
+        let result = call_with_gvl(|_ruby| server.funcall::<_, _, Value>(*ID_CALL, (app, self)));
+        if let Err(err) = &result {
+            if Self::is_connection_closed_err(ruby, err) {
+                debug!("Connection closed by client");
+                response.close();
+            } else if let Some(rb_err) = err.value() {
+                let backtrace = rb_err
+                    .funcall::<_, _, Vec<String>>(*ID_BACKTRACE, ())
+                    .unwrap_or_default();
+
+                error!("Error occurred in Handler:");
+                for line in backtrace {
+                    error!("{}", line);
+                }
+            } else {
+                error!("Error occurred: {}", err);
+                response.error(err.to_string());
+            }
+        }
+    }
+
+    pub fn error(self, message: String) {
+        self.response.error(message);
     }
 
     pub(crate) async fn process_request(

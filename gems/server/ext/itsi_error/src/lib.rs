@@ -4,6 +4,8 @@ use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, ItsiError>;
 
+pub static CLIENT_CONNECTION_CLOSED: &str = "Client disconnected";
+
 #[derive(Error, Debug)]
 pub enum ItsiError {
     #[error("Invalid input {0}")]
@@ -14,6 +16,8 @@ pub enum ItsiError {
     UnsupportedProtocol(String),
     #[error("Argument error: {0}")]
     ArgumentError(String),
+    #[error("Client Connection Closed")]
+    ClientConnectionClosed,
     #[error("Jump")]
     Jump(String),
     #[error("Break")]
@@ -35,6 +39,9 @@ impl From<ItsiError> for magnus::Error {
             }
             ItsiError::Jump(msg) => magnus::Error::new(magnus::exception::local_jump_error(), msg),
             ItsiError::Break() => magnus::Error::new(magnus::exception::interrupt(), "Break"),
+            ItsiError::ClientConnectionClosed => {
+                magnus::Error::new(magnus::exception::eof_error(), CLIENT_CONNECTION_CLOSED)
+            }
         }
     }
 }

@@ -3,6 +3,7 @@ use derive_more::Debug;
 use futures::stream::StreamExt;
 use http::{request::Parts, HeaderName, Response, StatusCode};
 use http_body_util::{combinators::BoxBody, Empty, Full, StreamBody};
+use itsi_tracing::error;
 use magnus::error::Result;
 use parking_lot::RwLock;
 use std::{convert::Infallible, sync::Arc};
@@ -44,6 +45,15 @@ impl ItsiResponse {
         response
     }
 
+    pub fn close(&self) {
+        self.data.response_writer.write().take();
+    }
+
+    pub fn error(&self, message: String) {
+        error!(message);
+        self.data.response_writer.write().take();
+    }
+
     pub fn send_frame(&self, frame: Bytes) -> Result<usize> {
         self.send_frame_into(frame, &self.data.response_writer)
     }
@@ -60,9 +70,9 @@ impl ItsiResponse {
         writer: &RwLock<Option<mpsc::Sender<Bytes>>>,
     ) -> Result<usize> {
         if let Some(writer) = writer.write().as_ref() {
-            writer.blocking_send(frame).map_err(|e| {
-                itsi_error::ItsiError::ArgumentError(format!("Error sending frame {:?}", e))
-            })?;
+            writer
+                .blocking_send(frame)
+                .map_err(|_| itsi_error::ItsiError::ClientConnectionClosed)?;
         }
         Ok(0)
     }

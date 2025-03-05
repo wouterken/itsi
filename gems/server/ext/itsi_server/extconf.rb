@@ -3,4 +3,4 @@
 require "mkmf"
 require "rb_sys/mkmf"
 
-create_rust_makefile("itsi_server/itsi_server")
+create_rust_makefile("server/itsi_server")

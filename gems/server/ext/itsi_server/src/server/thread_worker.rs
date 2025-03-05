@@ -120,11 +120,7 @@ impl ThreadWorker {
                 call_without_gvl(|| loop {
                     match receiver.recv() {
                         Ok(RequestJob::ProcessRequest(request)) => {
-                            debug!("Incoming request for worker {}", id);
-                            match call_with_gvl(|ruby| request.process(&ruby, server, app)) {
-                                Ok(_) => {}
-                                Err(err) => error!("Request processing failed: {}", err),
-                            }
+                            request.process(&ruby, server, app);
                         }
                         Ok(RequestJob::Shutdown) => {
                             debug!("Shutting down thread worker {}", id);

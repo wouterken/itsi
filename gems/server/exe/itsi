@@ -39,14 +39,6 @@ OptionParser.new do |opts|
     options[:threads] = t
   end
 
-  opts.on("-h", "--host HOST", String, "Host to bind to (default: #{options[:host]})") do |h|
-    options[:host] = h
-  end
-
-  opts.on("-p", "--port PORT", Integer, "Port for the application (default: #{options[:port]})") do |p|
-    options[:port] = p
-  end
-
   opts.on("-r", "--rackup_file FILE", String, "Rackup file to use (default: #{options[:rackup_file]})") do |rf|
     options[:rackup_file] = rf
   end
@@ -99,10 +91,10 @@ end.parse!
 # Rack app loader, invoked per worker.
 # This is a no-op if preloading is enabled (we just return the preloaded app).
 preloader = if options[:preload]
-  Rack::Builder.parse_file(options[:rackup_file]).method(:itself).to_proc
+  Array(Rack::Builder.parse_file(options[:rackup_file])).first.method(:itself).to_proc
 else
  ->{
-   Rack::Builder.parse_file(options[:rackup_file])
+   Array(Rack::Builder.parse_file(options[:rackup_file])).first
  }
 end
 

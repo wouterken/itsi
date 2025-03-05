@@ -4,11 +4,12 @@ require_relative "server/version"
 require_relative "server/itsi_server"
 require_relative "request"
 require_relative "stream_io"
+require_relative "server/rack/handler/itsi"
 
 module Itsi
   class Server
     def self.call(app, request)
-      respond(request, app.call(request.to_env))
+      respond request, app.call(request.to_env)
     end
 
     def self.streaming_body?(body)
@@ -20,10 +21,10 @@ module Itsi
 
       return if request.hijacked
 
-      # Set HTTP Status
+      # 1. Set Status
       response.status = status
 
-      # Set Headers
+      # 2. Set Headers
       headers.each do |key, value|
         next response.add_header(key, value) unless value.is_a?(Array)
 
@@ -32,8 +33,12 @@ module Itsi
         end
       end
 
+      # 3. Set Body
+      # As soon as we start setting the response
+      # the server will begin to stream it to the client.
+
       # If we're partially hijacked or returned a streaming body,
-      # stream this response
+      # stream this response.
       if (body_streamer = streaming_body?(body) ? body : headers.delete("rack.hijack") )
         body_streamer.call(StreamIO.new(response))
 
@@ -44,13 +49,15 @@ module Itsi
           body = body.to_ary
           raise "Body to_ary didn't return an array" unless body.is_a?(Array)
         end
+        # We offset this iteration intentionally,
+        # to optimize for the case where there's only one chunk.
         buffer = nil
         body.each do |part|
-          response.send_frame(buffer) if buffer
-          buffer = part.to_s
+          response.send_frame(buffer.to_s) if buffer
+          buffer = part
         end
 
-        response.send_and_close(buffer)
+        response.send_and_close(buffer.to_s)
       else
         response.send_and_close(body.to_s)
       end

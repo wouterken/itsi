@@ -2,8 +2,8 @@
 
 module Itsi
   class Request
-    require "stringio"
-    require "socket"
+    require 'stringio'
+    require 'socket'
 
     attr_accessor :hijacked
 
@@ -24,7 +24,7 @@ module Itsi
         "HTTP_HOST" => host,
         "SERVER_PROTOCOL" => version,
         "HTTP_VERSION" => version,
-        "rack.version" => version,
+        "rack.version" => [version],
         "rack.url_scheme" => scheme,
         "rack.input" => StringIO.new(body),
         "rack.errors" => $stderr,
