@@ -10,14 +10,7 @@ use magnus::{
     Ruby, Thread, Value,
 };
 use nix::unistd::Pid;
-use std::{
-    num::NonZeroU8,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-    time::Instant,
-};
+use std::{num::NonZeroU8, sync::Arc, time::Instant};
 use tracing::instrument;
 pub struct ThreadWorker {
     pub id: String,
@@ -100,10 +93,10 @@ impl ThreadWorker {
         info!("Polling worker thread {} for shutdown", self.id);
 
         call_with_gvl(|_ruby| {
-            if let Some(thread) = self.thread.as_value() {
+            if let Some(thread) = self.thread.inner().lock().unwrap().as_mut() {
                 if Instant::now() > deadline {
                     warn!("Worker thread {} timed out. Killing thread", self.id);
-                    soft_kill_threads(vec![thread]);
+                    soft_kill_threads(vec![thread.as_value()]);
                 }
                 if thread.funcall::<_, _, bool>("alive?", ()).unwrap_or(false) {
                     return true;

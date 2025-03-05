@@ -12,65 +12,33 @@ use http::{request::Parts, Response, StatusCode};
 use http_body_util::{combinators::BoxBody, BodyExt, Empty};
 use hyper::{body::Incoming, Request};
 use itsi_error::Result;
-use itsi_tracing::{debug, error, warn};
+use itsi_tracing::error;
 use magnus::error::Result as MagnusResult;
 use magnus::{
     value::{LazyId, Opaque, ReprValue},
     RClass, Ruby, Value,
 };
 use std::{collections::HashMap, convert::Infallible, sync::Arc};
-use tokio::sync::oneshot;
+use tokio::sync::mpsc;
 
 static ID_CALL: LazyId = LazyId::new("call");
-static ID_EACH: LazyId = LazyId::new("each");
-static ID_CLOSE: LazyId = LazyId::new("close");
 
 #[magnus::wrap(class = "Itsi::Request", free_immediately, size)]
 #[derive(Debug)]
 pub struct ItsiRequest {
     pub parts: Arc<Parts>,
     pub body: Bytes,
-    pub sender: Option<oneshot::Sender<ItsiResponse>>,
     pub remote_addr: String,
     pub version: String,
     #[debug(skip)]
     pub(crate) listener: Arc<TokioListener>,
     pub script_name: String,
+    pub response: ItsiResponse,
 }
 
 impl ItsiRequest {
-    pub fn process(mut self, ruby: &Ruby, server: RClass, app: Opaque<Value>) -> Result<()> {
-        let sender = self.sender.take().expect("sender must be present");
-        let parts = self.parts.clone();
-
-        match server.funcall::<_, _, (u16, Vec<String>, Value)>(*ID_CALL, (app, self)) {
-            Ok((status, headers, body)) => {
-                let body_string = body
-                    .enumeratorize(*ID_EACH, ())
-                    .map(|v| v.unwrap().to_string())
-                    .collect::<Vec<String>>()
-                    .join("");
-
-                body.check_funcall::<_, _, Value>(*ID_CLOSE, ());
-
-                if let Err(err) = sender.send(ItsiResponse {
-                    status,
-                    headers,
-                    body: body_string,
-                    parts,
-                }) {
-                    debug!("Response Dropped {:?}", err)
-                } else {
-                    debug!("Request processed. Sending response back to accept thread.");
-                }
-            }
-            Err(err) => {
-                if !err.is_kind_of(ruby.exception_fatal()) {
-                    error!("Error processing request: {}", err);
-                }
-            }
-        }
-
+    pub fn process(self, _ruby: &Ruby, server: RClass, app: Opaque<Value>) -> Result<()> {
+        server.funcall::<_, _, Value>(*ID_CALL, (app, self))?;
         Ok(())
     }
 
@@ -81,10 +49,10 @@ impl ItsiRequest {
         listener: Arc<TokioListener>,
         addr: SockAddr,
     ) -> itsi_error::Result<Response<BoxBody<Bytes, Infallible>>> {
-        let (request, receiver) =
+        let (request, mut receiver) =
             ItsiRequest::build_from(hyper_request, addr, script_name, listener).await;
 
-        debug!("Sending request {:?} to worker thread", request);
+        let response = request.response.clone();
         match sender.send(RequestJob::ProcessRequest(request)) {
             Err(err) => {
                 error!("Error occurred: {}", err);
@@ -92,14 +60,9 @@ impl ItsiRequest {
                 *response.status_mut() = StatusCode::BAD_REQUEST;
                 Ok(response)
             }
-            _ => match receiver.await {
-                Ok(response) => Ok(response.into()),
-                Err(err) => {
-                    warn!("Recv Error occurred: {}", err);
-                    let mut response = Response::new(BoxBody::new(Empty::new()));
-                    *response.status_mut() = StatusCode::BAD_REQUEST;
-                    Ok(response)
-                }
+            _ => match receiver.recv().await {
+                Some(first_frame) => Ok(response.build(Some(first_frame), receiver)),
+                None => Ok(response.build(None, receiver)),
             },
         }
     }
@@ -109,10 +72,11 @@ impl ItsiRequest {
         sock_addr: SockAddr,
         script_name: String,
         listener: Arc<TokioListener>,
-    ) -> (Self, oneshot::Receiver<ItsiResponse>) {
+    ) -> (ItsiRequest, mpsc::Receiver<Bytes>) {
         let (parts, body) = request.into_parts();
         let body = body.collect().await.unwrap().to_bytes();
-        let (sender, receiver) = oneshot::channel();
+        let parts = Arc::new(parts);
+        let response_channel = mpsc::channel::<Bytes>(100);
         (
             Self {
                 remote_addr: sock_addr.to_string(),
@@ -120,10 +84,10 @@ impl ItsiRequest {
                 script_name,
                 listener,
                 version: format!("{:?}", &parts.version),
-                parts: Arc::new(parts),
-                sender: Some(sender),
+                parts: parts.clone(),
+                response: ItsiResponse::new(parts, response_channel.0),
             },
-            receiver,
+            response_channel.1,
         )
     }
 }
@@ -215,5 +179,9 @@ impl ItsiRequest {
 
     pub(crate) fn body(&self) -> MagnusResult<Bytes> {
         Ok(self.body.clone())
+    }
+
+    pub(crate) fn response(&self) -> MagnusResult<ItsiResponse> {
+        Ok(self.response.clone())
     }
 }

@@ -618,6 +618,8 @@ dependencies = [
  "socket2",
  "tokio",
  "tokio-rustls",
+ "tokio-stream",
+ "tokio-util",
  "tracing",
 ]
 
@@ -1433,6 +1435,17 @@ dependencies = [
  "rustls",
  "tokio",
  "webpki",
+]
+
+[[package]]
+name = "tokio-stream"
+version = "0.1.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eca58d7bba4a75707817a2c44174253f9236b2d5fbd055602e9d5c07c139a047"
+dependencies = [
+ "futures-core",
+ "pin-project-lite",
+ "tokio",
 ]
 
 [[package]]

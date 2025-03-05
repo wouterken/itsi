@@ -35,3 +35,5 @@ nix = { version = "0.29.0", features = ["socket", "uio", "signal"] }
 pin-project = "1.1.9"
 rb-sys = "0.9.111"
 tracing = "0.1.41"
+tokio-util = "0.7.13"
+tokio-stream = "0.1.17"

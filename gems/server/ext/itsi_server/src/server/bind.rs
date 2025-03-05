@@ -7,9 +7,7 @@ use std::{
     str::FromStr,
 };
 use tokio_rustls::rustls::ServerConfig;
-use tracing::info;
 
-// Support binding to either IP or Unix Socket
 #[derive(Debug, Clone)]
 pub enum BindAddress {
     Ip(IpAddr),

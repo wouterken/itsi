@@ -93,10 +93,10 @@ impl ThreadWorker {
         info!("Polling worker thread {} for shutdown", self.id);
 
         call_with_gvl(|_ruby| {
-            if let Some(thread) = self.thread.as_value() {
+            if let Some(thread) = self.thread.inner().lock().unwrap().as_mut() {
                 if Instant::now() > deadline {
                     warn!("Worker thread {} timed out. Killing thread", self.id);
-                    soft_kill_threads(vec![thread]);
+                    soft_kill_threads(vec![thread.as_value()]);
                 }
                 if thread.funcall::<_, _, bool>("alive?", ()).unwrap_or(false) {
                     return true;

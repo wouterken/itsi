@@ -2,7 +2,11 @@
 
 module Itsi
   class Request
-    require 'stringio'
+    require "stringio"
+    require "socket"
+
+    attr_accessor :hijacked
+
     def to_env
       path = self.path
       host = self.host
@@ -27,7 +31,14 @@ module Itsi
         "rack.multithread" => true,
         "rack.multiprocess" => true,
         "rack.run_once" => false,
-        "rack.multipart.buffer_size" => 16_384
+        "rack.hijack?" => true,
+        "rack.multipart.buffer_size" => 16_384,
+        "rack.hijack" => lambda do
+          s1, s2 = UNIXSocket.pair
+          self.hijacked = true
+          hijack(s1)
+          s2
+        end
       }.merge(headers)
     end
   end

@@ -1,14 +1,12 @@
-use std::marker::PhantomData;
 use std::sync::Mutex;
 use std::{os::raw::c_void, ptr::null_mut, sync::Arc};
 
-use magnus::rb_sys::AsRawValue;
+use magnus::value::BoxValue;
 use magnus::{
     RArray, Ruby, Thread, Value,
     rb_sys::FromRawValue,
     value::{LazyId, ReprValue},
 };
-use rb_sys::bindings::uncategorized::{rb_gc_register_address, rb_gc_unregister_address};
 use rb_sys::{
     rb_thread_call_with_gvl, rb_thread_call_without_gvl, rb_thread_create, rb_thread_schedule,
     rb_thread_wakeup,
@@ -22,46 +20,25 @@ static ID_JOIN: LazyId = LazyId::new("join");
 static ID_ALIVE: LazyId = LazyId::new("alive?");
 static ID_THREAD_VARIABLE_GET: LazyId = LazyId::new("thread_variable_get");
 
-use rb_sys::VALUE;
-
-pub struct RetainedValueInner<T> {
-    inner: Box<VALUE>,
-    _marker: PhantomData<T>, // Phantom type parameter
-}
-
 #[derive(Clone)]
 pub struct RetainedValue<T>
 where
     T: ReprValue,
 {
-    inner: Arc<Mutex<Option<Arc<RetainedValueInner<T>>>>>,
+    inner: Arc<Mutex<Option<BoxValue<T>>>>,
 }
 
-unsafe impl<T> Send for RetainedValueInner<T> where T: ReprValue {}
-unsafe impl<T> Sync for RetainedValueInner<T> where T: ReprValue {}
-
-impl<T> RetainedValueInner<T>
-where
-    T: ReprValue,
-{
-    pub fn new(value: T) -> Self {
-        let mut value = Box::new(value.as_raw());
-        let ptr: *mut VALUE = &mut *value as *mut VALUE;
-        unsafe { rb_gc_register_address(ptr) };
-        RetainedValueInner {
-            inner: value,
-            _marker: PhantomData,
-        }
-    }
-}
+unsafe impl<T> Send for RetainedValue<T> where T: ReprValue {}
+unsafe impl<T> Sync for RetainedValue<T> where T: ReprValue {}
 
 impl<T> RetainedValue<T>
 where
     T: ReprValue,
 {
     pub fn new(value: T) -> Self {
-        let inner = Arc::new(Mutex::new(Some(Arc::new(RetainedValueInner::new(value)))));
-        RetainedValue { inner }
+        Self {
+            inner: Arc::new(Mutex::new(Some(BoxValue::new(value)))),
+        }
     }
 
     pub fn empty() -> Self {
@@ -70,25 +47,12 @@ where
         }
     }
 
-    pub fn as_value(&self) -> Option<T> {
-        {
-            let guard = self.inner.lock().unwrap();
-            guard
-                .as_ref()
-                .map(|inner| unsafe { T::from_value_unchecked(Value::from_raw(*inner.inner)) })
-        }
+    pub fn inner(&self) -> Arc<Mutex<Option<BoxValue<T>>>> {
+        self.inner.clone()
     }
 
     pub fn clear(&self) {
         self.inner.lock().unwrap().take();
-    }
-}
-
-impl<T> Drop for RetainedValueInner<T> {
-    fn drop(&mut self) {
-        unsafe {
-            rb_gc_unregister_address(&mut *self.inner as *mut VALUE);
-        }
     }
 }
 
@@ -207,7 +171,10 @@ pub fn fork(after_fork: Arc<Option<impl Fn()>>) -> Option<i32> {
     fork_result
 }
 
-pub fn soft_kill_threads(threads: Vec<Thread>) {
+pub fn soft_kill_threads<T>(threads: Vec<T>)
+where
+    T: ReprValue,
+{
     for thr in &threads {
         let _: Option<Value> = thr.funcall(*ID_EXIT, ()).expect("Failed to exit thread");
     }
@@ -223,7 +190,8 @@ pub fn soft_kill_threads(threads: Vec<Thread>) {
             .funcall(*ID_ALIVE, ())
             .expect("Failed to check if thread is alive");
         if alive {
-            thr.kill().expect("Failed to kill thread");
+            thr.funcall::<_, _, Value>("kill", ())
+                .expect("Failed to kill thread");
         }
     }
 }

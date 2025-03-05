@@ -19,7 +19,7 @@ use hyper_util::{
 use itsi_error::{ItsiError, Result};
 use itsi_tracing::{debug, error, info};
 use magnus::{value::Opaque, Value};
-use nix::{libc::exit, unistd::Pid};
+use nix::unistd::Pid;
 use std::{
     num::NonZeroU8,
     pin::Pin,
