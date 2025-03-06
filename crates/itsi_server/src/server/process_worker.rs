@@ -50,6 +50,7 @@ impl ProcessWorker {
                     cluster_template.server.clone(),
                     cluster_template.thread_count,
                     cluster_template.script_name.clone(),
+                    cluster_template.scheduler_class.clone(),
                     cluster_template.lifecycle.shutdown_timeout,
                 ))
                 .run()

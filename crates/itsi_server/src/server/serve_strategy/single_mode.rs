@@ -37,6 +37,7 @@ pub struct SingleMode {
     pub script_name: String,
     pub sender: Arc<Sender<RequestJob>>,
     pub shutdown_timeout: f64,
+    pub scheduler_class: Option<String>,
     pub(crate) listeners: Arc<Vec<Arc<Listener>>>,
     pub(crate) thread_workers: Arc<Vec<ThreadWorker>>,
 }
@@ -54,15 +55,18 @@ impl SingleMode {
         server: Builder<TokioExecutor>,
         thread_count: NonZeroU8,
         script_name: String,
+        scheduler_class: Option<String>,
         shutdown_timeout: f64,
     ) -> Self {
-        let (thread_workers, sender) = build_thread_workers(Pid::this(), thread_count, app);
+        let (thread_workers, sender) =
+            build_thread_workers(Pid::this(), thread_count, app, scheduler_class.clone());
         Self {
             server,
             listeners,
             script_name,
             sender,
             shutdown_timeout,
+            scheduler_class,
             thread_workers,
         }
     }

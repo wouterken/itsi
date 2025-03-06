@@ -76,9 +76,9 @@ impl ItsiRequest {
         let req = format!("{}", self);
         let response = self.response.clone();
         let start = self.start;
-        info!("Starting request");
+        debug!("{} Started", req);
         let result = call_with_gvl(|_ruby| server.funcall::<_, _, Value>(*ID_CALL, (app, self)));
-        info!("{} took {:?}", req, start.elapsed());
+        debug!("{} Finished in {:?}", req, start.elapsed());
 
         if let Err(err) = &result {
             if Self::is_connection_closed_err(ruby, err) {

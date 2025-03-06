@@ -1,5 +1,3 @@
-- Shutdown too fast when streaming.
-- HTTP2 chunked-encoding Translation
 - Add scheduler support (BYO)
 - Signal based scaling
 - Memory based cycling

@@ -1,7 +1,11 @@
 use bytes::{Bytes, BytesMut};
 use derive_more::Debug;
 use futures::stream::{unfold, StreamExt};
-use http::{request::Parts, HeaderMap, HeaderName, HeaderValue, Request, Response, StatusCode};
+use http::{
+    header::{CONTENT_TYPE, TRANSFER_ENCODING},
+    request::Parts,
+    HeaderMap, HeaderName, HeaderValue, Request, Response, StatusCode,
+};
 use http_body_util::{combinators::BoxBody, Empty, Full, StreamBody};
 use hyper::{body::Frame, upgrade::Upgraded};
 use hyper_util::rt::TokioIo;
@@ -52,8 +56,6 @@ impl ItsiResponse {
         receiver: mpsc::Receiver<Option<Bytes>>,
         shutdown_rx: watch::Receiver<RunningPhase>,
     ) -> Response<BoxBody<Bytes, Infallible>> {
-        info!("Building response");
-
         if self.is_hijacked() {
             return match self.process_hijacked_response().await {
                 Ok(result) => result,
@@ -199,13 +201,49 @@ impl ItsiResponse {
             Response::new(BoxBody::new(Empty::new()))
         } else {
             let stream = ReaderStream::new(reader);
-            let frame_stream = stream.map(|result: std::result::Result<Bytes, io::Error>| {
-                info!("Copying data {:?}", result);
-                result
-                    .map(Frame::data)
-                    .map_err(|e| unreachable!("unexpected io error: {:?}", e))
-            });
-            let boxed_body = BoxBody::new(StreamBody::new(frame_stream));
+            let boxed_body = if headers
+                .get(TRANSFER_ENCODING)
+                .is_some_and(|h| h == "chunked")
+            {
+                BoxBody::new(StreamBody::new(unfold(
+                    (stream, Vec::new()),
+                    |(mut stream, mut buf)| async move {
+                        loop {
+                            if let Some(pos) = buf.iter().position(|&b| b == b'\n') {
+                                let line = buf.drain(..=pos).collect::<Vec<u8>>();
+                                let line = std::str::from_utf8(&line).ok()?.trim();
+                                let chunk_size = usize::from_str_radix(line, 16).ok()?;
+                                if chunk_size == 0 {
+                                    return None;
+                                }
+                                while buf.len() < chunk_size {
+                                    match stream.next().await {
+                                        Some(Ok(chunk)) => buf.extend_from_slice(&chunk),
+                                        _ => return None,
+                                    }
+                                }
+                                let data = buf.drain(..chunk_size).collect::<Vec<u8>>();
+                                if buf.starts_with(b"\r\n") {
+                                    buf.drain(..2);
+                                }
+                                return Some((Ok(Frame::data(Bytes::from(data))), (stream, buf)));
+                            }
+                            match stream.next().await {
+                                Some(Ok(chunk)) => buf.extend_from_slice(&chunk),
+                                _ => return None,
+                            }
+                        }
+                    },
+                )))
+            } else {
+                BoxBody::new(StreamBody::new(stream.map(
+                    |result: std::result::Result<Bytes, io::Error>| {
+                        result
+                            .map(Frame::data)
+                            .map_err(|e| unreachable!("unexpected io error: {:?}", e))
+                    },
+                )))
+            };
             Response::new(boxed_body)
         };
 

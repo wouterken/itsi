@@ -20,6 +20,7 @@ pub(crate) struct ClusterMode {
     pub script_name: String,
     pub thread_count: NonZeroU8,
     pub process_workers: Vec<ProcessWorker>,
+    pub scheduler_class: Option<String>,
     pub lifecycle: ClusterLifecycle,
 }
 
@@ -37,6 +38,7 @@ impl ClusterMode {
         script_name: String,
         thread_count: NonZeroU8,
         worker_count: NonZeroU8,
+        scheduler_class: Option<String>,
         mut lifecycle: ClusterLifecycle,
     ) -> Self {
         if let Some(f) = lifecycle.before_fork.take() {
@@ -57,6 +59,7 @@ impl ClusterMode {
             thread_count,
             process_workers,
             lifecycle,
+            scheduler_class,
         }
     }
 

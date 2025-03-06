@@ -9,8 +9,9 @@ use itsi_rb_helpers::{
 };
 use itsi_tracing::{debug, error, info, warn};
 use magnus::{
-    value::{InnerValue, LazyId, Opaque, ReprValue},
-    Ruby, Thread, Value,
+    gc,
+    value::{InnerValue, Lazy, LazyId, Opaque, ReprValue},
+    Class, Module, Object, RClass, RObject, Ruby, Thread, Value,
 };
 use nix::unistd::Pid;
 use std::{
@@ -19,6 +20,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
+    thread::spawn,
     time::Instant,
 };
 use tracing::instrument;
@@ -29,16 +31,21 @@ pub struct ThreadWorker {
     pub sender: Arc<Sender<RequestJob>>,
     pub thread: RetainedValue<Thread>,
     pub terminated: Arc<AtomicBool>,
+    pub scheduler_class: Option<String>,
 }
 
 static ID_CALL: LazyId = LazyId::new("call");
 static ID_ALIVE: LazyId = LazyId::new("alive?");
+
+static CLASS_QUEUE: Lazy<RClass> =
+    Lazy::new(|ruby| ruby.module_kernel().const_get("QueueWithTimeout").unwrap());
 
 #[instrument(skip(threads, app))]
 pub fn build_thread_workers(
     pid: Pid,
     threads: NonZeroU8,
     app: Opaque<Value>,
+    scheduler_class: Option<String>,
 ) -> (
     Arc<Vec<ThreadWorker>>,
     Arc<crossbeam::channel::Sender<RequestJob>>,
@@ -57,6 +64,7 @@ pub fn build_thread_workers(
                         app,
                         receiver_ref.clone(),
                         sender_ref.clone(),
+                        scheduler_class.clone(),
                     )
                 })
                 .collect::<Vec<_>>(),
@@ -80,6 +88,7 @@ impl ThreadWorker {
         app: Opaque<Value>,
         receiver: Arc<Receiver<RequestJob>>,
         sender: Arc<Sender<RequestJob>>,
+        scheduler_class: Option<String>,
     ) -> Self {
         let mut worker = Self {
             id,
@@ -88,6 +97,7 @@ impl ThreadWorker {
             sender,
             thread: RetainedValue::empty(),
             terminated: Arc::new(AtomicBool::new(false)),
+            scheduler_class,
         };
         worker.run();
         worker
@@ -126,11 +136,68 @@ impl ThreadWorker {
         let app = self.app;
         let receiver = self.receiver.clone();
         let terminated = self.terminated.clone();
+        let scheduler_class = self.scheduler_class.clone();
         call_with_gvl(|_| {
             self.thread = RetainedValue::new(create_ruby_thread(move || {
-                Self::accept_loop(id, app, receiver, terminated)
+                if scheduler_class.is_none() {
+                    Self::accept_loop(id, app, receiver, terminated)
+                } else {
+                    Self::fiber_accept_loop(id, app, receiver, scheduler_class.clone(), terminated)
+                }
             }));
         });
+    }
+
+    #[instrument(skip_all, fields(thread_worker=id))]
+    pub fn fiber_accept_loop(
+        id: String,
+        app: Opaque<Value>,
+        receiver: Arc<Receiver<RequestJob>>,
+        scheduler_class: Option<String>,
+        terminated: Arc<AtomicBool>,
+    ) {
+        let ruby = Ruby::get().unwrap();
+        let queue: Opaque<Value> =
+            Opaque::from(ruby.get_inner(&CLASS_QUEUE).new_instance(()).unwrap());
+        gc::register_mark_object(queue);
+
+        // Push to our work queue in side thread.
+        create_ruby_thread(move || {
+            call_without_gvl(move || loop {
+                match receiver.recv() {
+                    Ok(RequestJob::ProcessRequest(request)) => {
+                        if terminated.load(Ordering::Relaxed) {
+                            break;
+                        }
+                        call_with_gvl(|ruby| {
+                            ruby.get_inner_ref(&queue)
+                                .funcall::<_, _, Value>("push", (request,))
+                                .unwrap()
+                        });
+                    }
+                    Ok(RequestJob::Shutdown) => {
+                        debug!("Shutting down thread worker");
+                        call_with_gvl(|ruby| {
+                            let queue = ruby.get_inner_ref(&queue);
+                            queue
+                                .funcall::<_, _, Value>(
+                                    "instance_variable_set",
+                                    ("@finished", true),
+                                )
+                                .unwrap();
+                        });
+                        break;
+                    }
+                    Err(err) => {
+                        error!("Error Receiving RequestJob: {}", err);
+                    }
+                }
+            })
+        });
+
+        ruby.get_inner(&ITSI_SERVER)
+            .funcall::<_, _, Value>("start_scheduler_loop", (queue, app, scheduler_class))
+            .unwrap();
     }
 
     #[instrument(skip_all, fields(thread_worker=id))]

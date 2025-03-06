@@ -41,6 +41,7 @@ pub struct Server {
     before_fork: Mutex<Option<Box<dyn FnOnce() + Send + Sync>>>,
     #[debug(skip)]
     after_fork: Mutex<Option<Box<dyn Fn() + Send + Sync>>>,
+    scheduler_class: Option<String>,
 }
 
 pub enum RequestJob {
@@ -60,8 +61,7 @@ impl Server {
             Option<Vec<String>>,
             Option<Proc>,
             Option<Proc>,
-            Option<Value>,
-            Option<bool>,
+            Option<String>,
         );
 
         let scan_args: Args<(), (), (), (), RHash, ()> = scan_args(args)?;
@@ -77,7 +77,6 @@ impl Server {
                 "before_fork",
                 "after_fork",
                 "scheduler_class",
-                "use_scheduler",
             ],
         )?;
 
@@ -113,6 +112,7 @@ impl Server {
                         .unwrap();
                 }) as Box<dyn Fn() + Send + Sync>
             })),
+            scheduler_class: args.optional.7,
         };
         Ok(server)
     }
@@ -140,6 +140,7 @@ impl Server {
                 Builder::new(TokioExecutor::new()),
                 NonZero::new(self.threads).unwrap(),
                 self.script_name.clone(),
+                self.scheduler_class.clone(),
                 self.shutdown_timeout,
             )))
         } else {
@@ -157,6 +158,7 @@ impl Server {
                 self.script_name.clone(),
                 NonZero::new(self.threads).unwrap(),
                 NonZero::new(self.workers).unwrap(),
+                self.scheduler_class.clone(),
                 lifecycle_hooks,
             )))
         };

@@ -20,10 +20,8 @@ DEFAULT_OPTIONS = {
   preload: true,
   # Rackup file
   rackup_file: "config.ru",
-  # Use scheduler
-  use_scheduler: false,
   # Scheduler class
-  scheduler_class: "Itsi::Scheduler"
+  scheduler_class: nil
 }
 
 options = DEFAULT_OPTIONS.to_a.select(&:last).to_h
@@ -44,13 +42,8 @@ OptionParser.new do |opts|
     options[:rackup_file] = rf
   end
 
-  opts.on("-f", "--use_fiber_scheduler PORT", TrueClass,
-          "Port for the application (default: #{options[:use_scheduler]})") do |p|
-    options[:use_scheduler] = p
-  end
-
-  opts.on("--scheduler_class CLASS", String, "Scheduler class to use (default: #{options[:scheduler_class]})") do |scheduler_class|
-    options[:scheduler_class] =  Kernel.const_get(scheduler_class)
+  opts.on("-f", "--fiber_scheduler CLASS_NAME", String, "Scheduler class to use (default: nil)") do |scheduler_class|
+    options[:scheduler_class] = scheduler_class
   end
 
   opts.on("--no-preload", FalseClass, "Disable preloading the application") do |no_preload|
@@ -120,7 +113,6 @@ end
 # Make sure osprey is loaded, if not already loaded by the rack_app above.
 # Start the Osprey server
 require "itsi/server"
-
 
 begin
   Itsi::Server.new(
