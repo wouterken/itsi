@@ -8,7 +8,6 @@ use super::{
 };
 use crate::{request::itsi_request::ItsiRequest, server::serve_strategy::ServeStrategy};
 use derive_more::Debug;
-use hyper_util::{rt::TokioExecutor, server::conn::auto::Builder};
 use itsi_rb_helpers::call_without_gvl;
 use itsi_tracing::{error, info};
 use magnus::{
@@ -137,7 +136,6 @@ impl Server {
             ServeStrategy::Single(Arc::new(SingleMode::new(
                 self.app,
                 self.listeners()?,
-                Builder::new(TokioExecutor::new()),
                 NonZero::new(self.threads).unwrap(),
                 self.script_name.clone(),
                 self.scheduler_class.clone(),
@@ -154,7 +152,6 @@ impl Server {
             ServeStrategy::Cluster(Arc::new(ClusterMode::new(
                 self.app,
                 self.listeners()?,
-                Builder::new(TokioExecutor::new()),
                 self.script_name.clone(),
                 NonZero::new(self.threads).unwrap(),
                 NonZero::new(self.workers).unwrap(),

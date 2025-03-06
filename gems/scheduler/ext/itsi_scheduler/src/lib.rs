@@ -1,17 +1,13 @@
-use itsi_tracing::info;
-use magnus::{function, prelude::*, Error, Ruby};
+use magnus::{Error, Module, Ruby};
 
-fn hello(subject: String) -> String {
-    format!("Hello from Rust, {subject}!")
-}
+#[magnus::wrap(class = "Itsi::Scheduler", free_immediately, size)]
+struct Scheduler {}
 
 #[magnus::init]
 fn init(ruby: &Ruby) -> Result<(), Error> {
     itsi_tracing::init();
-    info!("Initializing Itsi::Scheduler");
-
     let module = ruby.define_module("Itsi")?;
-    let class = module.define_class("Scheduler", ruby.class_object())?;
-    class.define_method("hello", function!(hello, 1))?;
+    let _scheduler = module.define_class("Scheduler", ruby.class_object())?;
+
     Ok(())
 }

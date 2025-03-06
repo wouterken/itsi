@@ -115,24 +115,9 @@ module Itsi
       body.close if body.respond_to?(:close)
     end
 
-    def self.start_scheduler_loop(queue, app, scheduler_class)
+    def self.start_scheduler_loop(scheduler_class, fiber_proc)
       Fiber.set_scheduler(Kernel.const_get(scheduler_class).new())
-      Fiber.schedule do
-        loop do
-          break if queue.instance_variable_get("@finished")
-          begin
-            break unless request = queue.pop_with_timeout(0.25)
-            Fiber.schedule do
-              begin
-                self.call(app, request)
-              rescue
-                request.response.close
-              end
-            end
-          rescue
-          end
-        end
-      end
+      Fiber.schedule(&fiber_proc)
     end
 
     # If scheduler is enabled

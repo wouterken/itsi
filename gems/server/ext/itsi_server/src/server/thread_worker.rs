@@ -1,27 +1,24 @@
 use super::itsi_server::RequestJob;
-use crate::ITSI_SERVER;
-use crossbeam::{
-    channel::{Receiver, Sender},
-    epoch::Atomic,
-};
+use crate::{request::itsi_request::ItsiRequest, ITSI_SERVER};
+use crossbeam::channel::{Receiver, Sender};
 use itsi_rb_helpers::{
-    call_with_gvl, call_without_gvl, create_ruby_thread, soft_kill_threads, RetainedValue,
+    call_with_gvl, call_without_gvl, create_ruby_thread, heap_value::HeapValue, soft_kill_threads,
 };
 use itsi_tracing::{debug, error, info, warn};
 use magnus::{
-    gc,
-    value::{InnerValue, Lazy, LazyId, Opaque, ReprValue},
-    Class, Module, Object, RClass, RObject, Ruby, Thread, Value,
+    value::{InnerValue, LazyId, Opaque, ReprValue},
+    Module, RClass, Ruby, Thread, Value,
 };
 use nix::unistd::Pid;
+use parking_lot::RwLock;
 use std::{
     num::NonZeroU8,
+    ops::Deref,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
-    thread::spawn,
-    time::Instant,
+    time::{Duration, Instant},
 };
 use tracing::instrument;
 pub struct ThreadWorker {
@@ -29,16 +26,13 @@ pub struct ThreadWorker {
     pub app: Opaque<Value>,
     pub receiver: Arc<Receiver<RequestJob>>,
     pub sender: Arc<Sender<RequestJob>>,
-    pub thread: RetainedValue<Thread>,
+    pub thread: RwLock<Option<HeapValue<Thread>>>,
     pub terminated: Arc<AtomicBool>,
     pub scheduler_class: Option<String>,
 }
 
 static ID_CALL: LazyId = LazyId::new("call");
 static ID_ALIVE: LazyId = LazyId::new("alive?");
-
-static CLASS_QUEUE: Lazy<RClass> =
-    Lazy::new(|ruby| ruby.module_kernel().const_get("QueueWithTimeout").unwrap());
 
 #[instrument(skip(threads, app))]
 pub fn build_thread_workers(
@@ -95,7 +89,7 @@ impl ThreadWorker {
             app,
             receiver,
             sender,
-            thread: RetainedValue::empty(),
+            thread: RwLock::new(None),
             terminated: Arc::new(AtomicBool::new(false)),
             scheduler_class,
         };
@@ -113,7 +107,7 @@ impl ThreadWorker {
 
     pub fn poll_shutdown(&self, deadline: Instant) -> bool {
         call_with_gvl(|_ruby| {
-            if let Some(thread) = self.thread.inner().lock().unwrap().as_mut() {
+            if let Some(thread) = self.thread.read().deref() {
                 info!("Polling worker thread {:?} for shutdown", thread);
                 if Instant::now() > deadline {
                     warn!("Worker thread {} timed out. Killing thread", self.id);
@@ -124,7 +118,7 @@ impl ThreadWorker {
                     return true;
                 }
             }
-            self.thread.clear();
+            self.thread.write().take();
             info!("Thread {} has been shut down", self.id);
 
             false
@@ -138,14 +132,55 @@ impl ThreadWorker {
         let terminated = self.terminated.clone();
         let scheduler_class = self.scheduler_class.clone();
         call_with_gvl(|_| {
-            self.thread = RetainedValue::new(create_ruby_thread(move || {
-                if scheduler_class.is_none() {
-                    Self::accept_loop(id, app, receiver, terminated)
-                } else {
-                    Self::fiber_accept_loop(id, app, receiver, scheduler_class.clone(), terminated)
-                }
-            }));
+            *self.thread.write() = Some(
+                create_ruby_thread(move || {
+                    if scheduler_class.is_none() {
+                        Self::accept_loop(id, app, receiver, terminated)
+                    } else {
+                        Self::fiber_accept_loop(
+                            id,
+                            app,
+                            receiver,
+                            scheduler_class.clone(),
+                            terminated,
+                        )
+                    }
+                })
+                .into(),
+            );
         });
+    }
+
+    fn gather_requests(
+        receiver: &Arc<Receiver<RequestJob>>,
+        timeout: Duration,
+    ) -> (Vec<ItsiRequest>, bool) {
+        let batch_size = 25;
+        let mut batch = Vec::with_capacity(batch_size);
+        let mut should_close: bool = false;
+
+        while batch.len() < batch_size {
+            match receiver.try_recv() {
+                Ok(RequestJob::ProcessRequest(request)) => batch.push(request),
+                Ok(RequestJob::Shutdown) => {
+                    should_close = true;
+                    break;
+                }
+                Err(_) => break,
+            }
+        }
+
+        if batch.is_empty() {
+            match receiver.recv_timeout(timeout) {
+                Ok(RequestJob::ProcessRequest(request)) => batch.push(request),
+                Ok(RequestJob::Shutdown) => {
+                    should_close = true;
+                }
+                Err(_) => (),
+            }
+        }
+
+        (batch, should_close)
     }
 
     #[instrument(skip_all, fields(thread_worker=id))]
@@ -157,46 +192,31 @@ impl ThreadWorker {
         terminated: Arc<AtomicBool>,
     ) {
         let ruby = Ruby::get().unwrap();
-        let queue: Opaque<Value> =
-            Opaque::from(ruby.get_inner(&CLASS_QUEUE).new_instance(()).unwrap());
-        gc::register_mark_object(queue);
-
-        // Push to our work queue in side thread.
-        create_ruby_thread(move || {
-            call_without_gvl(move || loop {
-                match receiver.recv() {
-                    Ok(RequestJob::ProcessRequest(request)) => {
-                        if terminated.load(Ordering::Relaxed) {
-                            break;
-                        }
-                        call_with_gvl(|ruby| {
-                            ruby.get_inner_ref(&queue)
-                                .funcall::<_, _, Value>("push", (request,))
-                                .unwrap()
-                        });
-                    }
-                    Ok(RequestJob::Shutdown) => {
-                        debug!("Shutting down thread worker");
-                        call_with_gvl(|ruby| {
-                            let queue = ruby.get_inner_ref(&queue);
-                            queue
-                                .funcall::<_, _, Value>(
-                                    "instance_variable_set",
-                                    ("@finished", true),
-                                )
-                                .unwrap();
-                        });
-                        break;
-                    }
-                    Err(err) => {
-                        error!("Error Receiving RequestJob: {}", err);
-                    }
+        let scheduler_proc = ruby.proc_from_fn(move |ruby, _args, _blk| {
+            let class_fiber: RClass = ruby
+                .module_kernel()
+                .const_get::<_, RClass>("Fiber")
+                .unwrap();
+            let scheduler = class_fiber.funcall::<_, _, Value>("scheduler", ()).unwrap();
+            let server = ruby.get_inner(&ITSI_SERVER);
+            loop {
+                scheduler.funcall::<_, _, Value>("yield", ()).unwrap();
+                let (reqs, should_close) = call_without_gvl(|| {
+                    Self::gather_requests(&receiver, Duration::from_micros(50))
+                });
+                reqs.into_iter().for_each(|req| {
+                    server
+                        .funcall::<_, _, Value>("schedule", (app, req))
+                        .unwrap();
+                });
+                if should_close || terminated.load(Ordering::Relaxed) {
+                    break;
                 }
-            })
+            }
         });
-
-        ruby.get_inner(&ITSI_SERVER)
-            .funcall::<_, _, Value>("start_scheduler_loop", (queue, app, scheduler_class))
+        let server = ruby.get_inner(&ITSI_SERVER);
+        server
+            .funcall::<_, _, Value>("start_scheduler_loop", (scheduler_class, scheduler_proc))
             .unwrap();
     }
 
@@ -215,7 +235,7 @@ impl ThreadWorker {
                     if terminated.load(Ordering::Relaxed) {
                         break;
                     }
-                    request.process(&ruby, server, app);
+                    call_with_gvl(|_ruby| request.process(&ruby, server, app))
                 }
                 Ok(RequestJob::Shutdown) => {
                     debug!("Shutting down thread worker");

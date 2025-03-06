@@ -588,6 +588,7 @@ dependencies = [
  "itsi_rb_helpers",
  "itsi_tracing",
  "magnus 0.6.4",
+ "parking_lot",
 ]
 
 [[package]]

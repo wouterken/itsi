@@ -1,9 +1,5 @@
-use std::sync::Mutex;
-use std::thread::sleep;
-use std::time::Duration;
 use std::{os::raw::c_void, ptr::null_mut, sync::Arc};
 
-use magnus::value::BoxValue;
 use magnus::{
     RArray, Ruby, Thread, Value,
     rb_sys::FromRawValue,
@@ -13,51 +9,12 @@ use rb_sys::{
     rb_thread_call_with_gvl, rb_thread_call_without_gvl, rb_thread_create, rb_thread_schedule,
     rb_thread_wakeup,
 };
-
+pub mod heap_value;
 static ID_FORK: LazyId = LazyId::new("fork");
 static ID_LIST: LazyId = LazyId::new("list");
 static ID_EQ: LazyId = LazyId::new("==");
-static ID_EXIT: LazyId = LazyId::new("exit");
-static ID_JOIN: LazyId = LazyId::new("join");
 static ID_ALIVE: LazyId = LazyId::new("alive?");
-static ID_RAISE: LazyId = LazyId::new("raise");
 static ID_THREAD_VARIABLE_GET: LazyId = LazyId::new("thread_variable_get");
-
-#[derive(Clone)]
-pub struct RetainedValue<T>
-where
-    T: ReprValue,
-{
-    inner: Arc<Mutex<Option<BoxValue<T>>>>,
-}
-
-unsafe impl<T> Send for RetainedValue<T> where T: ReprValue {}
-unsafe impl<T> Sync for RetainedValue<T> where T: ReprValue {}
-
-impl<T> RetainedValue<T>
-where
-    T: ReprValue,
-{
-    pub fn new(value: T) -> Self {
-        Self {
-            inner: Arc::new(Mutex::new(Some(BoxValue::new(value)))),
-        }
-    }
-
-    pub fn empty() -> Self {
-        RetainedValue {
-            inner: Arc::new(Mutex::new(None)),
-        }
-    }
-
-    pub fn inner(&self) -> Arc<Mutex<Option<BoxValue<T>>>> {
-        self.inner.clone()
-    }
-
-    pub fn clear(&self) {
-        self.inner.lock().unwrap().take();
-    }
-}
 
 pub fn schedule_thread() {
     unsafe {

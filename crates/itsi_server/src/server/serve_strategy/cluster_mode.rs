@@ -2,7 +2,6 @@ use crate::server::{
     lifecycle_event::LifecycleEvent, listener::Listener, process_worker::ProcessWorker,
     signal::handle_signals,
 };
-use hyper_util::{rt::TokioExecutor, server::conn::auto::Builder};
 use itsi_error::{ItsiError, Result};
 use itsi_tracing::{error, info, warn};
 use magnus::{value::Opaque, Value};
@@ -15,7 +14,6 @@ use tokio::{
 use tracing::instrument;
 pub(crate) struct ClusterMode {
     pub app: Opaque<Value>,
-    pub server: Builder<TokioExecutor>,
     pub listeners: Arc<Vec<Arc<Listener>>>,
     pub script_name: String,
     pub thread_count: NonZeroU8,
@@ -34,7 +32,6 @@ impl ClusterMode {
     pub fn new(
         app: Opaque<Value>,
         listeners: Arc<Vec<Arc<Listener>>>,
-        server: Builder<TokioExecutor>,
         script_name: String,
         thread_count: NonZeroU8,
         worker_count: NonZeroU8,
@@ -53,7 +50,6 @@ impl ClusterMode {
 
         Self {
             app,
-            server,
             listeners,
             script_name,
             thread_count,

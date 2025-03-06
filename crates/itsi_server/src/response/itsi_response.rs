@@ -2,9 +2,8 @@ use bytes::{Bytes, BytesMut};
 use derive_more::Debug;
 use futures::stream::{unfold, StreamExt};
 use http::{
-    header::{CONTENT_TYPE, TRANSFER_ENCODING},
-    request::Parts,
-    HeaderMap, HeaderName, HeaderValue, Request, Response, StatusCode,
+    header::TRANSFER_ENCODING, request::Parts, HeaderMap, HeaderName, HeaderValue, Request,
+    Response, StatusCode,
 };
 use http_body_util::{combinators::BoxBody, Empty, Full, StreamBody};
 use hyper::{body::Frame, upgrade::Upgraded};
@@ -30,7 +29,6 @@ use tokio::{
 };
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::io::ReaderStream;
-use tracing::info;
 
 use crate::server::serve_strategy::single_mode::RunningPhase;
 

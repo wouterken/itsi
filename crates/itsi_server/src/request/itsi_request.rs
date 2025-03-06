@@ -12,7 +12,6 @@ use http::{request::Parts, Response, StatusCode};
 use http_body_util::{combinators::BoxBody, BodyExt, Empty};
 use hyper::{body::Incoming, Request};
 use itsi_error::CLIENT_CONNECTION_CLOSED;
-use itsi_rb_helpers::call_with_gvl;
 use itsi_tracing::{debug, error};
 use magnus::{
     error::{ErrorType, Result as MagnusResult},
@@ -24,7 +23,6 @@ use magnus::{
 };
 use std::{collections::HashMap, convert::Infallible, fmt, sync::Arc, time::Instant};
 use tokio::sync::{mpsc, watch};
-use tracing::info;
 
 static ID_CALL: LazyId = LazyId::new("call");
 static ID_MESSAGE: LazyId = LazyId::new("message");
@@ -72,12 +70,13 @@ impl ItsiRequest {
             }
         }
     }
+
     pub fn process(self, ruby: &Ruby, server: RClass, app: Opaque<Value>) {
         let req = format!("{}", self);
         let response = self.response.clone();
         let start = self.start;
         debug!("{} Started", req);
-        let result = call_with_gvl(|_ruby| server.funcall::<_, _, Value>(*ID_CALL, (app, self)));
+        let result = server.funcall::<_, _, Value>(*ID_CALL, (app, self));
         debug!("{} Finished in {:?}", req, start.elapsed());
 
         if let Err(err) = &result {

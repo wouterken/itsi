@@ -52,7 +52,6 @@ impl SingleMode {
     pub(crate) fn new(
         app: Opaque<Value>,
         listeners: Arc<Vec<Arc<Listener>>>,
-        server: Builder<TokioExecutor>,
         thread_count: NonZeroU8,
         script_name: String,
         scheduler_class: Option<String>,
@@ -61,7 +60,7 @@ impl SingleMode {
         let (thread_workers, sender) =
             build_thread_workers(Pid::this(), thread_count, app, scheduler_class.clone());
         Self {
-            server,
+            server: Builder::new(TokioExecutor::new()),
             listeners,
             script_name,
             sender,

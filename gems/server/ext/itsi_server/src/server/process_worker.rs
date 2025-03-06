@@ -47,7 +47,6 @@ impl ProcessWorker {
                 if let Err(e) = Arc::new(SingleMode::new(
                     cluster_template.app,
                     cluster_template.listeners.clone(),
-                    cluster_template.server.clone(),
                     cluster_template.thread_count,
                     cluster_template.script_name.clone(),
                     cluster_template.scheduler_class.clone(),
