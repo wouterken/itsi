@@ -4,6 +4,7 @@
 require "rack"
 require "optparse"
 require "etc"
+require 'uri'
 
 # Default options used when starting Osprey from the CLI using `osprey`
 DEFAULT_OPTIONS = {
@@ -60,12 +61,30 @@ OptionParser.new do |opts|
     options[:http_port] = hp
   end
 
-  opts.on("-c", "--cert_path CERT_PATH", String, "Path to the SSL certificate file") do |cp|
-    options[:cert_path] = cp
+  opts.on("-c", "--cert_path CERT_PATH", String, "Path to the SSL certificate file (must follow a --bind option)") do |cp|
+    if options[:binds].empty?
+      raise OptionParser::InvalidOption, "--cert_path must follow a --bind"
+    end
+
+    # Modify the last bind entry to add/update the cert query parameter
+    uri = URI.parse("http://#{options[:binds].last}") # Ensure valid URI parsing
+    params = URI.decode_www_form(uri.query.to_s).to_h
+    params["cert"] = cp
+    query_string = params.map { |k, v| "#{k}=#{v}" }.join("&")
+    options[:binds][-1] = "#{uri.host}?#{query_string}"
   end
 
-  opts.on("-k", "--key_path KEY_PATH", String, "Path to the SSL key file") do |kp|
-    options[:key_path] = kp
+  opts.on("-k", "--key_path KEY_PATH", String, "Path to the SSL key file (must follow a --bind option)") do |kp|
+    if options[:binds].empty?
+      raise OptionParser::InvalidOption, "--key_path must follow a --bind"
+    end
+
+    # Modify the last bind entry to add/update the key query parameter
+    uri = URI.parse("http://#{options[:binds].last}") # Ensure valid URI parsing
+    params = URI.decode_www_form(uri.query.to_s).to_h
+    params["key"] = kp
+    query_string = params.map { |k, v| "#{k}=#{v}" }.join("&")
+    options[:binds][-1] = "#{uri.host}?#{query_string}"
   end
 
   opts.on("--shutdown_timeout SHUTDOWN_TIMEOUT", String,
@@ -101,6 +120,7 @@ end
 # Make sure osprey is loaded, if not already loaded by the rack_app above.
 # Start the Osprey server
 require "itsi/server"
+
 
 begin
   Itsi::Server.new(

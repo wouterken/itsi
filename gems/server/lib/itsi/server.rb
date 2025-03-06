@@ -19,7 +19,10 @@ module Itsi
     def self.respond(request, (status, headers, body))
       response = request.response
 
+      # Don't try and respond if we've been hijacked.
+      # The hijacker is now responsible for this.
       return if request.hijacked
+
 
       # 1. Set Status
       response.status = status
@@ -39,6 +42,7 @@ module Itsi
 
       # If we're partially hijacked or returned a streaming body,
       # stream this response.
+
       if (body_streamer = streaming_body?(body) ? body : headers.delete("rack.hijack") )
         body_streamer.call(StreamIO.new(response))
 

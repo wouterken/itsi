@@ -1,4 +1,6 @@
 use std::sync::Mutex;
+use std::thread::sleep;
+use std::time::Duration;
 use std::{os::raw::c_void, ptr::null_mut, sync::Arc};
 
 use magnus::value::BoxValue;
@@ -18,6 +20,7 @@ static ID_EQ: LazyId = LazyId::new("==");
 static ID_EXIT: LazyId = LazyId::new("exit");
 static ID_JOIN: LazyId = LazyId::new("join");
 static ID_ALIVE: LazyId = LazyId::new("alive?");
+static ID_RAISE: LazyId = LazyId::new("raise");
 static ID_THREAD_VARIABLE_GET: LazyId = LazyId::new("thread_variable_get");
 
 #[derive(Clone)]
@@ -63,18 +66,19 @@ pub fn schedule_thread() {
 }
 pub fn create_ruby_thread<F>(f: F) -> Thread
 where
-    F: FnOnce() -> u64 + Send + 'static,
+    F: FnOnce() + Send + 'static,
 {
     extern "C" fn trampoline<F>(ptr: *mut c_void) -> u64
     where
-        F: FnOnce() -> u64,
+        F: FnOnce(),
     {
         // Reconstruct the boxed Option<F> that holds our closure.
         let boxed_closure: Box<Option<F>> = unsafe { Box::from_raw(ptr as *mut Option<F>) };
         // Extract the closure. (The Option should be Some; panic otherwise.)
         let closure = (*boxed_closure).expect("Closure already taken");
         // Call the closure and return its result.
-        closure()
+        closure();
+        0
     }
 
     // Box the closure (wrapped in an Option) to create a stable pointer.
@@ -176,23 +180,16 @@ where
     T: ReprValue,
 {
     for thr in &threads {
-        let _: Option<Value> = thr.funcall(*ID_EXIT, ()).expect("Failed to exit thread");
-    }
-
-    for thr in &threads {
-        let _: Option<Value> = thr
-            .funcall(*ID_JOIN, (0.5_f64,))
-            .expect("Failed to join thread");
-    }
-
-    for thr in &threads {
         let alive: bool = thr
             .funcall(*ID_ALIVE, ())
             .expect("Failed to check if thread is alive");
-        if alive {
-            thr.funcall::<_, _, Value>("kill", ())
-                .expect("Failed to kill thread");
+        if !alive {
+            eprintln!("Thread killed");
+            break;
         }
+        eprintln!("Killing thread {:?}", thr.as_value());
+        thr.funcall::<_, _, Value>("terminate", ())
+            .expect("Failed to kill thread");
     }
 }
 

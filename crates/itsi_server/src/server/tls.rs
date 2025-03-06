@@ -15,6 +15,7 @@ const ITS_CA_KEY: &str = include_str!("./itsi_ca/itsi_ca.key");
 // If a non-local host or optional domain parameter is provided,
 // an automated certificate will attempt to be fetched using let's encrypt.
 pub fn configure_tls(host: &str, query_params: &HashMap<String, String>) -> Result<ServerConfig> {
+    info!("TLS Options {:?}", query_params);
     let (certs, key) = if let (Some(cert_path), Some(key_path)) =
         (query_params.get("cert"), query_params.get("key"))
     {

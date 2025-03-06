@@ -1,6 +1,9 @@
 use super::itsi_server::RequestJob;
 use crate::ITSI_SERVER;
-use crossbeam::channel::{Receiver, Sender};
+use crossbeam::{
+    channel::{Receiver, Sender},
+    epoch::Atomic,
+};
 use itsi_rb_helpers::{
     call_with_gvl, call_without_gvl, create_ruby_thread, soft_kill_threads, RetainedValue,
 };
@@ -10,7 +13,14 @@ use magnus::{
     Ruby, Thread, Value,
 };
 use nix::unistd::Pid;
-use std::{num::NonZeroU8, sync::Arc, time::Instant};
+use std::{
+    num::NonZeroU8,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Instant,
+};
 use tracing::instrument;
 pub struct ThreadWorker {
     pub id: String,
@@ -18,19 +28,11 @@ pub struct ThreadWorker {
     pub receiver: Arc<Receiver<RequestJob>>,
     pub sender: Arc<Sender<RequestJob>>,
     pub thread: RetainedValue<Thread>,
+    pub terminated: Arc<AtomicBool>,
 }
 
 static ID_CALL: LazyId = LazyId::new("call");
-
-pub fn load_app(app: Opaque<Value>) -> Opaque<Value> {
-    call_with_gvl(|ruby| {
-        let app = app.get_inner_with(&ruby);
-        Opaque::from(
-            app.funcall::<_, _, Value>(*ID_CALL, ())
-                .expect("Couldn't load app"),
-        )
-    })
-}
+static ID_ALIVE: LazyId = LazyId::new("alive?");
 
 #[instrument(skip(threads, app))]
 pub fn build_thread_workers(
@@ -63,6 +65,15 @@ pub fn build_thread_workers(
     )
 }
 
+pub fn load_app(app: Opaque<Value>) -> Opaque<Value> {
+    call_with_gvl(|ruby| {
+        let app = app.get_inner_with(&ruby);
+        Opaque::from(
+            app.funcall::<_, _, Value>(*ID_CALL, ())
+                .expect("Couldn't load app"),
+        )
+    })
+}
 impl ThreadWorker {
     pub fn new(
         id: String,
@@ -76,6 +87,7 @@ impl ThreadWorker {
             receiver,
             sender,
             thread: RetainedValue::empty(),
+            terminated: Arc::new(AtomicBool::new(false)),
         };
         worker.run();
         worker
@@ -90,15 +102,15 @@ impl ThreadWorker {
     }
 
     pub fn poll_shutdown(&self, deadline: Instant) -> bool {
-        info!("Polling worker thread {} for shutdown", self.id);
-
         call_with_gvl(|_ruby| {
             if let Some(thread) = self.thread.inner().lock().unwrap().as_mut() {
+                info!("Polling worker thread {:?} for shutdown", thread);
                 if Instant::now() > deadline {
                     warn!("Worker thread {} timed out. Killing thread", self.id);
+                    self.terminated.store(true, Ordering::SeqCst);
                     soft_kill_threads(vec![thread.as_value()]);
                 }
-                if thread.funcall::<_, _, bool>("alive?", ()).unwrap_or(false) {
+                if thread.funcall::<_, _, bool>(*ID_ALIVE, ()).unwrap_or(false) {
                     return true;
                 }
             }
@@ -113,27 +125,39 @@ impl ThreadWorker {
         let id = self.id.clone();
         let app = self.app;
         let receiver = self.receiver.clone();
-        call_with_gvl(|_ruby| {
-            let thread = create_ruby_thread(move || {
-                let ruby = Ruby::get().unwrap();
-                let server = ruby.get_inner(&ITSI_SERVER);
-                call_without_gvl(|| loop {
-                    match receiver.recv() {
-                        Ok(RequestJob::ProcessRequest(request)) => {
-                            request.process(&ruby, server, app);
-                        }
-                        Ok(RequestJob::Shutdown) => {
-                            debug!("Shutting down thread worker {}", id);
-                            break;
-                        }
-                        Err(err) => {
-                            error!("Error receiving request job: {}", err);
-                        }
+        let terminated = self.terminated.clone();
+        call_with_gvl(|_| {
+            self.thread = RetainedValue::new(create_ruby_thread(move || {
+                Self::accept_loop(id, app, receiver, terminated)
+            }));
+        });
+    }
+
+    #[instrument(skip_all, fields(thread_worker=id))]
+    pub fn accept_loop(
+        id: String,
+        app: Opaque<Value>,
+        receiver: Arc<Receiver<RequestJob>>,
+        terminated: Arc<AtomicBool>,
+    ) {
+        let ruby = Ruby::get().unwrap();
+        let server = ruby.get_inner(&ITSI_SERVER);
+        call_without_gvl(|| loop {
+            match receiver.recv() {
+                Ok(RequestJob::ProcessRequest(request)) => {
+                    if terminated.load(Ordering::Relaxed) {
+                        break;
                     }
-                });
-                0
-            });
-            self.thread = RetainedValue::new(thread);
+                    request.process(&ruby, server, app);
+                }
+                Ok(RequestJob::Shutdown) => {
+                    debug!("Shutting down thread worker");
+                    break;
+                }
+                Err(err) => {
+                    error!("Error Receiving RequestJob: {}", err);
+                }
+            }
         });
     }
 }

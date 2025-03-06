@@ -64,7 +64,7 @@ fn init(ruby: &Ruby) -> Result<()> {
     // response.define_method("recv_frame", method!(ItsiResponse::recv_frame, 1))?;
     // response.define_method("close_read", method!(ItsiResponse::close_read, 0))?;
     response.define_method("close_write", method!(ItsiResponse::close_write, 0))?;
-    response.define_method("hijack", method!(ItsiResponse::hijack, 0))?;
+    response.define_method("hijack", method!(ItsiResponse::hijack, 1))?;
 
     let stream_writer = ruby.get_inner(&ITSI_STREAM_WRITER);
     stream_writer.define_method("write", method!(StreamWriter::write, 1))?;

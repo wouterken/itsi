@@ -46,6 +46,12 @@ impl From<ItsiError> for magnus::Error {
     }
 }
 
+impl From<httparse::Error> for ItsiError {
+    fn from(err: httparse::Error) -> Self {
+        ItsiError::ArgumentError(err.to_string())
+    }
+}
+
 impl From<nix::errno::Errno> for ItsiError {
     fn from(err: nix::errno::Errno) -> Self {
         ItsiError::ArgumentError(err.to_string())

@@ -34,10 +34,13 @@ module Itsi
         "rack.hijack?" => true,
         "rack.multipart.buffer_size" => 16_384,
         "rack.hijack" => lambda do
-          s1, s2 = UNIXSocket.pair
           self.hijacked = true
-          hijack(s1)
-          s2
+          UNIXSocket.pair.yield_self do |(server_sock, app_sock)|
+            response.hijack(server_sock.fileno)
+            server_sock.sync = true
+            app_sock.sync = true
+            app_sock
+          end
         end
       }.merge(headers)
     end

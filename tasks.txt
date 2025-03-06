@@ -1,0 +1,13 @@
+- Shutdown too fast when streaming.
+- HTTP2 chunked-encoding Translation
+- Add scheduler support (BYO)
+- Signal based scaling
+- Memory based cycling
+- Autocert
+- Crash Recovery (Force Crash)
+- Filters
+- Static File Serve
+- Polish and Release
+-- Log params (JSON vs Pretty. Color vs no-color)
+-- Parameterize EVERYTHING
+-- No unwrap or except

@@ -41,6 +41,12 @@ pub struct SingleMode {
     pub(crate) thread_workers: Arc<Vec<ThreadWorker>>,
 }
 
+pub enum RunningPhase {
+    Running,
+    ShutdownPending,
+    Shutdown,
+}
+
 impl SingleMode {
     pub(crate) fn new(
         app: Opaque<Value>,
@@ -87,7 +93,7 @@ impl SingleMode {
               let mut lifecycle_rx = lifecycle_tx.subscribe();
               let self_ref = self_ref.clone();
               let listener = listener.clone();
-              let (shutdown_sender, mut shutdown_receiver) = tokio::sync::watch::channel(());
+              let (shutdown_sender, mut shutdown_receiver) = tokio::sync::watch::channel::<RunningPhase>(RunningPhase::Running);
 
               listener_task_set.spawn(async move {
                 let strategy = self_ref.clone();
@@ -135,16 +141,18 @@ impl SingleMode {
         &self,
         stream: IoStream,
         listener: Arc<TokioListener>,
-        mut shutdown_channel: tokio::sync::watch::Receiver<()>,
+        shutdown_channel: tokio::sync::watch::Receiver<RunningPhase>,
     ) -> Result<()> {
         let sender_clone = self.sender.clone();
         let addr = stream.addr();
         let io: TokioIo<Pin<Box<IoStream>>> = TokioIo::new(Box::pin(stream));
         let script_name = self.script_name.clone();
         let server = self.server.clone();
+        let mut shutdown_channel_clone = shutdown_channel.clone();
         tokio::spawn(async move {
             let mut server = server.clone();
             let mut binding = server.http1();
+            let shutdown_channel = shutdown_channel_clone.clone();
             let mut serve = Box::pin(
                 binding
                     .timer(TokioTimer::new())
@@ -158,6 +166,7 @@ impl SingleMode {
                                 script_name.clone(),
                                 listener.clone(),
                                 addr.clone(),
+                                shutdown_channel.clone(),
                             )
                         }),
                     ),
@@ -166,13 +175,20 @@ impl SingleMode {
             tokio::select! {
                 // Await the connection finishing naturally.
                 res = &mut serve => {
-                    if let Err(e) = res {
-                        debug!("Connection finished with error: {:?}", e);
+                    match res{
+                        Ok(()) => {
+                          debug!("Connection closed normally")
+                        },
+                        Err(res) => {
+                          debug!("Connection finished with error: {:?}", res)
+                        }
                     }
+                    serve.as_mut().graceful_shutdown();
                 },
                 // A lifecycle event triggers shutdown.
-                _ = shutdown_channel.changed() => {
+                _ = shutdown_channel_clone.changed() => {
                     // Initiate graceful shutdown.
+                    info!("Received shutdown signal in serve_fn");
                     serve.as_mut().graceful_shutdown();
                     // Now await the connection to finish shutting down.
                     if let Err(e) = serve.await {
@@ -187,19 +203,18 @@ impl SingleMode {
     pub async fn handle_lifecycle_event(
         &self,
         lifecycle_event: LifecycleEvent,
-        shutdown_sender: tokio::sync::watch::Sender<()>,
+        shutdown_sender: tokio::sync::watch::Sender<RunningPhase>,
     ) -> Result<()> {
         if let LifecycleEvent::Shutdown = lifecycle_event {
             shutdown_sender
-                .send(())
-                .expect("Failed to send shutdown signal");
+                .send(RunningPhase::ShutdownPending)
+                .expect("Failed to send shutdown pending signal");
             let deadline = Instant::now() + Duration::from_secs_f64(self.shutdown_timeout);
             self.thread_workers
                 .iter()
                 .for_each(|worker| worker.request_shutdown());
             while Instant::now() < deadline {
-                info!("Polling worker threads for shutdown");
-                tokio::time::sleep(Duration::from_millis(10)).await;
+                tokio::time::sleep(Duration::from_millis(200)).await;
                 let alive_threads = self
                     .thread_workers
                     .iter()
@@ -212,9 +227,15 @@ impl SingleMode {
                     break;
                 }
             }
+
+            info!("Sending shutdown signal");
+            shutdown_sender
+                .send(RunningPhase::Shutdown)
+                .expect("Failed to send shutdown signal");
             self.thread_workers.iter().for_each(|worker| {
                 worker.poll_shutdown(deadline);
             });
+
             return Err(ItsiError::Break());
         }
         Ok(())
