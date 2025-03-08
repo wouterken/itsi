@@ -23,7 +23,7 @@ GEMS = [
 ]
 
 Minitest::TestTask.create do |t|
-  t.test_globs = ['**/test/**/*.rb']
+  t.test_globs = ['gems/**/test/**/*.rb']
   t.warning = true
   t.verbose = true
 end

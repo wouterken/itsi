@@ -9,7 +9,10 @@ use rb_sys::{
     rb_thread_call_with_gvl, rb_thread_call_without_gvl, rb_thread_create, rb_thread_schedule,
     rb_thread_wakeup,
 };
-pub mod heap_value;
+mod heap_fiber;
+mod heap_value;
+pub use heap_fiber::HeapFiber;
+pub use heap_value::{HeapVal, HeapValue};
 static ID_FORK: LazyId = LazyId::new("fork");
 static ID_LIST: LazyId = LazyId::new("list");
 static ID_EQ: LazyId = LazyId::new("==");

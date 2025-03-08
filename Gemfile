@@ -21,3 +21,7 @@ gem 'rubocop', '~> 1.21'
 gem 'bundler'
 
 gem 'irb'
+
+gem 'activerecord'
+
+gem 'async'

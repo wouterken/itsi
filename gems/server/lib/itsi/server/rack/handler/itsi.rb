@@ -7,12 +7,13 @@ module Rack
       def self.run(app, options = {})
         rack_app = Rack::Builder.parse_file(options[:config])
 
-        ::Itsi.start(
-          binds: "#{options.fetch(:host, "127.0.0.1")}:#{options.fetch(:Port, 3001)}",
+        ::Itsi::Server.new(
+          binds: ["#{options.fetch(:host, "127.0.0.1")}:#{options.fetch(:Port, 3001)}"],
           workers: options.fetch(:workers, 1),
           threads: options.fetch(:threads, 1),
+          scheduler_class: "Itsi::Scheduler",
           app: ->{ app }
-        )
+        ).start
       end
     end
   end

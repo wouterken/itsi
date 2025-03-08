@@ -10,8 +10,15 @@ publish = false
 crate-type = ["cdylib"]
 
 [dependencies]
-magnus = { version = "0.6.2" }
+magnus = { version = "0.7.1", features = ["rb-sys", "bytes"] }
+derive_more = { version = "2.0.1", features = ["debug"] }
 itsi_tracing = { path = "../itsi_tracing" }
 itsi_rb_helpers = { path = "../itsi_rb_helpers" }
 itsi_error = { path = "../itsi_error" }
+itsi_instrument_entry = { path = "../itsi_instrument_entry" }
 parking_lot = "0.12.3"
+mio = { version = "1.0.3", features = ["os-poll", "os-ext"] }
+rb-sys = "0.9.105"
+bytes = "1.10.1"
+nix = "0.29.0"
+tracing = "0.1.41"

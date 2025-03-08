@@ -9,7 +9,7 @@ use std::ops::Deref;
 /// It's up to the user to actually ensure this though,
 /// typically by only interacting with the value from a thread which
 /// holds the GVL.
-pub struct HeapValue<T>(BoxValue<T>)
+pub struct HeapValue<T>(pub BoxValue<T>)
 where
     T: ReprValue;
 
@@ -21,6 +21,15 @@ where
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl<T> HeapValue<T>
+where
+    T: ReprValue,
+{
+    pub fn inner(self) -> T {
+        *self.0
     }
 }
 
@@ -39,6 +48,15 @@ where
 {
     fn from(value: T) -> Self {
         HeapValue(BoxValue::new(value))
+    }
+}
+
+impl<T> Clone for HeapValue<T>
+where
+    T: ReprValue + Clone,
+{
+    fn clone(&self) -> Self {
+        HeapValue(BoxValue::new(*self.0.deref()))
     }
 }
 

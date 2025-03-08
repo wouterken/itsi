@@ -1,3 +1,5 @@
+use std::env;
+
 use atty::{Stream, is};
 pub use tracing::{debug, error, info, trace, warn};
 pub use tracing_attributes::instrument; // Explicitly export from tracing-attributes
@@ -8,7 +10,11 @@ use tracing_subscriber::{
 
 #[instrument]
 pub fn init() {
-    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let env_filter = EnvFilter::builder()
+        .with_env_var("ITSI_LOG")
+        .try_from_env()
+        .unwrap_or_else(|_| EnvFilter::new("info"));
+
     let format = fmt::format()
         .compact()
         .with_file(false)
@@ -24,7 +30,7 @@ pub fn init() {
         .event_format(format)
         .with_env_filter(env_filter);
 
-    if is_tty {
+    if is_tty && env::var("ITSI_LOG_PLAIN").is_err() {
         subscriber.with_ansi(true).init();
     } else {
         subscriber.event_format(fmt::format().json()).init();

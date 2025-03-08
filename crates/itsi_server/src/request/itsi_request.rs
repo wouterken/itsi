@@ -11,7 +11,7 @@ use crossbeam::channel::Sender;
 use http::{request::Parts, Response, StatusCode};
 use http_body_util::{combinators::BoxBody, BodyExt, Empty};
 use hyper::{body::Incoming, Request};
-use itsi_error::CLIENT_CONNECTION_CLOSED;
+use itsi_error::from::CLIENT_CONNECTION_CLOSED;
 use itsi_tracing::{debug, error};
 use magnus::{
     error::{ErrorType, Result as MagnusResult},

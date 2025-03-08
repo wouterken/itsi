@@ -1,4 +1,6 @@
-- Add scheduler support (BYO)
+- Try use Block/Unblock for Scheduler (Check for speed improvement, and possible blocking fix)
+- Fix WebSockets starvation
+- Fix single mode blocking if SSE and Wrk together
 - Signal based scaling
 - Memory based cycling
 - Autocert

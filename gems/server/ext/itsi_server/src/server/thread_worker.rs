@@ -2,7 +2,7 @@ use super::itsi_server::RequestJob;
 use crate::{request::itsi_request::ItsiRequest, ITSI_SERVER};
 use crossbeam::channel::{Receiver, Sender};
 use itsi_rb_helpers::{
-    call_with_gvl, call_without_gvl, create_ruby_thread, heap_value::HeapValue, soft_kill_threads,
+    call_with_gvl, call_without_gvl, create_ruby_thread, soft_kill_threads, HeapValue,
 };
 use itsi_tracing::{debug, error, info, warn};
 use magnus::{
@@ -205,9 +205,7 @@ impl ThreadWorker {
                     Self::gather_requests(&receiver, Duration::from_micros(50))
                 });
                 reqs.into_iter().for_each(|req| {
-                    server
-                        .funcall::<_, _, Value>("schedule", (app, req))
-                        .unwrap();
+                    server.funcall::<_, _, Value>("schedule", (app, req)).ok();
                 });
                 if should_close || terminated.load(Ordering::Relaxed) {
                     break;
