@@ -43,6 +43,54 @@ class TestBlockUnblock < Minitest::Test
     assert_equal :resumed, result
   end
 
+  def test_double_unblock
+    result = nil
+
+    fiber = scheduler = nil
+
+    Thread.new do
+      sleep 0.05
+      scheduler.unblock(:self, fiber)
+      scheduler.unblock(:self, fiber)
+    end
+
+    with_scheduler do |sched|
+      scheduler = sched
+      fiber = Fiber.schedule do
+        # This fiber blocks indefinitely until manually unblocked.
+        Fiber.scheduler.block(:self, nil)
+        result = :resumed
+      end
+    end
+
+    assert_equal :resumed, result
+  end
+
+  def test_timed_double_unblock
+    result = nil
+
+    fiber = scheduler = nil
+
+    Thread.new do
+      sleep 0.01
+      scheduler.unblock(:self, fiber)
+      scheduler.unblock(:self, fiber)
+      sleep 1
+    end
+
+    with_scheduler do |sched|
+      scheduler = sched
+      fiber = Fiber.schedule do
+        # This fiber blocks indefinitely until manually unblocked.
+        Fiber.scheduler.block(:self, 0.1)
+        Fiber.scheduler.block(:self, 0.1)
+        result = :resumed
+      end
+    end
+
+    assert_equal :resumed, result
+  end
+
   def test_condition_variable_signaling
     result = nil
     mutex = Mutex.new

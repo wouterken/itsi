@@ -1,9 +1,9 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-require "rack"
-require "optparse"
-require "etc"
+require 'rack'
+require 'optparse'
+require 'etc'
 require 'uri'
 
 # Default options used when starting Osprey from the CLI using `osprey`
@@ -102,13 +102,14 @@ end.parse!
 
 # Rack app loader, invoked per worker.
 # This is a no-op if preloading is enabled (we just return the preloaded app).
-preloader = if options[:preload]
-  Array(Rack::Builder.parse_file(options[:rackup_file])).first.method(:itself).to_proc
-else
- ->{
-   Array(Rack::Builder.parse_file(options[:rackup_file])).first
- }
-end
+preloader = \
+  if options[:preload]
+    Array(Rack::Builder.parse_file(options[:rackup_file])).first.method(:itself).to_proc
+  else
+    lambda do
+      Array(Rack::Builder.parse_file(options[:rackup_file])).first
+    end
+  end
 
 # Make sure osprey is loaded, if not already loaded by the rack_app above.
 # Start the Osprey server

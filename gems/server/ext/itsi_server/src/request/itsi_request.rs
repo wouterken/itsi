@@ -7,7 +7,6 @@ use crate::{
     },
 };
 use bytes::Bytes;
-use crossbeam::channel::Sender;
 use http::{request::Parts, Response, StatusCode};
 use http_body_util::{combinators::BoxBody, BodyExt, Empty};
 use hyper::{body::Incoming, Request};
@@ -22,7 +21,10 @@ use magnus::{
     RClass, Ruby, Value,
 };
 use std::{collections::HashMap, convert::Infallible, fmt, sync::Arc, time::Instant};
-use tokio::sync::{mpsc, watch};
+use tokio::sync::{
+    mpsc::{self, Sender},
+    watch,
+};
 
 static ID_CALL: LazyId = LazyId::new("call");
 static ID_MESSAGE: LazyId = LazyId::new("message");
@@ -105,7 +107,7 @@ impl ItsiRequest {
 
     pub(crate) async fn process_request(
         hyper_request: Request<Incoming>,
-        sender: Arc<Sender<RequestJob>>,
+        sender: Sender<RequestJob>,
         script_name: String,
         listener: Arc<TokioListener>,
         addr: SockAddr,
@@ -115,7 +117,7 @@ impl ItsiRequest {
             ItsiRequest::build_from(hyper_request, addr, script_name, listener).await;
 
         let response = request.response.clone();
-        match sender.send(RequestJob::ProcessRequest(request)) {
+        match sender.send(RequestJob::ProcessRequest(request)).await {
             Err(err) => {
                 error!("Error occurred: {}", err);
                 let mut response = Response::new(BoxBody::new(Empty::new()));

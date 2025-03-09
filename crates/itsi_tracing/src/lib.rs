@@ -5,7 +5,7 @@ pub use tracing::{debug, error, info, trace, warn};
 pub use tracing_attributes::instrument; // Explicitly export from tracing-attributes
 use tracing_subscriber::{
     EnvFilter,
-    fmt::{self},
+    fmt::{self, format},
 };
 
 #[instrument]
@@ -33,6 +33,9 @@ pub fn init() {
     if is_tty && env::var("ITSI_LOG_PLAIN").is_err() {
         subscriber.with_ansi(true).init();
     } else {
-        subscriber.event_format(fmt::format().json()).init();
+        subscriber
+            .fmt_fields(format::JsonFields::default())
+            .event_format(fmt::format().json())
+            .init();
     }
 }

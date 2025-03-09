@@ -243,7 +243,8 @@ class TestNestedFibers < Minitest::Test
         results << 7
       end.transfer
     end
-    assert_equal [0, 1, 8], results
+    # Transfered fibers are not resumed after yielding out.
+    assert_equal [0, 3, 4, 1, 5, 6], results
   end
 
   def test_nested_unowned_fibers_no_scheduler

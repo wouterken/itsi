@@ -1,13 +1,16 @@
-- Try use Block/Unblock for Scheduler (Check for speed improvement, and possible blocking fix)
-- Fix WebSockets starvation
-- Fix single mode blocking if SSE and Wrk together
+- Fix Hijack
+- Scheduler takes true arg (as does preload), better error if not present.
+- Fix Scheduler Tests
 - Signal based scaling
 - Memory based cycling
-- Autocert
+- OOB GC
+- Autocert (And dev certs use local CA)
 - Crash Recovery (Force Crash)
 - Filters
 - Static File Serve
+- Test reuse port (late bind)
 - Polish and Release
 -- Log params (JSON vs Pretty. Color vs no-color)
 -- Parameterize EVERYTHING
 -- No unwrap or except
+- Fix WebSockets starvation

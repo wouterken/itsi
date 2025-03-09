@@ -29,6 +29,7 @@ use tokio::{
 };
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::io::ReaderStream;
+use tracing::info;
 
 use crate::server::serve_strategy::single_mode::RunningPhase;
 
@@ -54,6 +55,7 @@ impl ItsiResponse {
         receiver: mpsc::Receiver<Option<Bytes>>,
         shutdown_rx: watch::Receiver<RunningPhase>,
     ) -> Response<BoxBody<Bytes, Infallible>> {
+        info!("Received response");
         if self.is_hijacked() {
             return match self.process_hijacked_response().await {
                 Ok(result) => result,
@@ -70,6 +72,7 @@ impl ItsiResponse {
         } else if receiver.is_closed() && receiver.is_empty() {
             BoxBody::new(Full::new(first_frame.unwrap()))
         } else {
+            info!("Streaming!");
             let initial_frame = tokio_stream::once(Ok(Frame::data(first_frame.unwrap())));
             let frame_stream = unfold(
                 (ReceiverStream::new(receiver), shutdown_rx),

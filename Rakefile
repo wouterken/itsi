@@ -37,6 +37,10 @@ namespace :scheduler do
   task :compile do
     sh 'cd gems/scheduler && rake compile'
   end
+
+  task :"compile:dev" do
+    sh 'cd gems/scheduler && rake compile:dev'
+  end
 end
 
 namespace :server do
@@ -48,12 +52,22 @@ namespace :server do
   task :compile do
     sh 'cd gems/server && rake compile'
   end
+
+  task :"compile:dev" do
+    sh 'cd gems/server && rake compile:dev'
+  end
 end
 
 desc 'Compile in both scheduler and server directories'
 task :compile do
   Rake::Task['scheduler:compile'].invoke
   Rake::Task['server:compile'].invoke
+end
+
+desc 'Compile in both scheduler and server directories'
+task 'compile:dev' do
+  Rake::Task['scheduler:compile:dev'].invoke
+  Rake::Task['server:compile:dev'].invoke
 end
 
 Rake::Task[:compile].enhance([:sync_crates])

@@ -1,16 +1,15 @@
 use super::itsi_server::RequestJob;
-use crate::{request::itsi_request::ItsiRequest, ITSI_SERVER};
-use crossbeam::channel::{Receiver, Sender};
+use crate::ITSI_SERVER;
 use itsi_rb_helpers::{
     call_with_gvl, call_without_gvl, create_ruby_thread, soft_kill_threads, HeapValue,
 };
 use itsi_tracing::{debug, error, info, warn};
 use magnus::{
-    value::{InnerValue, LazyId, Opaque, ReprValue},
-    Module, RClass, Ruby, Thread, Value,
+    value::{InnerValue, Lazy, LazyId, Opaque, ReprValue},
+    Fiber, Module, RClass, Ruby, Thread, Value,
 };
 use nix::unistd::Pid;
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 use std::{
     num::NonZeroU8,
     ops::Deref,
@@ -18,14 +17,22 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
+    thread,
     time::{Duration, Instant},
+};
+use tokio::{
+    runtime::Builder as RuntimeBuilder,
+    sync::{
+        self,
+        mpsc::{Receiver, Sender},
+    },
 };
 use tracing::instrument;
 pub struct ThreadWorker {
     pub id: String,
     pub app: Opaque<Value>,
-    pub receiver: Arc<Receiver<RequestJob>>,
-    pub sender: Arc<Sender<RequestJob>>,
+    pub receiver: Arc<Mutex<Receiver<RequestJob>>>,
+    pub sender: Sender<RequestJob>,
     pub thread: RwLock<Option<HeapValue<Thread>>>,
     pub terminated: Arc<AtomicBool>,
     pub scheduler_class: Option<String>,
@@ -33,20 +40,25 @@ pub struct ThreadWorker {
 
 static ID_CALL: LazyId = LazyId::new("call");
 static ID_ALIVE: LazyId = LazyId::new("alive?");
-
+static ID_SCHEDULER: LazyId = LazyId::new("scheduler");
+static ID_SCHEDULE: LazyId = LazyId::new("schedule");
+static ID_BLOCK: LazyId = LazyId::new("block");
+static ID_YIELD: LazyId = LazyId::new("yield");
+static CLASS_FIBER: Lazy<RClass> = Lazy::new(|ruby| {
+    ruby.module_kernel()
+        .const_get::<_, RClass>("Fiber")
+        .unwrap()
+});
 #[instrument(skip(threads, app))]
 pub fn build_thread_workers(
     pid: Pid,
     threads: NonZeroU8,
     app: Opaque<Value>,
     scheduler_class: Option<String>,
-) -> (
-    Arc<Vec<ThreadWorker>>,
-    Arc<crossbeam::channel::Sender<RequestJob>>,
-) {
-    let (sender, receiver) = crossbeam::channel::bounded(20);
-    let receiver_ref = Arc::new(receiver);
-    let sender_ref = Arc::new(sender);
+) -> (Arc<Vec<ThreadWorker>>, Sender<RequestJob>) {
+    let (sender, receiver) = tokio::sync::mpsc::channel(20);
+    let receiver_ref = Arc::new(Mutex::new(receiver));
+    let sender_ref = sender;
     let app = load_app(app);
     (
         Arc::new(
@@ -80,8 +92,8 @@ impl ThreadWorker {
     pub fn new(
         id: String,
         app: Opaque<Value>,
-        receiver: Arc<Receiver<RequestJob>>,
-        sender: Arc<Sender<RequestJob>>,
+        receiver: Arc<Mutex<Receiver<RequestJob>>>,
+        sender: Sender<RequestJob>,
         scheduler_class: Option<String>,
     ) -> Self {
         let mut worker = Self {
@@ -97,8 +109,8 @@ impl ThreadWorker {
         worker
     }
 
-    pub fn request_shutdown(&self) {
-        match self.sender.send(RequestJob::Shutdown) {
+    pub async fn request_shutdown(&self) {
+        match self.sender.send(RequestJob::Shutdown).await {
             Ok(_) => {}
             Err(err) => error!("Failed to send shutdown request: {}", err),
         };
@@ -151,96 +163,167 @@ impl ThreadWorker {
         });
     }
 
-    fn gather_requests(
-        receiver: &Arc<Receiver<RequestJob>>,
-        timeout: Duration,
-    ) -> (Vec<ItsiRequest>, bool) {
-        let batch_size = 25;
-        let mut batch = Vec::with_capacity(batch_size);
-        let mut should_close: bool = false;
-
-        while batch.len() < batch_size {
-            match receiver.try_recv() {
-                Ok(RequestJob::ProcessRequest(request)) => batch.push(request),
-                Ok(RequestJob::Shutdown) => {
-                    should_close = true;
-                    break;
-                }
-                Err(_) => break,
-            }
-        }
-
-        if batch.is_empty() {
-            match receiver.recv_timeout(timeout) {
-                Ok(RequestJob::ProcessRequest(request)) => batch.push(request),
-                Ok(RequestJob::Shutdown) => {
-                    should_close = true;
-                }
-                Err(_) => (),
-            }
-        }
-
-        (batch, should_close)
-    }
-
     #[instrument(skip_all, fields(thread_worker=id))]
     pub fn fiber_accept_loop(
         id: String,
         app: Opaque<Value>,
-        receiver: Arc<Receiver<RequestJob>>,
+        receiver: Arc<Mutex<Receiver<RequestJob>>>,
         scheduler_class: Option<String>,
         terminated: Arc<AtomicBool>,
     ) {
         let ruby = Ruby::get().unwrap();
-        let scheduler_proc = ruby.proc_from_fn(move |ruby, _args, _blk| {
-            let class_fiber: RClass = ruby
-                .module_kernel()
-                .const_get::<_, RClass>("Fiber")
+        let (ticker_sender, ticker_receiver) = sync::watch::channel(());
+        let leader: Arc<Mutex<Option<RequestJob>>> = Arc::new(Mutex::new(None));
+        let server = ruby.get_inner(&ITSI_SERVER);
+        let (scheduler, scheduler_fiber) = server
+            .funcall::<_, _, (Value, Fiber)>(
+                "start_scheduler_loop",
+                (
+                    scheduler_class,
+                    Self::build_scheduler_proc(
+                        app,
+                        &ruby,
+                        &leader,
+                        &receiver,
+                        &terminated,
+                        &ticker_sender,
+                    ),
+                ),
+            )
+            .unwrap();
+        Self::start_waker_thread(
+            scheduler.into(),
+            scheduler_fiber.into(),
+            leader,
+            receiver,
+            ticker_receiver,
+        );
+    }
+
+    #[allow(clippy::await_holding_lock)]
+    pub fn start_waker_thread(
+        scheduler: Opaque<Value>,
+        scheduler_fiber: Opaque<Fiber>,
+        leader: Arc<Mutex<Option<RequestJob>>>,
+        receiver: Arc<Mutex<Receiver<RequestJob>>>,
+        mut ticker_receiver: sync::watch::Receiver<()>,
+    ) {
+        create_ruby_thread(move || {
+            let scheduler = scheduler.get_inner_with(&Ruby::get().unwrap());
+            let leader = leader.clone();
+            call_without_gvl(|| {
+                RuntimeBuilder::new_current_thread()
+                    .build()
+                    .expect("Failed to build Tokio runtime")
+                    .block_on(async {
+                        loop {
+                            ticker_receiver.changed().await.ok();
+                            *leader.lock() = receiver.lock().recv().await;
+                            call_with_gvl(|_| {
+                                scheduler
+                                    .funcall::<_, _, Value>(
+                                        "unblock",
+                                        (None::<u8>, scheduler_fiber),
+                                    )
+                                    .unwrap();
+                            });
+                        }
+                    })
+            });
+        });
+    }
+
+    pub fn build_scheduler_proc(
+        app: Opaque<Value>,
+        ruby: &Ruby,
+        leader: &Arc<Mutex<Option<RequestJob>>>,
+        receiver: &Arc<Mutex<Receiver<RequestJob>>>,
+        terminated: &Arc<AtomicBool>,
+        ticker_sender: &sync::watch::Sender<()>,
+    ) -> magnus::block::Proc {
+        let leader = leader.clone();
+        let receiver = receiver.clone();
+        let terminated = terminated.clone();
+        let ticker_sender = ticker_sender.clone();
+        ruby.proc_from_fn(move |ruby, _args, _blk| {
+            let scheduler = ruby
+                .get_inner(&CLASS_FIBER)
+                .funcall::<_, _, Value>(*ID_SCHEDULER, ())
                 .unwrap();
-            let scheduler = class_fiber.funcall::<_, _, Value>("scheduler", ()).unwrap();
             let server = ruby.get_inner(&ITSI_SERVER);
-            loop {
-                scheduler.funcall::<_, _, Value>("yield", ()).unwrap();
-                let (reqs, should_close) = call_without_gvl(|| {
-                    Self::gather_requests(&receiver, Duration::from_micros(50))
+            let thread_current = ruby.thread_current();
+            let leader_clone = leader.clone();
+            let receiver = receiver.clone();
+            let terminated = terminated.clone();
+            let ticker_sender = ticker_sender.clone();
+            let mut batch = Vec::with_capacity(MAX_BATCH_SIZE as usize);
+
+            static MAX_BATCH_SIZE: i32 = 25;
+            call_without_gvl(move || loop {
+                if let Some(v) = leader_clone.lock().take() {
+                    batch.push(v)
+                }
+                let mut recv_lock = receiver.lock();
+                for _ in 0..MAX_BATCH_SIZE {
+                    if let Ok(req) = recv_lock.try_recv() {
+                        batch.push(req);
+                    } else {
+                        break;
+                    }
+                }
+                drop(recv_lock);
+
+                let shutdown_requested = call_with_gvl(|_| {
+                    for req in batch.drain(..) {
+                        match req {
+                            RequestJob::ProcessRequest(request) => {
+                                server
+                                    .funcall::<_, _, Value>(*ID_SCHEDULE, (app, request))
+                                    .ok();
+                            }
+                            RequestJob::Shutdown => return true,
+                        }
+                    }
+                    if receiver.lock().is_empty() {
+                        ticker_sender.send(()).unwrap();
+                        scheduler
+                            .funcall::<_, _, Value>(*ID_BLOCK, (thread_current, None::<u8>))
+                            .unwrap();
+                    } else {
+                        scheduler.funcall::<_, _, Value>(*ID_YIELD, ()).unwrap();
+                    }
+                    false
                 });
-                reqs.into_iter().for_each(|req| {
-                    server.funcall::<_, _, Value>("schedule", (app, req)).ok();
-                });
-                if should_close || terminated.load(Ordering::Relaxed) {
+                if shutdown_requested || terminated.load(Ordering::Relaxed) {
                     break;
                 }
-            }
-        });
-        let server = ruby.get_inner(&ITSI_SERVER);
-        server
-            .funcall::<_, _, Value>("start_scheduler_loop", (scheduler_class, scheduler_proc))
-            .unwrap();
+            })
+        })
     }
 
     #[instrument(skip_all, fields(thread_worker=id))]
     pub fn accept_loop(
         id: String,
         app: Opaque<Value>,
-        receiver: Arc<Receiver<RequestJob>>,
+        receiver: Arc<Mutex<Receiver<RequestJob>>>,
         terminated: Arc<AtomicBool>,
     ) {
         let ruby = Ruby::get().unwrap();
         let server = ruby.get_inner(&ITSI_SERVER);
         call_without_gvl(|| loop {
-            match receiver.recv() {
-                Ok(RequestJob::ProcessRequest(request)) => {
+            match receiver.lock().blocking_recv() {
+                Some(RequestJob::ProcessRequest(request)) => {
                     if terminated.load(Ordering::Relaxed) {
                         break;
                     }
                     call_with_gvl(|_ruby| request.process(&ruby, server, app))
                 }
-                Ok(RequestJob::Shutdown) => {
+                Some(RequestJob::Shutdown) => {
                     debug!("Shutting down thread worker");
                     break;
                 }
-                Err(err) => {
-                    error!("Error Receiving RequestJob: {}", err);
+                None => {
+                    thread::sleep(Duration::from_micros(1));
                 }
             }
         });

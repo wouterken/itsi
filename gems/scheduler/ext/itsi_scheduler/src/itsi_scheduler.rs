@@ -58,7 +58,6 @@ pub(crate) struct ItsiScheduler {
     spawned_fibers: Mutex<HashMap<VALUE, HeapFiber>>,
     unblocked: Mutex<VecDeque<Immediate>>,
     yielded: Mutex<VecDeque<Immediate>>,
-    immediate: Mutex<VecDeque<Immediate>>,
 }
 
 impl std::fmt::Debug for ItsiScheduler {
@@ -94,7 +93,6 @@ impl ItsiScheduler {
             spawned_fibers: Mutex::new(HashMap::new()),
             unblocked: Mutex::new(VecDeque::new()),
             yielded: Mutex::new(VecDeque::new()),
-            immediate: Mutex::new(VecDeque::new()),
         })
     }
 
@@ -203,10 +201,13 @@ impl ItsiScheduler {
                             } else {
                                 Some(Duration::ZERO)
                             }
+                        } else if rself.yielded.lock().is_empty() {
+                            None
                         } else {
                             Some(Duration::ZERO)
                         }
                     };
+                    info!("Going to sleep for {:?}", timeout);
                     rself.tick(timeout)?
                 } {
                     for (fiber, args) in &fibers {
@@ -223,7 +224,6 @@ impl ItsiScheduler {
                     && rself.yielded.lock().is_empty()
                     && rself.io_waiters.lock().is_empty()
                     && rself.suspended.lock().is_empty()
-                    && rself.immediate.lock().is_empty()
                 {
                     info!("Breaking out now");
                     break;
@@ -254,6 +254,7 @@ impl ItsiScheduler {
         // Suspend the current fiber, by adding it to the suspended set
         // and transferring control to the event loop.
         let should_block = blocker.is_some_and(|b| b.is_kind_of(ruby.class_thread()));
+        info!("Blocking!. Should block: {}", should_block);
         if should_block {
             self.suspended
                 .lock()
@@ -331,15 +332,13 @@ impl ItsiScheduler {
         } else {
             self.poll_timers()?
         };
-        let fired_events = if self.io_waiters.lock().is_empty() {
+        let fired_events = if self.io_waiters.lock().is_empty() && timeout == Some(Duration::ZERO) {
             None
         } else {
             self.poll_events(timeout)?
         };
-        let to_resume = self
-            .drain_queue(&self.immediate)
+        let to_resume = due_timers
             .into_iter()
-            .chain(due_timers)
             .chain(fired_events)
             .chain(self.drain_queue(&self.unblocked))
             .chain(self.drain_queue(&self.yielded))
@@ -353,7 +352,7 @@ impl ItsiScheduler {
     pub fn poll_events(&self, timeout: Option<Duration>) -> MagnusResult<ResumeQueue> {
         let mut due_fibers: ResumeQueue = None;
         let mut io_waiters = self.io_waiters.lock();
-        if !io_waiters.is_empty() {
+        if !io_waiters.is_empty() || timeout != Some(Duration::ZERO) {
             let mut events = self.events.lock();
             {
                 let mut poll = self.poll.lock();
@@ -592,7 +591,6 @@ impl ItsiScheduler {
 
     pub fn has_work(&self) -> bool {
         !self.yielded.lock().is_empty()
-            || !self.immediate.lock().is_empty()
             || !self.unblocked.lock().is_empty()
             || !self.io_waiters.lock().is_empty()
             || self.timers.lock().iter().any(|t| t.due())

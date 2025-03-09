@@ -8,7 +8,6 @@ require_relative "server/rack/handler/itsi"
 
 module Itsi
   class Server
-
     def self.call(app, request)
       respond request, app.call(request.to_env)
     end
@@ -23,7 +22,6 @@ module Itsi
       # Don't try and respond if we've been hijacked.
       # The hijacker is now responsible for this.
       return if request.hijacked
-
 
       # 1. Set Status
       response.status = status
@@ -44,7 +42,7 @@ module Itsi
       # If we're partially hijacked or returned a streaming body,
       # stream this response.
 
-      if (body_streamer = streaming_body?(body) ? body : headers.delete("rack.hijack") )
+      if (body_streamer = streaming_body?(body) ? body : headers.delete("rack.hijack"))
         body_streamer.call(StreamIO.new(response))
 
       # If we're enumerable with more than one chunk
@@ -72,8 +70,11 @@ module Itsi
     end
 
     def self.start_scheduler_loop(scheduler_class, fiber_proc)
-      Fiber.set_scheduler(Kernel.const_get(scheduler_class).new())
-      Fiber.schedule(&fiber_proc)
+      scheduler = Kernel.const_get(scheduler_class).new
+      Fiber.set_scheduler(scheduler)
+      scheduled_fiber = Fiber.schedule(&fiber_proc)
+      puts "Scheduled main fiber as #{scheduled_fiber}"
+      return scheduler, scheduled_fiber
     end
 
     # If scheduler is enabled

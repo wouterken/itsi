@@ -9,7 +9,6 @@ use crate::{
         thread_worker::{build_thread_workers, ThreadWorker},
     },
 };
-use crossbeam::channel::Sender;
 use http::Request;
 use hyper::{body::Incoming, service::service_fn};
 use hyper_util::{
@@ -28,6 +27,7 @@ use std::{
 };
 use tokio::{
     runtime::{Builder as RuntimeBuilder, Runtime},
+    sync::mpsc::Sender,
     task::JoinSet,
 };
 use tracing::instrument;
@@ -35,7 +35,7 @@ use tracing::instrument;
 pub struct SingleMode {
     pub server: Builder<TokioExecutor>,
     pub script_name: String,
-    pub sender: Arc<Sender<RequestJob>>,
+    pub sender: Sender<RequestJob>,
     pub shutdown_timeout: f64,
     pub scheduler_class: Option<String>,
     pub(crate) listeners: Arc<Vec<Arc<Listener>>>,
@@ -146,6 +146,7 @@ impl SingleMode {
         listener: Arc<TokioListener>,
         shutdown_channel: tokio::sync::watch::Receiver<RunningPhase>,
     ) -> Result<()> {
+        info!("New connection");
         let sender_clone = self.sender.clone();
         let addr = stream.addr();
         let io: TokioIo<Pin<Box<IoStream>>> = TokioIo::new(Box::pin(stream));
@@ -213,9 +214,9 @@ impl SingleMode {
                 .send(RunningPhase::ShutdownPending)
                 .expect("Failed to send shutdown pending signal");
             let deadline = Instant::now() + Duration::from_secs_f64(self.shutdown_timeout);
-            self.thread_workers
-                .iter()
-                .for_each(|worker| worker.request_shutdown());
+            for worker in &*self.thread_workers {
+                worker.request_shutdown().await;
+            }
             while Instant::now() < deadline {
                 tokio::time::sleep(Duration::from_millis(200)).await;
                 let alive_threads = self
