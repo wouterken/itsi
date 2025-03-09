@@ -72,12 +72,12 @@ impl ItsiResponse {
         } else if receiver.is_closed() && receiver.is_empty() {
             BoxBody::new(Full::new(first_frame.unwrap()))
         } else {
-            info!("Streaming!");
             let initial_frame = tokio_stream::once(Ok(Frame::data(first_frame.unwrap())));
             let frame_stream = unfold(
                 (ReceiverStream::new(receiver), shutdown_rx),
                 |(mut receiver, mut shutdown_rx)| async move {
-                    if let RunningPhase::Shutdown = *shutdown_rx.borrow() {
+                    if let RunningPhase::ShutdownPending = *shutdown_rx.borrow() {
+                        error!("Shutdown RX fired");
                         return None;
                     }
                     loop {
@@ -93,7 +93,8 @@ impl ItsiResponse {
                             },
                             _ = shutdown_rx.changed() => {
                                 match *shutdown_rx.borrow() {
-                                    RunningPhase::Shutdown => {
+                                    RunningPhase::ShutdownPending => {
+                                        error!("Shutdown RX fired");
                                         return None;
                                     },
                                     _ => continue,

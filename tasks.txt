@@ -1,5 +1,5 @@
-- Fix Hijack
-- Scheduler takes true arg (as does preload), better error if not present.
+- Scheduler takes true arg (as does preload), use native scheduler where possible. Better error if not present.
+- Fair acceptor
 - Fix Scheduler Tests
 - Signal based scaling
 - Memory based cycling
@@ -8,7 +8,6 @@
 - Crash Recovery (Force Crash)
 - Filters
 - Static File Serve
-- Test reuse port (late bind)
 - Polish and Release
 -- Log params (JSON vs Pretty. Color vs no-color)
 -- Parameterize EVERYTHING

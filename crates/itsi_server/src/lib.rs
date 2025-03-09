@@ -2,12 +2,10 @@ use magnus::{error::Result, function, method, value::Lazy, Module, Object, RClas
 use request::itsi_request::ItsiRequest;
 use response::itsi_response::ItsiResponse;
 use server::itsi_server::Server;
-use stream_writer::StreamWriter;
 
 pub mod request;
 pub mod response;
 pub mod server;
-pub mod stream_writer;
 
 pub static ITSI_MODULE: Lazy<RModule> = Lazy::new(|ruby| ruby.define_module("Itsi").unwrap());
 pub static ITSI_SERVER: Lazy<RClass> = Lazy::new(|ruby| {
@@ -61,14 +59,9 @@ fn init(ruby: &Ruby) -> Result<()> {
     response.define_method("status=", method!(ItsiResponse::set_status, 1))?;
     response.define_method("send_frame", method!(ItsiResponse::send_frame, 1))?;
     response.define_method("send_and_close", method!(ItsiResponse::send_and_close, 1))?;
-    // response.define_method("recv_frame", method!(ItsiResponse::recv_frame, 1))?;
-    // response.define_method("close_read", method!(ItsiResponse::close_read, 0))?;
     response.define_method("close_write", method!(ItsiResponse::close_write, 0))?;
     response.define_method("close", method!(ItsiResponse::close, 0))?;
     response.define_method("hijack", method!(ItsiResponse::hijack, 1))?;
-
-    let stream_writer = ruby.get_inner(&ITSI_STREAM_WRITER);
-    stream_writer.define_method("write", method!(StreamWriter::write, 1))?;
 
     Ok(())
 }

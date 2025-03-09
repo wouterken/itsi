@@ -23,8 +23,8 @@ use std::{
 use tokio::{
     runtime::Builder as RuntimeBuilder,
     sync::{
-        self,
         mpsc::{Receiver, Sender},
+        watch,
     },
 };
 use tracing::instrument;
@@ -49,6 +49,9 @@ static CLASS_FIBER: Lazy<RClass> = Lazy::new(|ruby| {
         .const_get::<_, RClass>("Fiber")
         .unwrap()
 });
+
+pub struct TerminateWakerSignal(bool);
+
 #[instrument(skip(threads, app))]
 pub fn build_thread_workers(
     pid: Pid,
@@ -129,9 +132,9 @@ impl ThreadWorker {
                 if thread.funcall::<_, _, bool>(*ID_ALIVE, ()).unwrap_or(false) {
                     return true;
                 }
+                info!("Thread {} has shut down gracefully", self.id);
             }
             self.thread.write().take();
-            info!("Thread {} has been shut down", self.id);
 
             false
         })
@@ -172,7 +175,7 @@ impl ThreadWorker {
         terminated: Arc<AtomicBool>,
     ) {
         let ruby = Ruby::get().unwrap();
-        let (ticker_sender, ticker_receiver) = sync::watch::channel(());
+        let (waker_sender, waker_receiver) = watch::channel(TerminateWakerSignal(false));
         let leader: Arc<Mutex<Option<RequestJob>>> = Arc::new(Mutex::new(None));
         let server = ruby.get_inner(&ITSI_SERVER);
         let (scheduler, scheduler_fiber) = server
@@ -186,7 +189,7 @@ impl ThreadWorker {
                         &leader,
                         &receiver,
                         &terminated,
-                        &ticker_sender,
+                        &waker_sender,
                     ),
                 ),
             )
@@ -196,7 +199,7 @@ impl ThreadWorker {
             scheduler_fiber.into(),
             leader,
             receiver,
-            ticker_receiver,
+            waker_receiver,
         );
     }
 
@@ -206,7 +209,7 @@ impl ThreadWorker {
         scheduler_fiber: Opaque<Fiber>,
         leader: Arc<Mutex<Option<RequestJob>>>,
         receiver: Arc<Mutex<Receiver<RequestJob>>>,
-        mut ticker_receiver: sync::watch::Receiver<()>,
+        mut waker_receiver: watch::Receiver<TerminateWakerSignal>,
     ) {
         create_ruby_thread(move || {
             let scheduler = scheduler.get_inner_with(&Ruby::get().unwrap());
@@ -217,16 +220,29 @@ impl ThreadWorker {
                     .expect("Failed to build Tokio runtime")
                     .block_on(async {
                         loop {
-                            ticker_receiver.changed().await.ok();
-                            *leader.lock() = receiver.lock().recv().await;
-                            call_with_gvl(|_| {
-                                scheduler
-                                    .funcall::<_, _, Value>(
-                                        "unblock",
-                                        (None::<u8>, scheduler_fiber),
-                                    )
-                                    .unwrap();
-                            });
+                            waker_receiver.changed().await.ok();
+                            if waker_receiver.borrow().0 {
+                                break;
+                            }
+                            let mut receiver_guard = receiver.lock();
+                            tokio::select! {
+                                _ = waker_receiver.changed() => {
+                                  if waker_receiver.borrow().0 {
+                                      break;
+                                  }
+                                },
+                                next_msg = receiver_guard.recv() => {
+                                  *leader.lock() = next_msg;
+                                  call_with_gvl(|_| {
+                                      scheduler
+                                          .funcall::<_, _, Value>(
+                                              "unblock",
+                                              (None::<u8>, scheduler_fiber),
+                                          )
+                                          .unwrap();
+                                  });
+                                }
+                            }
                         }
                     })
             });
@@ -239,12 +255,12 @@ impl ThreadWorker {
         leader: &Arc<Mutex<Option<RequestJob>>>,
         receiver: &Arc<Mutex<Receiver<RequestJob>>>,
         terminated: &Arc<AtomicBool>,
-        ticker_sender: &sync::watch::Sender<()>,
+        waker_sender: &watch::Sender<TerminateWakerSignal>,
     ) -> magnus::block::Proc {
         let leader = leader.clone();
         let receiver = receiver.clone();
         let terminated = terminated.clone();
-        let ticker_sender = ticker_sender.clone();
+        let waker_sender = waker_sender.clone();
         ruby.proc_from_fn(move |ruby, _args, _blk| {
             let scheduler = ruby
                 .get_inner(&CLASS_FIBER)
@@ -255,7 +271,7 @@ impl ThreadWorker {
             let leader_clone = leader.clone();
             let receiver = receiver.clone();
             let terminated = terminated.clone();
-            let ticker_sender = ticker_sender.clone();
+            let waker_sender = waker_sender.clone();
             let mut batch = Vec::with_capacity(MAX_BATCH_SIZE as usize);
 
             static MAX_BATCH_SIZE: i32 = 25;
@@ -285,7 +301,7 @@ impl ThreadWorker {
                         }
                     }
                     if receiver.lock().is_empty() {
-                        ticker_sender.send(()).unwrap();
+                        waker_sender.send(TerminateWakerSignal(false)).unwrap();
                         scheduler
                             .funcall::<_, _, Value>(*ID_BLOCK, (thread_current, None::<u8>))
                             .unwrap();
@@ -295,6 +311,8 @@ impl ThreadWorker {
                     false
                 });
                 if shutdown_requested || terminated.load(Ordering::Relaxed) {
+                    waker_sender.send(TerminateWakerSignal(true)).unwrap();
+                    info!("Scheduler proc has finished!");
                     break;
                 }
             })

@@ -2,8 +2,8 @@
 
 module Itsi
   class Request
-    require 'stringio'
-    require 'socket'
+    require "stringio"
+    require "socket"
 
     attr_accessor :hijacked
 
@@ -39,6 +39,7 @@ module Itsi
             response.hijack(server_sock.fileno)
             server_sock.sync = true
             app_sock.sync = true
+            app_sock.instance_variable_set("@server_sock", server_sock)
             app_sock
           end
         end
