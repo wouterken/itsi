@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require_relative "test_helper"
 
 class TestFileIO < Minitest::Test
   include Itsi::Scheduler::TestHelper

@@ -1,15 +1,13 @@
-mod immediate;
 mod io_helpers;
 mod io_waiter;
 mod resume_args;
 mod timer;
-use immediate::Immediate;
 use io_helpers::{build_interest, poll_readiness, set_nonblocking};
 use io_waiter::IoWaiter;
 use itsi_error::ItsiError;
 use itsi_instrument_entry::instrument_with_entry;
 use itsi_rb_helpers::{call_with_gvl, call_without_gvl, create_ruby_thread, HeapFiber, HeapValue};
-use itsi_tracing::info;
+use itsi_tracing::debug;
 use magnus::{
     block::Proc,
     error::Result as MagnusResult,
@@ -27,37 +25,44 @@ use std::{
     collections::{BinaryHeap, HashMap, VecDeque},
     os::fd::RawFd,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc,
     },
     time::{Duration, Instant},
 };
 use timer::{Timer, TimerKind};
-use tracing::error;
+use tracing::{error, warn};
 static ID_FILENO: LazyId = LazyId::new("fileno");
-static FIBER_CLASS: Lazy<RClass> =
-    Lazy::new(|ruby| ruby.define_class("Fiber", ruby.class_object()).unwrap());
 static ID_NEW: LazyId = LazyId::new("new");
 static ID_SCHEDULER: LazyId = LazyId::new("scheduler");
 static ID_UNBLOCK: LazyId = LazyId::new("unblock");
+static BLOCKED_TOKEN: AtomicUsize = AtomicUsize::new(1);
+static FIBER_CLASS: Lazy<RClass> =
+    Lazy::new(|ruby| ruby.define_class("Fiber", ruby.class_object()).unwrap());
 
+fn next_block_token() -> usize {
+    BLOCKED_TOKEN.fetch_add(1, Ordering::SeqCst)
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct Readiness(i16);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct FdReadinessPair(RawFd, Readiness);
 
 #[magnus::wrap(class = "Itsi::Scheduler", free_immediately, size)]
 pub(crate) struct ItsiScheduler {
     current_thread: HeapValue<Thread>,
     shutdown: AtomicBool,
     waker: Arc<Waker>,
-    io_waiters: Mutex<HashMap<RawFd, IoWaiter>>,
-    token_map: Mutex<HashMap<Token, RawFd>>,
     poll: Mutex<Poll>,
     events: Mutex<Events>,
-    suspended: Mutex<HashMap<VALUE, HeapFiber>>,
+    io_waiters: Mutex<HashMap<FdReadinessPair, IoWaiter>>,
+    token_map: Mutex<HashMap<Token, FdReadinessPair>>,
+    dependent: Mutex<HashMap<VALUE, HeapFiber>>,
+    blocked: Mutex<HashMap<VALUE, usize>>,
     timers: Mutex<BinaryHeap<Timer>>,
-    spawned_fibers: Mutex<HashMap<VALUE, HeapFiber>>,
-    unblocked: Mutex<VecDeque<Immediate>>,
-    yielded: Mutex<VecDeque<Immediate>>,
+    unblocked: Mutex<VecDeque<HeapFiber>>,
+    yielded: Mutex<VecDeque<HeapFiber>>,
 }
 
 impl std::fmt::Debug for ItsiScheduler {
@@ -69,17 +74,16 @@ impl std::fmt::Debug for ItsiScheduler {
 const WAKE_TOKEN: Token = Token(0);
 type ResumeQueue = Option<Vec<(HeapFiber, ResumeArgs)>>;
 
-fn current_fiber() -> String {
+fn current_fiber_name() -> String {
     format!("{:?}", Ruby::get().unwrap().fiber_current())
 }
 
 impl ItsiScheduler {
-    #[instrument_with_entry(parent = None,skip(ruby),fields(fiber=current_fiber()))]
+    #[instrument_with_entry(parent = None,skip(ruby),fields(fiber=current_fiber_name()))]
     pub fn new(ruby: &Ruby) -> MagnusResult<Self> {
         let poll = Poll::new().unwrap();
-        let events = Events::with_capacity(1024);
         let waker = Waker::new(poll.registry(), WAKE_TOKEN).unwrap();
-        info!("Creating new Itsi::Scheduler");
+
         Ok(ItsiScheduler {
             current_thread: ruby.thread_current().into(),
             shutdown: AtomicBool::new(false),
@@ -88,9 +92,9 @@ impl ItsiScheduler {
             token_map: Mutex::new(HashMap::new()),
             timers: Mutex::new(BinaryHeap::new()),
             poll: Mutex::new(poll),
-            events: Mutex::new(events),
-            suspended: Mutex::new(HashMap::new()),
-            spawned_fibers: Mutex::new(HashMap::new()),
+            events: Mutex::new(Events::with_capacity(1024)),
+            dependent: Mutex::new(HashMap::new()),
+            blocked: Mutex::new(HashMap::new()),
             unblocked: Mutex::new(VecDeque::new()),
             yielded: Mutex::new(VecDeque::new()),
         })
@@ -98,17 +102,18 @@ impl ItsiScheduler {
 
     /// Ruby hook to block the currently running fiber.
     /// Takes a block argument, and an optional timeout float or nil.
-    #[instrument_with_entry(parent = None,skip(ruby),fields(fiber=current_fiber()))]
+    #[instrument_with_entry(parent = None,skip(ruby),fields(fiber=current_fiber_name()))]
     pub fn block(ruby: &Ruby, rself: &Self, args: &[Value]) -> MagnusResult<()> {
         let args = scan_args::scan_args::<(Value,), (Option<Value>,), (), (), (), ()>(args)?;
         let (blocker,) = args.required;
         let (timeout,) = args.optional;
         let timeout = timeout.and_then(|v| f64::try_convert(v).ok());
-        rself.block_current_fiber(
+        rself.block_fiber(
             ruby,
+            ruby.fiber_current().into(),
             timeout.map(Duration::from_secs_f64),
             Some(blocker),
-            TimerKind::Block,
+            TimerKind::Block(next_block_token()),
         )?;
         Ok(())
     }
@@ -117,15 +122,16 @@ impl ItsiScheduler {
     /// If duration is negative, it's a noop
     /// It it's positive we block with a timeout
     /// If it's missing, we simply yield to the event loop (putting this fiber to sleep indefinitely)
-    #[instrument_with_entry(parent = None,skip(ruby),fields(fiber=current_fiber()))]
+    #[instrument_with_entry(parent = None,skip(ruby),fields(fiber=current_fiber_name()))]
     pub fn kernel_sleep(ruby: &Ruby, rself: &Self, duration: Option<f64>) -> MagnusResult<()> {
         match duration {
             Some(duration) => {
                 if duration < 0.0 {
                     Ok(())
                 } else {
-                    rself.block_current_fiber(
+                    rself.block_fiber(
                         ruby,
+                        ruby.fiber_current().into(),
                         Some(Duration::from_secs_f64(duration)),
                         None,
                         TimerKind::Sleep,
@@ -133,13 +139,19 @@ impl ItsiScheduler {
                 }
             }
             None => {
-                rself.yield_value(())?;
+                rself.block_fiber(
+                    ruby,
+                    ruby.fiber_current().into(),
+                    None,
+                    None,
+                    TimerKind::Sleep,
+                )?;
                 Ok(())
             }
         }
     }
 
-    /// Yields to the event loop, returning the resumption value as a `Value`
+    /// Yields from the current Fiber (back to its parent or, if no parent, the event loop, returning the resumption value as a `Value`.
     pub fn yield_value<T>(&self, arglist: T) -> MagnusResult<Value>
     where
         T: ArgList,
@@ -147,8 +159,8 @@ impl ItsiScheduler {
         self.yield_from(arglist)
     }
 
-    /// Yields to the event loop, returning the resumption value as a `V`
-    #[instrument_with_entry(parent = None,skip(arglist),fields(fiber=current_fiber()))]
+    /// Yields from the current Fiber (back to its parent or, if no parent, the event loop, returning the resumption value as a `V`.
+    #[instrument_with_entry(parent = None,skip(arglist),fields(fiber=current_fiber_name()))]
     pub fn yield_from<T, V>(&self, arglist: T) -> MagnusResult<V>
     where
         T: ArgList,
@@ -158,25 +170,28 @@ impl ItsiScheduler {
         Ruby::get().unwrap().fiber_yield(arglist)
     }
 
+    /// Resume a yielded Fiber, if it's still alive.
     #[instrument_with_entry(parent = None,skip(self, args))]
     pub fn resume(
         &self,
         fiber: &HeapFiber,
         args: impl ArgList + std::fmt::Debug,
     ) -> MagnusResult<()> {
-        info!("Resuming fiber {:?} with args {:?}", fiber, args);
+        debug!("Resuming fiber {:?} with args {:?}", fiber, args);
         if !fiber.is_alive() {
             error!("Attempted to resume a dead fiber");
         } else {
             fiber.resume::<_, Value>(args)?;
         }
-        info!("Resume complete");
         if !fiber.is_alive() {
-            self.spawned_fibers.lock().remove(&fiber.as_raw());
+            debug!("Fiber finished {:?}", fiber);
+        } else {
+            debug!("Resumed has yielded again {:?}", fiber);
         }
         Ok(())
     }
 
+    /// Flush out all cancelled timers.
     fn flush_timers(&self, timers: &mut BinaryHeap<Timer>) {
         while timers.peek().is_some_and(|t| t.canceled()) {
             timers.pop();
@@ -186,14 +201,24 @@ impl ItsiScheduler {
     /// Starts the event loop in the current fiber.
     /// This is automatically called at the end of the thread
     /// where the Scheduler is created.
-    #[instrument_with_entry(parent = None,fields(fiber=current_fiber()))]
+    #[instrument_with_entry(parent = None,fields(fiber=current_fiber_name()))]
     pub fn run(_: &Ruby, rself: &Self) -> MagnusResult<()> {
         call_without_gvl(|| -> MagnusResult<()> {
             while !rself.shutdown.load(Ordering::Relaxed) {
+                let mut timers = rself.timers.lock();
+                rself.flush_timers(&mut timers);
+
+                if timers.is_empty()
+                    && rself.yielded.lock().is_empty()
+                    && rself.io_waiters.lock().is_empty()
+                    && rself.unblocked.lock().is_empty()
+                    && rself.dependent.lock().is_empty()
+                {
+                    debug!("Breaking out now");
+                    break;
+                }
                 if let Some(fibers) = {
                     let timeout = {
-                        let mut timers = rself.timers.lock();
-                        rself.flush_timers(&mut timers);
                         if let Some(timer) = timers.peek() {
                             let now = Instant::now();
                             if timer.wake_time >= now {
@@ -201,81 +226,77 @@ impl ItsiScheduler {
                             } else {
                                 Some(Duration::ZERO)
                             }
-                        } else if rself.yielded.lock().is_empty() {
+                        } else if rself.yielded.lock().is_empty()
+                            && rself.unblocked.lock().is_empty()
+                        {
                             None
                         } else {
                             Some(Duration::ZERO)
                         }
                     };
-                    info!("Going to sleep for {:?}", timeout);
+                    drop(timers);
+                    debug!("Going to sleep for {:?}", timeout);
                     rself.tick(timeout)?
                 } {
                     for (fiber, args) in &fibers {
                         match args {
                             ResumeArgs::None => call_with_gvl(|_| rself.resume(fiber, ())).ok(),
                             ResumeArgs::Readiness(args) => {
-                                info!("Calling with readiness {:?}", args);
+                                debug!("Calling with readiness {:?}", args);
                                 call_with_gvl(|_| rself.resume(fiber, (args.0,))).ok()
                             }
                         };
                     }
                 }
-                if rself.timers.lock().is_empty()
-                    && rself.yielded.lock().is_empty()
-                    && rself.io_waiters.lock().is_empty()
-                    && rself.suspended.lock().is_empty()
-                {
-                    info!("Breaking out now");
-                    break;
-                }
             }
             Ok(())
         })?;
-        info!("Event loop finished");
+        debug!("Event loop finished");
         Ok(())
     }
 
-    /// Blocks the current fiber for the given duration (or indefinitely if None)
-    #[instrument_with_entry(parent = None, skip(ruby),fields(fiber=current_fiber()))]
-    pub fn block_current_fiber(
+    /// Blocks the current fiber for the given duration (or indefinitely if no duration is given)
+    #[instrument_with_entry(parent = None, skip(ruby))]
+    pub fn block_fiber(
         &self,
         ruby: &Ruby,
+        fiber: HeapFiber,
         duration: Option<Duration>,
         blocker: Option<Value>,
-
         kind: TimerKind,
     ) -> MagnusResult<()> {
-        let current_fiber: HeapFiber = ruby.fiber_current().into();
+        let block_token = if let TimerKind::Block(token) = kind {
+            token
+        } else {
+            next_block_token()
+        };
+
         // Start a resume timer if we're given a duration.
         let timer = duration
-            .map(|d| self.create_timer(d, kind, current_fiber.clone()))
+            .map(|d| self.create_timer(d, kind, fiber.clone()))
             .transpose()?;
 
-        // Suspend the current fiber, by adding it to the suspended set
-        // and transferring control to the event loop.
-        let should_block = blocker.is_some_and(|b| b.is_kind_of(ruby.class_thread()));
-        info!("Blocking!. Should block: {}", should_block);
-        if should_block {
-            self.suspended
+        let is_blocking_thread = blocker.is_some_and(|b| b.is_kind_of(ruby.class_thread()));
+        if is_blocking_thread {
+            self.dependent
                 .lock()
-                .insert(current_fiber.clone().as_raw(), current_fiber.clone());
+                .insert(fiber.clone().as_raw(), fiber.clone());
         }
 
+        self.blocked
+            .lock()
+            .insert(fiber.clone().as_raw(), block_token);
         self.yield_value(())?;
+        self.blocked.lock().remove(&fiber.clone().as_raw());
 
-        // Someone resumed us! Either the timer or a manual unblock.
-        // Remove from suspended set, and cancel timer if it exists.
-        if should_block {
-            self.suspended.lock().remove(&current_fiber.as_raw());
+        if is_blocking_thread {
+            self.dependent.lock().remove(&fiber.as_raw());
         }
-        if let Some(timer) = timer {
-            timer.cancel();
-        }
-
+        timer.inspect(|t| t.cancel());
         Ok(())
     }
 
-    #[instrument_with_entry(parent = None, fields(fiber=current_fiber()))]
+    #[instrument_with_entry(parent = None, fields(fiber=current_fiber_name()))]
     pub fn create_timer(
         &self,
         duration: Duration,
@@ -288,16 +309,16 @@ impl ItsiScheduler {
     }
 
     /// Set our shutdown flag, and wake the event loop.
-    #[instrument_with_entry(parent = None, fields(fiber=current_fiber()))]
+    #[instrument_with_entry(parent = None, fields(fiber=current_fiber_name()))]
     pub fn shutdown(_: &Ruby, rself: &Self) -> MagnusResult<()> {
         rself.shutdown.store(true, Ordering::SeqCst);
-        let _ = rself.waker.wake();
+        rself.waker.wake().ok();
         Ok(())
     }
 
     fn drain_queue(
         &self,
-        queue: &Mutex<VecDeque<Immediate>>,
+        queue: &Mutex<VecDeque<HeapFiber>>,
     ) -> Option<Vec<(HeapFiber, ResumeArgs)>> {
         let mut queue = queue.lock();
         if queue.is_empty() {
@@ -306,11 +327,11 @@ impl ItsiScheduler {
             Some(
                 queue
                     .drain(..)
-                    .filter_map(|immediate| {
-                        if immediate.canceled() || !immediate.fiber.is_alive() {
+                    .filter_map(|fiber| {
+                        if !fiber.is_alive() {
                             None
                         } else {
-                            Some((immediate.fiber, ResumeArgs::None))
+                            Some((fiber, ResumeArgs::None))
                         }
                     })
                     .collect(),
@@ -367,11 +388,10 @@ impl ItsiScheduler {
                     continue;
                 }
                 let mut is_empty = false;
-                let mut rdy: i32 = 0;
+                let mut rdy: Option<FdReadinessPair> = None;
                 if let Some(readiness) = self.token_map.lock().get(&token) {
-                    rdy = *readiness;
+                    rdy = Some(*readiness);
                     if let Some(waiter) = io_waiters.get_mut(readiness) {
-                        info!("Event is ready for {:?} and token {:?}", readiness, token);
                         let mut evt_readiness = 0;
                         if event.is_readable() {
                             evt_readiness |= 1;
@@ -388,21 +408,18 @@ impl ItsiScheduler {
                                 if !next_fiber.is_alive() {
                                     continue;
                                 }
-                                info!(
-                                    "Will call {:?} for token {:?} and readiness {:?}",
-                                    next_fiber, token, evt_readiness
-                                );
                                 due_fibers.get_or_insert_default().push((
                                     next_fiber,
                                     ResumeArgs::Readiness(Readiness(evt_readiness)),
                                 ));
+                                break;
                             }
                         }
                         is_empty = waiter.fibers.is_empty();
                     }
                 }
                 if is_empty {
-                    let mut waiter = io_waiters.remove(&rdy).unwrap();
+                    let mut waiter = io_waiters.remove(&rdy.unwrap()).unwrap();
                     self.poll.lock().registry().deregister(&mut waiter).unwrap();
                     self.token_map.lock().remove(&token);
                 }
@@ -419,20 +436,33 @@ impl ItsiScheduler {
         while let Some(timer) = timers.peek() {
             if timer.wake_time <= now && !timer.canceled() && timer.fiber.is_alive() {
                 match timer.kind {
-                    TimerKind::Sleep | TimerKind::Block => {
-                        info!("Sleep finished, queueing fiber {:?}", timer.fiber);
+                    TimerKind::Sleep => {
+                        debug!("Sleep finished, queueing fiber {:?}", timer.fiber);
                         due_fibers
                             .get_or_insert_default()
                             .push((timer.fiber.clone(), ResumeArgs::None));
                     }
+                    TimerKind::Block(token) => {
+                        if let Some(current_block_token) =
+                            self.blocked.lock().remove(&timer.fiber.as_raw())
+                        {
+                            if token == current_block_token {
+                                due_fibers
+                                    .get_or_insert_default()
+                                    .push((timer.fiber.clone(), ResumeArgs::None));
+                            } else {
+                                debug!("Refusing to resume out of date token");
+                            }
+                        }
+                    }
                     TimerKind::IoWait(token) => {
                         if self.io_waiters.lock().remove(&token).is_some() {
-                            info!("IO wait finished, queueing fiber {:?}", timer.fiber);
+                            debug!("IO wait finished, queueing fiber {:?}", timer.fiber);
                             due_fibers
                                 .get_or_insert_default()
                                 .push((timer.fiber.clone(), ResumeArgs::None));
                         } else {
-                            info!("IO wait finished but no waiter found {:?}", timer.fiber);
+                            debug!("IO wait finished but no waiter found {:?}", timer.fiber);
                         }
                     }
                 }
@@ -447,7 +477,7 @@ impl ItsiScheduler {
     /// Allows a fiber to register interest in the given set of events for an IO object.
     /// If there's already a fiber registered for the same IO object and events, this Fiber will be queued.
     /// (To try and ensure fair scheduling we use a FIFO for listeners.)
-    #[instrument_with_entry(parent = None, skip(ruby),fields(fiber=current_fiber()))]
+    #[instrument_with_entry(parent = None, skip(ruby),fields(fiber=current_fiber_name()))]
     pub fn io_wait(
         ruby: &Ruby,
         rself: &Self,
@@ -469,16 +499,22 @@ impl ItsiScheduler {
         set_nonblocking(fd)?;
         let interest = build_interest(events)?;
         let current_fiber: HeapFiber = ruby.fiber_current().into();
+        let readiness_pair = FdReadinessPair(fd, Readiness(events));
         {
             let mut binding = rself.io_waiters.lock();
-
-            let io_waiter = binding.entry(fd).or_insert_with(|| IoWaiter::new(fd));
-            info!(
+            let io_waiter = binding
+                .entry(readiness_pair)
+                .or_insert_with(|| IoWaiter::new(fd));
+            debug!(
                 "Registering interest for fd: {:?} with token {:?}",
                 fd, io_waiter.token
             );
             io_waiter.fibers.push_back(current_fiber);
-            rself.token_map.lock().entry(io_waiter.token).or_insert(fd);
+            rself
+                .token_map
+                .lock()
+                .entry(io_waiter.token)
+                .or_insert(readiness_pair);
 
             // No need to re-register, if we're already registered.
             if io_waiter.fibers.len() == 1 {
@@ -493,14 +529,13 @@ impl ItsiScheduler {
                 let timer_entry = Timer::new(
                     Duration::from_secs_f64(timeout.unwrap()),
                     ruby.fiber_current().into(),
-                    TimerKind::IoWait(fd),
+                    TimerKind::IoWait(readiness_pair),
                 );
                 rself.timers.lock().push(timer_entry);
             }
         }
         rself.waker.wake().ok();
-        let readiness = rself.yield_value(())?;
-        Ok(readiness)
+        rself.yield_value(())
     }
 
     pub fn process_wait(
@@ -547,11 +582,12 @@ impl ItsiScheduler {
                 .unwrap();
         });
 
-        self.block_current_fiber(
+        self.block_fiber(
             ruby,
+            ruby.fiber_current().into(),
             None,
             Some(self.current_thread.as_value()),
-            TimerKind::Block,
+            TimerKind::Block(next_block_token()),
         )?;
         let result_opt = Arc::try_unwrap(result).unwrap().write().take();
         Ok(result_opt)
@@ -576,14 +612,17 @@ impl ItsiScheduler {
         Ok(result)
     }
 
-    #[instrument_with_entry(parent = None, fields(fiber=current_fiber()))]
+    #[instrument_with_entry(parent = None, fields(fiber=current_fiber_name()))]
     pub fn unblock(_: &Ruby, rself: &Self, _: Value, fiber: Fiber) -> MagnusResult<()> {
-        if fiber.is_alive() {
-            rself
-                .unblocked
-                .lock()
-                .push_back(Immediate::new(fiber.into()));
+        // Only unblock the fiber if its still running, and we still consider it previously blocked.
+        if fiber.is_alive() && rself.blocked.lock().contains_key(&fiber.as_raw()) {
+            rself.unblocked.lock().push_back(fiber.into());
             rself.waker.wake().unwrap();
+        } else {
+            debug!(
+                "Failed to unblock on Fiber raw: {:?}",
+                HeapFiber::from(fiber)
+            );
         }
 
         Ok(())
@@ -598,15 +637,16 @@ impl ItsiScheduler {
 
     pub fn scheduler_yield(ruby: &Ruby, rself: &Self) -> MagnusResult<()> {
         if rself.has_work() {
-            let immediate = Immediate::new(ruby.fiber_current().into());
-            rself.yielded.lock().push_back(immediate.clone());
+            rself.yielded.lock().push_back(ruby.fiber_current().into());
+            debug!("Yielding to scheduler");
             rself.yield_value(())?;
-            immediate.cancel();
+        } else {
+            debug!("Yielded to scheduler, no work");
         }
         Ok(())
     }
 
-    #[instrument_with_entry(parent = None, skip(ruby),fields(fiber=current_fiber()))]
+    #[instrument_with_entry(parent = None, skip(ruby),fields(fiber=current_fiber_name()))]
     pub fn fiber(ruby: &Ruby, rself: &Self, args: &[Value]) -> MagnusResult<Fiber> {
         let args = scan_args::scan_args::<(), (), (), (), (), Proc>(args)?;
         let block: Proc = args.block;
@@ -615,10 +655,7 @@ impl ItsiScheduler {
             .funcall_with_block::<_, _, Fiber>(*ID_NEW, (), block)
             .unwrap()
             .into();
-        rself
-            .spawned_fibers
-            .lock()
-            .insert(fiber.as_raw(), fiber.clone());
+
         rself.resume(&fiber, ())?;
         Ok(fiber.inner())
     }

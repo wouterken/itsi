@@ -135,7 +135,7 @@ pub fn fork(after_fork: Arc<Option<impl Fn()>>) -> Option<i32> {
     fork_result
 }
 
-pub fn soft_kill_threads<T>(threads: Vec<T>)
+pub fn kill_threads<T>(threads: Vec<T>)
 where
     T: ReprValue,
 {
@@ -175,5 +175,5 @@ pub fn terminate_non_fork_safe_threads() {
         })
         .collect::<Vec<_>>();
 
-    soft_kill_threads(non_fork_safe_threads);
+    kill_threads(non_fork_safe_threads);
 }

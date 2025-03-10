@@ -56,7 +56,6 @@ impl Server {
         fields(workers = 1, threads = 1, shutdown_timeout = 5)
     )]
     pub fn new(args: &[Value]) -> Result<Self> {
-        info!("Starting up {:?}", args);
         type OptionalArgs = (
             Option<u8>,
             Option<u8>,
@@ -118,6 +117,8 @@ impl Server {
             })),
             scheduler_class: args.optional.7,
         };
+        info!("Starting up {:?}", server);
+
         Ok(server)
     }
 

@@ -1,15 +1,16 @@
-- Scheduler takes true arg (as does preload), use native scheduler where possible. Better error if not present.
-- Fair acceptor
-- Fix Scheduler Tests
-- Signal based scaling
-- Memory based cycling
-- OOB GC
-- Autocert (And dev certs use local CA)
-- Crash Recovery (Force Crash)
-- Filters
-- Static File Serve
-- Polish and Release
--- Log params (JSON vs Pretty. Color vs no-color)
+- Ensure no error suppression in scheduler (Easy)
+- Fair acceptor (Medium)
+- Large File Uploads without caching (Reconsider read stream)
+- Signal based scaling (Easy)
+- Signal based phased restart (Easy)
+- Memory based cycling (Easy)
+- OOB GC (Easy)
+- Autocert (Hard. And dev certs use local CA)
+- Crash Recovery (Medium. Force Crash)
+- Filters (Medium)
+- Static File Serve (Medium)
+- Polish and Release (At Lake)
+-- Log params (Think long and hard about what we should and shouldn't log)
 -- Parameterize EVERYTHING
 -- No unwrap or except
-- Fix WebSockets starvation
+-- Switch to direct scheduler integration

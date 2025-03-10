@@ -1,10 +1,10 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-require 'rack'
-require 'optparse'
-require 'etc'
-require 'uri'
+require "rack"
+require "optparse"
+require "etc"
+require "uri"
 
 # Default options used when starting Osprey from the CLI using `osprey`
 DEFAULT_OPTIONS = {
@@ -42,8 +42,14 @@ OptionParser.new do |opts|
     options[:rackup_file] = rf
   end
 
-  opts.on("-f", "--fiber_scheduler CLASS_NAME", String, "Scheduler class to use (default: nil)") do |scheduler_class|
-    options[:scheduler_class] = scheduler_class
+  opts.on("-f", "--fiber_scheduler [CLASS_NAME]", String, "Scheduler class to use (default: nil)") do |scheduler_class|
+    if scheduler_class.nil? || scheduler_class == "true"
+      options[:scheduler_class] = "Itsi::Scheduler"
+    elsif scheduler_class == "false"
+      options.delete(:scheduler_class)
+    else
+      options[:scheduler_class] = scheduler_class
+    end
   end
 
   opts.on("--no-preload", FalseClass, "Disable preloading the application") do |no_preload|
@@ -54,10 +60,9 @@ OptionParser.new do |opts|
     options[:http_port] = hp
   end
 
-  opts.on("-c", "--cert_path CERT_PATH", String, "Path to the SSL certificate file (must follow a --bind option)") do |cp|
-    if options[:binds].empty?
-      raise OptionParser::InvalidOption, "--cert_path must follow a --bind"
-    end
+  opts.on("-c", "--cert_path CERT_PATH", String,
+          "Path to the SSL certificate file (must follow a --bind option)") do |cp|
+    raise OptionParser::InvalidOption, "--cert_path must follow a --bind" if options[:binds].empty?
 
     # Modify the last bind entry to add/update the cert query parameter
     uri = URI.parse("http://#{options[:binds].last}") # Ensure valid URI parsing
@@ -68,9 +73,7 @@ OptionParser.new do |opts|
   end
 
   opts.on("-k", "--key_path KEY_PATH", String, "Path to the SSL key file (must follow a --bind option)") do |kp|
-    if options[:binds].empty?
-      raise OptionParser::InvalidOption, "--key_path must follow a --bind"
-    end
+    raise OptionParser::InvalidOption, "--key_path must follow a --bind" if options[:binds].empty?
 
     # Modify the last bind entry to add/update the key query parameter
     uri = URI.parse("http://#{options[:binds].last}") # Ensure valid URI parsing
@@ -104,10 +107,14 @@ end.parse!
 # This is a no-op if preloading is enabled (we just return the preloaded app).
 preloader = \
   if options[:preload]
-    Array(Rack::Builder.parse_file(options[:rackup_file])).first.method(:itself).to_proc
+    app = Array(Rack::Builder.parse_file(options[:rackup_file])).first
+    require_relative "../lib/itsi/server/scheduler_mode" if options[:scheduler_class]
+    app.method(:itself).to_proc
   else
     lambda do
-      Array(Rack::Builder.parse_file(options[:rackup_file])).first
+      app = Array(Rack::Builder.parse_file(options[:rackup_file])).first
+      require_relative "../lib/itsi/server/scheduler_mode" if options[:scheduler_class]
+      app
     end
   end
 

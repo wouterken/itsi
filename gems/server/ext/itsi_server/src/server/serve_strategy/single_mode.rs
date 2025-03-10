@@ -146,7 +146,6 @@ impl SingleMode {
         listener: Arc<TokioListener>,
         shutdown_channel: tokio::sync::watch::Receiver<RunningPhase>,
     ) -> Result<()> {
-        info!("New connection");
         let sender_clone = self.sender.clone();
         let addr = stream.addr();
         let io: TokioIo<Pin<Box<IoStream>>> = TokioIo::new(Box::pin(stream));

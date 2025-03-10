@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require_relative "test_helper"
 require "active_record"
 
 class TestNestedFibers < Minitest::Test
@@ -8,29 +7,29 @@ class TestNestedFibers < Minitest::Test
 
   def each_pop(queue)
     loop do
-      item = queue.pop
-      break unless item
-
-      yield item
+      if item = queue.pop
+        sleep 0.001
+        yield item
+      else
+        break
+      end
     end
   end
 
-  def test_sse_equivalent
+  def test_async_queue
     results = []
     queue = Queue.new
-    request = nil
-    sched_thread = with_scheduler(join: false) do
-      request = Fiber.schedule do
-        enumerator = to_enum(:each_pop, queue)
-        loop do
-          nxt = enumerator.next
-          sleep nxt * 0.001
-          results << nxt
-        rescue StopIteration
-          break
+
+    # In the thread running the scheduler, we use an enumerator, which
+    # uses a new Fiber per iteration
+    with_scheduler do
+      Fiber.schedule do
+        each_pop(queue) do |item|
+          results << item
         end
       end
 
+      # Non scheduler thread pushes to queue every 0.1 seconds
       Thread.new do
         10.times do |i|
           queue.push(i)
@@ -38,7 +37,7 @@ class TestNestedFibers < Minitest::Test
         end
         queue.push(nil)
       end.join
-    end.join
+    end
 
     assert_equal [*0...10], results
   end
@@ -70,8 +69,8 @@ class TestNestedFibers < Minitest::Test
 
   def test_base_unowned_no_scheduler_yield
     results = []
-    scheduler = nil
-    outer = Fiber.new do
+
+    Fiber.new do
       inner = Fiber.new do
         results << 0
         Fiber.yield
@@ -117,7 +116,7 @@ class TestNestedFibers < Minitest::Test
       outer = Fiber.new do
         inner = Fiber.new do
           results << 0
-          sleep 2
+          sleep 0.1
           results << 4
         end
         results << 1
@@ -127,40 +126,9 @@ class TestNestedFibers < Minitest::Test
       outer.transfer
     end
 
-    assert_equal [1, 0, 4, 2], results
+    assert_equal [1, 0, 2, 4], results
   end
 
-  def test_foo_bar
-
-    fiber_2 = fiber_4 = fiber_1 = nil
-
-    fiber_4 = Fiber.new do
-      puts "Fiber 4 goes straight back to 3"
-    end
-
-    fiber_3 = Fiber.new do
-      puts "Fiber 3 hands control back to 2"
-      fiber_4.transfer
-      puts "Now shifting back to 2"
-      fiber_2.transfer
-      puts "Ends up in 3"
-    end
-
-    fiber_2 = Fiber.new do
-      puts "Fiber 2 hands control to 3"
-      fiber_1.transfer
-      "Fiber 2 explicit yield. Do I end up in 3 or 1?"
-    end
-
-    fiber_1 = Fiber.new do
-      puts "Fiber 1 hands control to 2"
-      fiber_2.transfer
-      puts "Ends up in 1"
-    end
-
-    fiber_1.resume
-    puts "Done it all"
-  end
 
   def test_base_owned_with_scheduler
     results = []
@@ -169,7 +137,7 @@ class TestNestedFibers < Minitest::Test
 
       Fiber.schedule do
         Fiber.schedule do
-          inner = Fiber.schedule do
+          Fiber.schedule do
             results << 0
             sleep 0.01
             results << 4
@@ -188,7 +156,7 @@ class TestNestedFibers < Minitest::Test
   def test_nested_owned_fibers
     results = []
     with_scheduler do |scheduler|
-      outer = Fiber.schedule do
+      Fiber.schedule do
         Fiber.schedule do
           results << 0
           sleep 0.02
@@ -278,7 +246,7 @@ class TestNestedFibers < Minitest::Test
     assert_equal [0, 1, 2, 3, 4, 5, 6, 7, 8], results
   end
 
-  def test_nested_owned_fibers
+  def test_nested_owned_fibers_resume
     results = []
     with_scheduler do |scheduler|
       Fiber.schedule do

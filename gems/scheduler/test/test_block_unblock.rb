@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require_relative "test_helper"
 
 class TestBlockUnblock < Minitest::Test
   include Itsi::Scheduler::TestHelper
@@ -48,8 +47,10 @@ class TestBlockUnblock < Minitest::Test
 
     fiber = scheduler = nil
 
+
+
     Thread.new do
-      sleep 0.05
+      sleep 0.01
       scheduler.unblock(:self, fiber)
       scheduler.unblock(:self, fiber)
     end
@@ -58,10 +59,12 @@ class TestBlockUnblock < Minitest::Test
       scheduler = sched
       fiber = Fiber.schedule do
         # This fiber blocks indefinitely until manually unblocked.
+        sleep 0.1
         Fiber.scheduler.block(:self, nil)
         result = :resumed
       end
     end
+
 
     assert_equal :resumed, result
   end
@@ -152,13 +155,13 @@ class TestBlockUnblock < Minitest::Test
   # Test that unblocking a fiber that isn’t blocked is a no-op.
   def test_unblock_non_blocked_fiber
     with_scheduler do |scheduler|
-      fiber = Fiber.schedule do
+      fiber = Fiber.new do
         # Do nothing special.
         :finished
       end
 
       # Try to unblock a fiber that isn’t currently blocked.
-      scheduler.unblock(fiber)
+      scheduler.unblock(nil, fiber)
       # The fiber should finish normally.
       assert_equal :finished, fiber.resume
     end
@@ -168,7 +171,7 @@ class TestBlockUnblock < Minitest::Test
     results = {}
 
     with_scheduler do |scheduler|
-      fiber1 = Fiber.schedule do
+      Fiber.schedule do
         Fiber.scheduler.block(:resource1, 0.1)
         results[:fiber1] = :resumed
       end
@@ -223,7 +226,7 @@ class TestBlockUnblock < Minitest::Test
     assert_nil result, "Fiber should remain blocked indefinitely"
   end
 
-  def test_unblock_non_blocked_fiber
+  def test_unblock_non_blocked_fiber_v2
     result = :not_resumed
 
     with_scheduler do |scheduler|

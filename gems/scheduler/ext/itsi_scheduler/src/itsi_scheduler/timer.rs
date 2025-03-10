@@ -1,5 +1,4 @@
 use std::{
-    os::fd::RawFd,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -9,11 +8,13 @@ use std::{
 
 use itsi_rb_helpers::HeapFiber;
 
+use super::FdReadinessPair;
+
 #[derive(Debug, Clone)]
 pub enum TimerKind {
-    IoWait(RawFd),
+    IoWait(FdReadinessPair),
+    Block(usize),
     Sleep,
-    Block,
 }
 
 #[derive(Debug, Clone)]

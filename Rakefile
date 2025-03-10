@@ -9,79 +9,54 @@ $LOAD_PATH.unshift(File.expand_path('server/lib', __dir__))
 
 GEMS = [
   {
+    shortname: :scheduler,
     name: 'itsi-scheduler',
     dir: 'gems/scheduler', # subfolder that holds gem code
     gemspec: 'itsi-scheduler.gemspec',
     rust_name: 'itsi_scheduler' # name of the ext subfolder
   },
   {
+    shortname: :server,
     name: 'itsi-server',
     dir: 'gems/server',
     gemspec: 'itsi-server.gemspec',
     rust_name: 'itsi_server'
   }
 ]
+SHARED_TASKS = %i[compile compile:dev test]
 
-Minitest::TestTask.create do |t|
-  t.test_globs = ['gems/**/test/**/*.rb']
-  t.warning = true
-  t.verbose = true
-end
+GEMS.each do |gem|
+  namespace gem[:shortname] do
+    desc "Run tasks in the #{gem[:dir]} directory"
+    task :default do
+      sh "cd #{gem[:dir]} && rake"
+    end
 
-namespace :scheduler do
-  desc 'Run tasks in the scheduler directory'
-  task :default do
-    sh 'cd gems/scheduler && rake'
-  end
-
-  task :compile do
-    sh 'cd gems/scheduler && rake compile'
-  end
-
-  task :"compile:dev" do
-    sh 'cd gems/scheduler && rake compile:dev'
+    SHARED_TASKS.each do |task|
+      task task do
+        sh "cd #{gem[:dir]} && rake #{task}"
+      end
+    end
   end
 end
 
-namespace :server do
-  desc 'Run tasks in the server directory'
-  task :default do
-    sh 'cd gems/server && rake'
+SHARED_TASKS.each do |task|
+  desc "#{task} in all Gem directories"
+  task task do
+    GEMS.each do |gem|
+      Rake::Task["#{gem[:shortname]}:#{task}"].invoke
+    end
   end
-
-  task :compile do
-    sh 'cd gems/server && rake compile'
-  end
-
-  task :"compile:dev" do
-    sh 'cd gems/server && rake compile:dev'
-  end
+  Rake::Task[task].enhance([:sync_crates])
 end
 
-desc 'Compile in both scheduler and server directories'
-task :compile do
-  Rake::Task['scheduler:compile'].invoke
-  Rake::Task['server:compile'].invoke
-end
-
-desc 'Compile in both scheduler and server directories'
-task 'compile:dev' do
-  Rake::Task['scheduler:compile:dev'].invoke
-  Rake::Task['server:compile:dev'].invoke
-end
-
-Rake::Task[:compile].enhance([:sync_crates])
 Rake::Task[:build].enhance([:build_all])
 
 task :sync_crates do
   require 'fileutils'
-
   GEMS.each do |gem_info|
     Dir.chdir('crates') do
-      to_sync = Dir['*'].select do |fn|
-        rust_name = fn.split('/', 2).last
-        rust_name == gem_info[:rust_name] || GEMS.none? { |g| g[:rust_name] == rust_name }
-      end.each do |to_sync|
+      to_sync = Dir['*'].each do |to_sync|
         system("rsync -q -av #{to_sync}/ ../#{gem_info[:dir]}/ext/#{to_sync} --delete")
       end
     end

@@ -5,14 +5,11 @@ module Rack
     module Itsi
 
       def self.run(app, options = {})
-        rack_app = Rack::Builder.parse_file(options[:config])
-
         ::Itsi::Server.new(
+          app: ->{ app },
           binds: ["#{options.fetch(:host, "127.0.0.1")}:#{options.fetch(:Port, 3001)}"],
           workers: options.fetch(:workers, 1),
           threads: options.fetch(:threads, 1),
-          scheduler_class: "Itsi::Scheduler",
-          app: ->{ app }
         ).start
       end
     end

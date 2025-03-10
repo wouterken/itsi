@@ -2,12 +2,11 @@ use magnus::{error::Result, function, method, value::Lazy, Module, Object, RClas
 use request::itsi_request::ItsiRequest;
 use response::itsi_response::ItsiResponse;
 use server::itsi_server::Server;
-use stream_writer::StreamWriter;
+use tracing::*;
 
 pub mod request;
 pub mod response;
 pub mod server;
-pub mod stream_writer;
 
 pub static ITSI_MODULE: Lazy<RModule> = Lazy::new(|ruby| ruby.define_module("Itsi").unwrap());
 pub static ITSI_SERVER: Lazy<RClass> = Lazy::new(|ruby| {
@@ -33,9 +32,28 @@ pub static ITSI_STREAM_WRITER: Lazy<RClass> = Lazy::new(|ruby| {
         .unwrap()
 });
 
+pub fn log_debug(msg: String) {
+    debug!(msg);
+}
+pub fn log_info(msg: String) {
+    info!(msg);
+}
+pub fn log_warn(msg: String) {
+    warn!(msg);
+}
+pub fn log_error(msg: String) {
+    error!(msg);
+}
+
 #[magnus::init]
 fn init(ruby: &Ruby) -> Result<()> {
     itsi_tracing::init();
+
+    let itsi = ruby.get_inner(&ITSI_MODULE);
+    itsi.define_singleton_method("log_debug", function!(log_debug, 1))?;
+    itsi.define_singleton_method("log_info", function!(log_info, 1))?;
+    itsi.define_singleton_method("log_warn", function!(log_warn, 1))?;
+    itsi.define_singleton_method("log_error", function!(log_error, 1))?;
 
     let server = ruby.get_inner(&ITSI_SERVER);
     server.define_singleton_method("new", function!(Server::new, -1))?;
@@ -61,14 +79,10 @@ fn init(ruby: &Ruby) -> Result<()> {
     response.define_method("status=", method!(ItsiResponse::set_status, 1))?;
     response.define_method("send_frame", method!(ItsiResponse::send_frame, 1))?;
     response.define_method("send_and_close", method!(ItsiResponse::send_and_close, 1))?;
-    // response.define_method("recv_frame", method!(ItsiResponse::recv_frame, 1))?;
-    // response.define_method("close_read", method!(ItsiResponse::close_read, 0))?;
     response.define_method("close_write", method!(ItsiResponse::close_write, 0))?;
+    response.define_method("close_read", method!(ItsiResponse::close_read, 0))?;
     response.define_method("close", method!(ItsiResponse::close, 0))?;
     response.define_method("hijack", method!(ItsiResponse::hijack, 1))?;
-
-    let stream_writer = ruby.get_inner(&ITSI_STREAM_WRITER);
-    stream_writer.define_method("write", method!(StreamWriter::write, 1))?;
 
     Ok(())
 }

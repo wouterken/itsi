@@ -1,7 +1,7 @@
 use super::itsi_server::RequestJob;
 use crate::ITSI_SERVER;
 use itsi_rb_helpers::{
-    call_with_gvl, call_without_gvl, create_ruby_thread, soft_kill_threads, HeapValue,
+    call_with_gvl, call_without_gvl, create_ruby_thread, kill_threads, HeapValue,
 };
 use itsi_tracing::{debug, error, info, warn};
 use magnus::{
@@ -127,7 +127,7 @@ impl ThreadWorker {
                 if Instant::now() > deadline {
                     warn!("Worker thread {} timed out. Killing thread", self.id);
                     self.terminated.store(true, Ordering::SeqCst);
-                    soft_kill_threads(vec![thread.as_value()]);
+                    kill_threads(vec![thread.as_value()]);
                 }
                 if thread.funcall::<_, _, bool>(*ID_ALIVE, ()).unwrap_or(false) {
                     return true;
@@ -312,7 +312,6 @@ impl ThreadWorker {
                 });
                 if shutdown_requested || terminated.load(Ordering::Relaxed) {
                     waker_sender.send(TerminateWakerSignal(true)).unwrap();
-                    info!("Scheduler proc has finished!");
                     break;
                 }
             })

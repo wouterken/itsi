@@ -9,7 +9,7 @@ use itsi_rb_helpers::HeapFiber;
 
 use mio::{event::Source, unix::SourceFd, Interest, Token};
 
-static NEXT_TOKEN: AtomicUsize = AtomicUsize::new(1);
+static WAITER_TOKEN: AtomicUsize = AtomicUsize::new(1);
 
 #[derive(Debug)]
 pub struct IoWaiter {
@@ -21,7 +21,7 @@ pub struct IoWaiter {
 
 /// Creates a new token for use with the scheduler.
 fn new_token() -> Token {
-    Token(NEXT_TOKEN.fetch_add(1, Ordering::Relaxed))
+    Token(WAITER_TOKEN.fetch_add(1, Ordering::SeqCst))
 }
 
 impl IoWaiter {

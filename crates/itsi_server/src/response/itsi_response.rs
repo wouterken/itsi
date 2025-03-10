@@ -29,7 +29,7 @@ use tokio::{
 };
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::io::ReaderStream;
-use tracing::{info, warn};
+use tracing::warn;
 
 use crate::server::serve_strategy::single_mode::RunningPhase;
 
@@ -55,7 +55,6 @@ impl ItsiResponse {
         receiver: mpsc::Receiver<Option<Bytes>>,
         shutdown_rx: watch::Receiver<RunningPhase>,
     ) -> Response<BoxBody<Bytes, Infallible>> {
-        info!("Received response");
         if self.is_hijacked() {
             return match self.process_hijacked_response().await {
                 Ok(result) => result,
@@ -289,6 +288,10 @@ impl ItsiResponse {
     pub fn close_write(&self) -> MagnusResult<bool> {
         self.data.response_writer.write().take();
         Ok(true)
+    }
+
+    pub fn close_read(&self) -> MagnusResult<bool> {
+        todo!();
     }
 
     pub fn new(parts: Parts, response_writer: mpsc::Sender<Option<Bytes>>) -> Self {

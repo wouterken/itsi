@@ -3,7 +3,13 @@
 require "bundler/gem_tasks"
 require "minitest/test_task"
 
-Minitest::TestTask.create
+Minitest::TestTask.create(:test) do |t|
+  t.libs << 'test'
+  t.libs << 'lib'
+  t.warning = false
+  t.test_globs = ['test/**/*.rb']
+  t.test_prelude = 'require "helpers/test_helper.rb"'
+end
 
 require "rubocop/rake_task"
 
