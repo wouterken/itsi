@@ -20,7 +20,7 @@ use magnus::{
     value::{LazyId, Opaque, ReprValue},
     RClass, Ruby, Value,
 };
-use std::{collections::HashMap, convert::Infallible, fmt, sync::Arc, time::Instant};
+use std::{convert::Infallible, fmt, sync::Arc, time::Instant};
 use tokio::sync::{
     mpsc::{self, Sender},
     watch,
@@ -215,7 +215,7 @@ impl ItsiRequest {
             .unwrap_or_else(|| self.listener.scheme()))
     }
 
-    pub(crate) fn headers(&self) -> MagnusResult<HashMap<String, &str>> {
+    pub(crate) fn headers(&self) -> MagnusResult<Vec<(String, &str)>> {
         Ok(self
             .parts
             .headers

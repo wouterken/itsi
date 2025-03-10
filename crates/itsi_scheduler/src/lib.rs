@@ -21,6 +21,6 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     scheduler.define_method("run", method!(ItsiScheduler::run, 0))?;
     scheduler.define_method("shutdown", method!(ItsiScheduler::shutdown, 0))?;
     scheduler.define_method("yield", method!(ItsiScheduler::scheduler_yield, 0))?;
-    scheduler.define_method("fiber", method!(ItsiScheduler::fiber, -1))?;
+    scheduler.define_method("fiber", method!(ItsiScheduler::fiber, 0))?;
     Ok(())
 }

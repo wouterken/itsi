@@ -300,16 +300,19 @@ impl ThreadWorker {
                             RequestJob::Shutdown => return true,
                         }
                     }
-                    if receiver.lock().is_empty() {
-                        waker_sender.send(TerminateWakerSignal(false)).unwrap();
+                    false
+                });
+                if receiver.lock().is_empty() {
+                    waker_sender.send(TerminateWakerSignal(false)).unwrap();
+                    call_with_gvl(|_| {
                         scheduler
                             .funcall::<_, _, Value>(*ID_BLOCK, (thread_current, None::<u8>))
                             .unwrap();
-                    } else {
-                        scheduler.funcall::<_, _, Value>(*ID_YIELD, ()).unwrap();
-                    }
-                    false
-                });
+                    });
+                } else {
+                    call_with_gvl(|_| scheduler.funcall::<_, _, Value>(*ID_YIELD, ()).unwrap());
+                }
+
                 if shutdown_requested || terminated.load(Ordering::Relaxed) {
                     waker_sender.send(TerminateWakerSignal(true)).unwrap();
                     break;

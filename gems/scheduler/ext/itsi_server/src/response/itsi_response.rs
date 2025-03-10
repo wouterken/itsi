@@ -292,7 +292,6 @@ impl ItsiResponse {
 
     pub fn close_read(&self) -> MagnusResult<bool> {
         todo!();
-        Ok(true)
     }
 
     pub fn new(parts: Parts, response_writer: mpsc::Sender<Option<Bytes>>) -> Self {

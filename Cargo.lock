@@ -699,6 +699,7 @@ dependencies = [
 name = "itsi_rb_helpers"
 version = "0.1.0"
 dependencies = [
+ "cfg-if",
  "magnus",
  "rb-sys",
 ]

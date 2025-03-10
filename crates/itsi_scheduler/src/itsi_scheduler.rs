@@ -31,11 +31,12 @@ use std::{
     time::{Duration, Instant},
 };
 use timer::{Timer, TimerKind};
-use tracing::{error, warn};
+use tracing::error;
 static ID_FILENO: LazyId = LazyId::new("fileno");
 static ID_NEW: LazyId = LazyId::new("new");
 static ID_SCHEDULER: LazyId = LazyId::new("scheduler");
 static ID_UNBLOCK: LazyId = LazyId::new("unblock");
+static ID_BACKTRACE: LazyId = LazyId::new("backtrace");
 static BLOCKED_TOKEN: AtomicUsize = AtomicUsize::new(1);
 static FIBER_CLASS: Lazy<RClass> =
     Lazy::new(|ruby| ruby.define_class("Fiber", ruby.class_object()).unwrap());
@@ -74,6 +75,7 @@ impl std::fmt::Debug for ItsiScheduler {
 const WAKE_TOKEN: Token = Token(0);
 type ResumeQueue = Option<Vec<(HeapFiber, ResumeArgs)>>;
 
+#[cfg(debug_assertions)]
 fn current_fiber_name() -> String {
     format!("{:?}", Ruby::get().unwrap().fiber_current())
 }
@@ -239,11 +241,28 @@ impl ItsiScheduler {
                     rself.tick(timeout)?
                 } {
                     for (fiber, args) in &fibers {
-                        match args {
-                            ResumeArgs::None => call_with_gvl(|_| rself.resume(fiber, ())).ok(),
+                        if let Err(e) = match args {
+                            ResumeArgs::None => call_with_gvl(|_| rself.resume(fiber, ())),
                             ResumeArgs::Readiness(args) => {
                                 debug!("Calling with readiness {:?}", args);
-                                call_with_gvl(|_| rself.resume(fiber, (args.0,))).ok()
+                                call_with_gvl(|_| rself.resume(fiber, (args.0,)))
+                            }
+                        } {
+                            if let Some(rb_err) = e.value() {
+                                let backtrace = rb_err
+                                    .funcall::<_, _, Vec<String>>(*ID_BACKTRACE, ())
+                                    .unwrap_or_default();
+
+                                error!(
+                                    "Fiber {:?} raised internal exception: {:?}",
+                                    fiber.clone().inner(),
+                                    rb_err
+                                );
+                                for line in backtrace {
+                                    error!("{}", line);
+                                }
+                            } else {
+                                error!("Fiber encountered internal exception {:?}", e);
                             }
                         };
                     }
@@ -647,9 +666,8 @@ impl ItsiScheduler {
     }
 
     #[instrument_with_entry(parent = None, skip(ruby),fields(fiber=current_fiber_name()))]
-    pub fn fiber(ruby: &Ruby, rself: &Self, args: &[Value]) -> MagnusResult<Fiber> {
-        let args = scan_args::scan_args::<(), (), (), (), (), Proc>(args)?;
-        let block: Proc = args.block;
+    pub fn fiber(ruby: &Ruby, rself: &Self) -> MagnusResult<Fiber> {
+        let block: Proc = ruby.block_proc()?;
         let fiber: HeapFiber = ruby
             .get_inner(&FIBER_CLASS)
             .funcall_with_block::<_, _, Fiber>(*ID_NEW, (), block)

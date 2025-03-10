@@ -43,7 +43,7 @@ module Itsi
             app_sock
           end
         end
-      }.merge(headers)
+        }.tap{|r| headers.each{|(k,v)| r[k] = v}}
     end
   end
 end

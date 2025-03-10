@@ -4,5 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+cfg-if = "1.0.0"
 magnus = { version = "0.7.1", features = ["rb-sys", "bytes"] }
 rb-sys = "0.9.105"

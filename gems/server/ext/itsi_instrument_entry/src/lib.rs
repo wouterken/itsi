@@ -12,10 +12,17 @@ pub fn instrument_with_entry(attr: TokenStream, item: TokenStream) -> TokenStrea
     let sig = input_fn.sig;
     let block = input_fn.block;
     let output = quote! {
+        #[cfg(debug_assertions)]
         #[tracing::instrument(#attr_tokens)]
         #(#attrs)*
         #vis #sig {
             tracing::trace!("");
+            #block
+        }
+
+        #[cfg(not(debug_assertions))]
+        #(#attrs)*
+        #vis #sig {
             #block
         }
     };

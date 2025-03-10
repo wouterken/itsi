@@ -1,4 +1,3 @@
-- Ensure no error suppression in scheduler (Easy)
 - Fair acceptor (Medium)
 - Large File Uploads without caching (Reconsider read stream)
 - Signal based scaling (Easy)
