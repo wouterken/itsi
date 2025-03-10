@@ -1,15 +1,13 @@
 use super::{
     bind::Bind,
     listener::Listener,
-    serve_strategy::{
-        cluster_mode::{ClusterLifecycle, ClusterMode},
-        single_mode::SingleMode,
-    },
+    serve_strategy::{cluster_mode::ClusterMode, single_mode::SingleMode},
+    signal::{reset_signal_handlers, SIGNAL_HANDLER_CHANNEL},
 };
 use crate::{request::itsi_request::ItsiRequest, server::serve_strategy::ServeStrategy};
 use derive_more::Debug;
 use itsi_rb_helpers::call_without_gvl;
-use itsi_tracing::{error, info};
+use itsi_tracing::error;
 use magnus::{
     block::Proc,
     error::Result,
@@ -18,29 +16,44 @@ use magnus::{
     RHash, Ruby, Value,
 };
 use parking_lot::Mutex;
-use std::{cmp::max, num::NonZero, sync::Arc};
+use std::{cmp::max, ops::Deref, sync::Arc};
 use tracing::instrument;
 
 static DEFAULT_BIND: &str = "localhost:3000";
 
 #[magnus::wrap(class = "Itsi::Server", free_immediately, size)]
-#[derive(Debug)]
+#[derive(Clone)]
 pub struct Server {
+    pub config: Arc<ServerConfig>,
+}
+
+impl Deref for Server {
+    type Target = ServerConfig;
+
+    fn deref(&self) -> &Self::Target {
+        &self.config
+    }
+}
+type AfterFork = Mutex<Arc<Option<Box<dyn Fn() + Send + Sync>>>>;
+
+#[derive(Debug)]
+pub struct ServerConfig {
     #[debug(skip)]
-    app: Opaque<Value>,
+    pub app: Opaque<Value>,
     #[allow(unused)]
-    workers: u8,
+    pub workers: u8,
     #[allow(unused)]
-    threads: u8,
+    pub threads: u8,
     #[allow(unused)]
-    shutdown_timeout: f64,
-    script_name: String,
+    pub shutdown_timeout: f64,
+    pub script_name: String,
     pub(crate) binds: Mutex<Vec<Bind>>,
     #[debug(skip)]
-    before_fork: Mutex<Option<Box<dyn FnOnce() + Send + Sync>>>,
+    pub before_fork: Mutex<Option<Box<dyn FnOnce() + Send + Sync>>>,
     #[debug(skip)]
-    after_fork: Mutex<Option<Box<dyn Fn() + Send + Sync>>>,
-    scheduler_class: Option<String>,
+    pub after_fork: AfterFork,
+    pub scheduler_class: Option<String>,
+    pub stream_body: Option<bool>,
 }
 
 pub enum RequestJob {
@@ -65,6 +78,7 @@ impl Server {
             Option<Proc>,
             Option<Proc>,
             Option<String>,
+            Option<bool>,
         );
 
         let scan_args: Args<(), (), (), (), RHash, ()> = scan_args(args)?;
@@ -80,10 +94,11 @@ impl Server {
                 "before_fork",
                 "after_fork",
                 "scheduler_class",
+                "stream_body",
             ],
         )?;
 
-        let server = Server {
+        let config = ServerConfig {
             app: Opaque::from(args.required.0),
             workers: max(args.optional.0.unwrap_or(1), 1),
             threads: max(args.optional.1.unwrap_or(1), 1),
@@ -106,7 +121,7 @@ impl Server {
                         .unwrap();
                 }) as Box<dyn FnOnce() + Send + Sync>
             })),
-            after_fork: Mutex::new(args.optional.6.map(|p| {
+            after_fork: Mutex::new(Arc::new(args.optional.6.map(|p| {
                 let opaque_proc = Opaque::from(p);
                 Box::new(move || {
                     opaque_proc
@@ -114,17 +129,20 @@ impl Server {
                         .call::<_, Value>(())
                         .unwrap();
                 }) as Box<dyn Fn() + Send + Sync>
-            })),
+            }))),
             scheduler_class: args.optional.7,
+            stream_body: args.optional.8,
         };
-        info!("Starting up {:?}", server);
 
-        Ok(server)
+        Ok(Server {
+            config: Arc::new(config),
+        })
     }
 
-    #[instrument(name = "Bind", skip_all, fields(binds=format!("{:?}", self.binds.lock())))]
+    #[instrument(name = "Bind", skip_all, fields(binds=format!("{:?}", self.config.binds.lock())))]
     pub(crate) fn listeners(&self) -> Result<Arc<Vec<Arc<Listener>>>> {
         let listeners = self
+            .config
             .binds
             .lock()
             .iter()
@@ -137,40 +155,30 @@ impl Server {
         Ok(Arc::new(listeners))
     }
 
-    pub(crate) fn build_strategy(&self) -> Result<ServeStrategy> {
-        let strategy = if self.workers == 1 {
+    pub(crate) fn build_strategy(self) -> Result<ServeStrategy> {
+        let server = Arc::new(self);
+        let listeners = server.listeners()?;
+
+        let strategy = if server.config.workers == 1 {
             ServeStrategy::Single(Arc::new(SingleMode::new(
-                self.app,
-                self.listeners()?,
-                NonZero::new(self.threads).unwrap(),
-                self.script_name.clone(),
-                self.scheduler_class.clone(),
-                self.shutdown_timeout,
+                server,
+                listeners,
+                SIGNAL_HANDLER_CHANNEL.0.clone(),
             )))
         } else {
-            let before_fork = self.before_fork.lock().take();
-            let after_fork = self.after_fork.lock().take();
-            let lifecycle_hooks = ClusterLifecycle {
-                before_fork,
-                after_fork: Arc::new(after_fork),
-                shutdown_timeout: self.shutdown_timeout,
-            };
             ServeStrategy::Cluster(Arc::new(ClusterMode::new(
-                self.app,
-                self.listeners()?,
-                self.script_name.clone(),
-                NonZero::new(self.threads).unwrap(),
-                NonZero::new(self.workers).unwrap(),
-                self.scheduler_class.clone(),
-                lifecycle_hooks,
+                server,
+                listeners,
+                SIGNAL_HANDLER_CHANNEL.0.clone(),
             )))
         };
         Ok(strategy)
     }
 
     pub fn start(&self) -> Result<()> {
+        reset_signal_handlers();
         call_without_gvl(|| {
-            if let Err(e) = self.build_strategy()?.run() {
+            if let Err(e) = self.clone().build_strategy()?.run() {
                 error!("Error running server: {}", e);
             }
             Ok(())

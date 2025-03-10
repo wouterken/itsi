@@ -13,8 +13,10 @@ use nix::{
     unistd::{setpgid, Pid},
 };
 use parking_lot::Mutex;
-use signal_hook::low_level::exit;
-use std::{process, sync::Arc};
+use std::{
+    process::{self, exit},
+    sync::Arc,
+};
 use tracing::instrument;
 
 #[derive(Default, Clone, Debug)]
@@ -33,7 +35,7 @@ impl ProcessWorker {
             }
             *self.child_pid.lock() = None;
         }
-        match call_with_gvl(|_ruby| fork(cluster_template.lifecycle.after_fork.clone())) {
+        match call_with_gvl(|_ruby| fork(cluster_template.server.after_fork.lock().clone())) {
             Some(pid) => {
                 *self.child_pid.lock() = Some(Pid::from_raw(pid));
             }
@@ -45,12 +47,9 @@ impl ProcessWorker {
                     error!("Failed to set process group ID: {}", e);
                 }
                 if let Err(e) = Arc::new(SingleMode::new(
-                    cluster_template.app,
+                    cluster_template.server.clone(),
                     cluster_template.listeners.clone(),
-                    cluster_template.thread_count,
-                    cluster_template.script_name.clone(),
-                    cluster_template.scheduler_class.clone(),
-                    cluster_template.lifecycle.shutdown_timeout,
+                    cluster_template.lifecycle_channel.clone(),
                 ))
                 .run()
                 {

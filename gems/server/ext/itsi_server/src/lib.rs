@@ -1,9 +1,11 @@
+use body_proxy::itsi_body_proxy::ItsiBodyProxy;
 use magnus::{error::Result, function, method, value::Lazy, Module, Object, RClass, RModule, Ruby};
 use request::itsi_request::ItsiRequest;
 use response::itsi_response::ItsiResponse;
-use server::itsi_server::Server;
+use server::{itsi_server::Server, signal::reset_signal_handlers};
 use tracing::*;
 
+pub mod body_proxy;
 pub mod request;
 pub mod response;
 pub mod server;
@@ -26,9 +28,9 @@ pub static ITSI_RESPONSE: Lazy<RClass> = Lazy::new(|ruby| {
         .unwrap()
 });
 
-pub static ITSI_STREAM_WRITER: Lazy<RClass> = Lazy::new(|ruby| {
+pub static ITSI_BODY_PROXY: Lazy<RClass> = Lazy::new(|ruby| {
     ruby.get_inner(&ITSI_MODULE)
-        .define_class("StreamWriter", ruby.class_object())
+        .define_class("BodyProxy", ruby.class_object())
         .unwrap()
 });
 
@@ -57,6 +59,7 @@ fn init(ruby: &Ruby) -> Result<()> {
 
     let server = ruby.get_inner(&ITSI_SERVER);
     server.define_singleton_method("new", function!(Server::new, -1))?;
+    server.define_singleton_method("reset_signal_handlers", function!(reset_signal_handlers, 0))?;
     server.define_method("start", method!(Server::start, 0))?;
 
     let request = ruby.get_inner(&ITSI_REQUEST);
@@ -73,6 +76,12 @@ fn init(ruby: &Ruby) -> Result<()> {
     request.define_method("port", method!(ItsiRequest::port, 0))?;
     request.define_method("body", method!(ItsiRequest::body, 0))?;
     request.define_method("response", method!(ItsiRequest::response, 0))?;
+
+    let body_proxy = ruby.get_inner(&ITSI_BODY_PROXY);
+    body_proxy.define_method("gets", method!(ItsiBodyProxy::gets, 0))?;
+    body_proxy.define_method("each", method!(ItsiBodyProxy::each, 0))?;
+    body_proxy.define_method("read", method!(ItsiBodyProxy::read, -1))?;
+    body_proxy.define_method("close", method!(ItsiBodyProxy::close, 0))?;
 
     let response = ruby.get_inner(&ITSI_RESPONSE);
     response.define_method("add_header", method!(ItsiResponse::add_header, 2))?;

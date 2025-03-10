@@ -1,4 +1,4 @@
-use std::{os::raw::c_void, ptr::null_mut, sync::Arc};
+use std::{os::raw::c_void, ptr::null_mut, sync::Arc, thread::sleep, time::Duration};
 
 use magnus::{
     RArray, Ruby, Thread, Value,

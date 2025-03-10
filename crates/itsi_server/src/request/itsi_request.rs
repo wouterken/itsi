@@ -1,12 +1,14 @@
 use crate::{
+    body_proxy::itsi_body_proxy::{BigBytes, ItsiBody, ItsiBodyProxy},
     response::itsi_response::ItsiResponse,
     server::{
-        itsi_server::RequestJob,
+        itsi_server::{RequestJob, Server},
         listener::{SockAddr, TokioListener},
         serve_strategy::single_mode::RunningPhase,
     },
 };
 use bytes::Bytes;
+use futures::StreamExt;
 use http::{request::Parts, Response, StatusCode};
 use http_body_util::{combinators::BoxBody, BodyExt, Empty};
 use hyper::{body::Incoming, Request};
@@ -20,7 +22,7 @@ use magnus::{
     value::{LazyId, Opaque, ReprValue},
     RClass, Ruby, Value,
 };
-use std::{convert::Infallible, fmt, sync::Arc, time::Instant};
+use std::{convert::Infallible, fmt, io::Write, sync::Arc, time::Instant};
 use tokio::sync::{
     mpsc::{self, Sender},
     watch,
@@ -33,11 +35,11 @@ static ID_BACKTRACE: LazyId = LazyId::new("backtrace");
 #[magnus::wrap(class = "Itsi::Request", free_immediately, size)]
 pub struct ItsiRequest {
     pub parts: Parts,
-    pub body: Bytes,
+    pub body: ItsiBody,
     pub remote_addr: String,
     pub version: String,
     pub(crate) listener: Arc<TokioListener>,
-    pub script_name: String,
+    pub server: Arc<Server>,
     pub response: ItsiResponse,
     pub start: Instant,
 }
@@ -108,13 +110,12 @@ impl ItsiRequest {
     pub(crate) async fn process_request(
         hyper_request: Request<Incoming>,
         sender: Sender<RequestJob>,
-        script_name: String,
+        server: Arc<Server>,
         listener: Arc<TokioListener>,
         addr: SockAddr,
         shutdown_rx: watch::Receiver<RunningPhase>,
     ) -> itsi_error::Result<Response<BoxBody<Bytes, Infallible>>> {
-        let (request, mut receiver) =
-            ItsiRequest::build_from(hyper_request, addr, script_name, listener).await;
+        let (request, mut receiver) = ItsiRequest::new(hyper_request, addr, server, listener).await;
 
         let response = request.response.clone();
         match sender.send(RequestJob::ProcessRequest(request)).await {
@@ -131,20 +132,30 @@ impl ItsiRequest {
         }
     }
 
-    pub(crate) async fn build_from(
+    pub(crate) async fn new(
         request: Request<Incoming>,
         sock_addr: SockAddr,
-        script_name: String,
+        server: Arc<Server>,
         listener: Arc<TokioListener>,
     ) -> (ItsiRequest, mpsc::Receiver<Option<Bytes>>) {
         let (parts, body) = request.into_parts();
-        let body = body.collect().await.unwrap().to_bytes();
+        let body = if server.stream_body.is_some_and(|f| f) {
+            ItsiBody::Stream(ItsiBodyProxy::new(body))
+        } else {
+            let mut body_bytes = BigBytes::new();
+            let mut stream = body.into_data_stream();
+            while let Some(chunk) = stream.next().await {
+                let byte_array = chunk.unwrap().to_vec();
+                body_bytes.write_all(&byte_array).unwrap();
+            }
+            ItsiBody::Buffered(body_bytes)
+        };
         let response_channel = mpsc::channel::<Option<Bytes>>(100);
         (
             Self {
                 remote_addr: sock_addr.to_string(),
                 body,
-                script_name,
+                server,
                 listener,
                 version: format!("{:?}", &parts.version),
                 response: ItsiResponse::new(parts.clone(), response_channel.0),
@@ -160,12 +171,12 @@ impl ItsiRequest {
             .parts
             .uri
             .path()
-            .strip_prefix(&self.script_name)
+            .strip_prefix(&self.server.script_name)
             .unwrap_or(self.parts.uri.path()))
     }
 
     pub(crate) fn script_name(&self) -> MagnusResult<String> {
-        Ok(self.script_name.clone())
+        Ok(self.server.script_name.clone())
     }
 
     pub(crate) fn query_string(&self) -> MagnusResult<&str> {
@@ -239,8 +250,8 @@ impl ItsiRequest {
         Ok(self.parts.uri.port_u16().unwrap_or(self.listener.port()))
     }
 
-    pub(crate) fn body(&self) -> MagnusResult<Bytes> {
-        Ok(self.body.clone())
+    pub(crate) fn body(&self) -> MagnusResult<Value> {
+        Ok(self.body.into_value())
     }
 
     pub(crate) fn response(&self) -> MagnusResult<ItsiResponse> {

@@ -21,7 +21,9 @@ DEFAULT_OPTIONS = {
   # Rackup file
   rackup_file: "config.ru",
   # Scheduler class
-  scheduler_class: nil
+  scheduler_class: nil,
+  # Whether to stream the body or not
+  stream_body: false
 }
 
 options = DEFAULT_OPTIONS.to_a.select(&:last).to_h
@@ -95,6 +97,10 @@ OptionParser.new do |opts|
   opts.on("-b", "--bind BIND", String, "Bind address (default: #{options[:binds].join(", ")})") do |bind|
     options[:binds].pop if options[:binds].first.frozen?
     options[:binds] << bind
+  end
+
+  opts.on("--stream-body", TrueClass, "Stream body frames (default: false for best compatibility)") do |stream_body|
+    options[:stream_body] = stream_body
   end
 
   opts.on("--help", "Show this help message") do

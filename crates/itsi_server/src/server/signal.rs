@@ -1,34 +1,58 @@
-use std::sync::Arc;
+use std::sync::LazyLock;
 
-use itsi_tracing::info;
-use signal_hook::consts::signal::*;
-use signal_hook_tokio::Signals;
-
-use futures::stream::StreamExt;
-use tokio::sync::broadcast::{self, error::SendError};
+use nix::libc::{self, sighandler_t};
+use tokio::sync::{self, broadcast};
 
 use super::lifecycle_event::LifecycleEvent;
 
-pub async fn handle_signals(
-    lifecycle_tx: Arc<broadcast::Sender<LifecycleEvent>>,
-) -> Result<(), SendError<LifecycleEvent>> {
-    let mut signals = Signals::new([
-        SIGHUP, SIGTERM, SIGINT, SIGQUIT, SIGTTIN, SIGTTOU, SIGWINCH, SIGUSR2,
-    ])
-    .expect("Failed to create signal handler");
-    while let Some(signal) = signals.next().await {
-        info!("Got signal: {:?}", signal);
-        match signal {
-            SIGHUP => {
-                // Reload configuration
-                // Reopen the log file
-            }
-            SIGTERM | SIGINT | SIGQUIT => {
-                lifecycle_tx.send(LifecycleEvent::Shutdown)?;
-                break;
-            }
-            _ => {}
+pub static SIGNAL_HANDLER_CHANNEL: LazyLock<(
+    broadcast::Sender<LifecycleEvent>,
+    broadcast::Receiver<LifecycleEvent>,
+)> = LazyLock::new(|| sync::broadcast::channel(5));
+
+fn receive_signal(signum: i32, _: sighandler_t) {
+    match signum {
+        libc::SIGTERM => {
+            SIGNAL_HANDLER_CHANNEL.0.send(LifecycleEvent::Shutdown).ok();
         }
+        libc::SIGINT => {
+            SIGNAL_HANDLER_CHANNEL.0.send(LifecycleEvent::Shutdown).ok();
+        }
+        libc::SIGUSR1 => {
+            SIGNAL_HANDLER_CHANNEL
+                .0
+                .send(LifecycleEvent::RestartWorkers)
+                .ok();
+        }
+        libc::SIGUSR2 => {
+            SIGNAL_HANDLER_CHANNEL
+                .0
+                .send(LifecycleEvent::RestartWorkersFreshConfig)
+                .ok();
+        }
+        libc::SIGTTIN => {
+            SIGNAL_HANDLER_CHANNEL
+                .0
+                .send(LifecycleEvent::IncreaseWorkers)
+                .ok();
+        }
+        libc::SIGTTOU => {
+            SIGNAL_HANDLER_CHANNEL
+                .0
+                .send(LifecycleEvent::DecreaseWorkers)
+                .ok();
+        }
+        _ => {}
     }
-    Ok(())
+}
+
+pub fn reset_signal_handlers() {
+    unsafe {
+        libc::signal(libc::SIGTERM, receive_signal as usize);
+        libc::signal(libc::SIGINT, receive_signal as usize);
+        libc::signal(libc::SIGUSR1, receive_signal as usize);
+        libc::signal(libc::SIGUSR2, receive_signal as usize);
+        libc::signal(libc::SIGTTIN, receive_signal as usize);
+        libc::signal(libc::SIGTTOU, receive_signal as usize);
+    }
 }

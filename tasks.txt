@@ -1,7 +1,8 @@
-- Fair acceptor (Medium)
-- Large File Uploads without caching (Reconsider read stream)
-- Signal based scaling (Easy)
-- Signal based phased restart (Easy)
+- Print PIDs
+- Signals:
+  - Support restore after trap
+  - Signal based scaling (Easy)
+  - Signal based phased restart (Easy)
 - Memory based cycling (Easy)
 - OOB GC (Easy)
 - Autocert (Hard. And dev certs use local CA)

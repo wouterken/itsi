@@ -1,47 +1,33 @@
 use crate::server::{
-    lifecycle_event::LifecycleEvent, listener::Listener, process_worker::ProcessWorker,
-    signal::handle_signals,
+    itsi_server::Server, lifecycle_event::LifecycleEvent, listener::Listener,
+    process_worker::ProcessWorker,
 };
 use itsi_error::{ItsiError, Result};
 use itsi_tracing::{error, info, warn};
-use magnus::{value::Opaque, Value};
-use std::{num::NonZeroU8, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 use tokio::{
     runtime::{Builder as RuntimeBuilder, Runtime},
-    sync::Mutex,
+    sync::{broadcast, Mutex},
     time::sleep,
 };
 use tracing::instrument;
 pub(crate) struct ClusterMode {
-    pub app: Opaque<Value>,
     pub listeners: Arc<Vec<Arc<Listener>>>,
-    pub script_name: String,
-    pub thread_count: NonZeroU8,
+    pub server: Arc<Server>,
     pub process_workers: Vec<ProcessWorker>,
-    pub scheduler_class: Option<String>,
-    pub lifecycle: ClusterLifecycle,
-}
-
-pub(crate) struct ClusterLifecycle {
-    pub before_fork: Option<Box<dyn FnOnce() + Send + Sync>>,
-    pub after_fork: Arc<Option<Box<dyn Fn() + Send + Sync>>>,
-    pub shutdown_timeout: f64,
+    pub lifecycle_channel: broadcast::Sender<LifecycleEvent>,
 }
 
 impl ClusterMode {
     pub fn new(
-        app: Opaque<Value>,
+        server: Arc<Server>,
         listeners: Arc<Vec<Arc<Listener>>>,
-        script_name: String,
-        thread_count: NonZeroU8,
-        worker_count: NonZeroU8,
-        scheduler_class: Option<String>,
-        mut lifecycle: ClusterLifecycle,
+        lifecycle_channel: broadcast::Sender<LifecycleEvent>,
     ) -> Self {
-        if let Some(f) = lifecycle.before_fork.take() {
+        if let Some(f) = server.before_fork.lock().take() {
             f();
         }
-        let process_workers = (0..worker_count.get())
+        let process_workers = (0..server.workers)
             .map(|worker_id| ProcessWorker {
                 worker_id,
                 ..Default::default()
@@ -49,13 +35,10 @@ impl ClusterMode {
             .collect();
 
         Self {
-            app,
             listeners,
-            script_name,
-            thread_count,
+            server,
             process_workers,
-            lifecycle,
-            scheduler_class,
+            lifecycle_channel,
         }
     }
 
@@ -75,11 +58,15 @@ impl ClusterMode {
             LifecycleEvent::Shutdown => self.shutdown().await,
             LifecycleEvent::Start => todo!(),
             LifecycleEvent::Restart => todo!(),
+            LifecycleEvent::IncreaseWorkers => todo!(),
+            LifecycleEvent::DecreaseWorkers => todo!(),
+            LifecycleEvent::RestartWorkers => todo!(),
+            LifecycleEvent::RestartWorkersFreshConfig => todo!(),
         }
     }
 
     pub async fn shutdown(&self) -> Result<()> {
-        let shutdown_timeout = self.lifecycle.shutdown_timeout;
+        let shutdown_timeout = self.server.shutdown_timeout;
         let workers = self.process_workers.clone();
 
         workers.iter().for_each(|worker| worker.request_shutdown());
@@ -121,12 +108,9 @@ impl ClusterMode {
             .iter()
             .for_each(|worker| worker.boot(Arc::clone(&self)));
 
-        let (lifecycle_tx, mut lifecycle_rx) =
-            tokio::sync::broadcast::channel::<LifecycleEvent>(100);
-        let lifecycle_tx = Arc::new(lifecycle_tx);
+        let mut lifecycle_rx = self.lifecycle_channel.subscribe();
 
         self.build_runtime().block_on(async {
-            let signals_task = tokio::spawn(handle_signals(lifecycle_tx));
             loop {
                 tokio::select! {
                       lifecycle_event = lifecycle_rx.recv() => match lifecycle_event{
@@ -142,10 +126,6 @@ impl ClusterMode {
                         Err(e) => error!("Error receiving lifecycle_event: {:?}", e),
                     }
                 }
-            }
-
-            if let Err(e) = signals_task.await {
-                error!("Error closing server: {:?}", e);
             }
         });
 

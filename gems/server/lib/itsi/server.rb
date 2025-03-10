@@ -2,6 +2,7 @@
 
 require_relative "server/version"
 require_relative "server/itsi_server"
+require_relative "signals"
 require_relative "request"
 require_relative "stream_io"
 require_relative "server/rack/handler/itsi"

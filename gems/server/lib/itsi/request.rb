@@ -2,7 +2,6 @@
 
 module Itsi
   class Request
-    require "stringio"
     require "socket"
 
     attr_accessor :hijacked
@@ -26,7 +25,7 @@ module Itsi
         "HTTP_VERSION" => version,
         "rack.version" => [version],
         "rack.url_scheme" => scheme,
-        "rack.input" => StringIO.new(body),
+        "rack.input" => input,
         "rack.errors" => $stderr,
         "rack.multithread" => true,
         "rack.multiprocess" => true,
@@ -44,6 +43,15 @@ module Itsi
           end
         end
         }.tap{|r| headers.each{|(k,v)| r[k] = v}}
+    end
+
+    require 'stringio'
+    def input
+      case body
+      when Itsi::BodyProxy then body
+      when Array then File.open(body.first, "rb")
+      when String then StringIO.new(body)
+      end
     end
   end
 end

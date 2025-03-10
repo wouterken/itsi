@@ -2,10 +2,9 @@ use crate::{
     request::itsi_request::ItsiRequest,
     server::{
         io_stream::IoStream,
-        itsi_server::RequestJob,
+        itsi_server::{RequestJob, Server},
         lifecycle_event::LifecycleEvent,
         listener::{Listener, TokioListener},
-        signal::handle_signals,
         thread_worker::{build_thread_workers, ThreadWorker},
     },
 };
@@ -17,7 +16,6 @@ use hyper_util::{
 };
 use itsi_error::{ItsiError, Result};
 use itsi_tracing::{debug, error, info};
-use magnus::{value::Opaque, Value};
 use nix::unistd::Pid;
 use std::{
     num::NonZeroU8,
@@ -27,19 +25,18 @@ use std::{
 };
 use tokio::{
     runtime::{Builder as RuntimeBuilder, Runtime},
-    sync::mpsc::Sender,
+    sync::{broadcast, mpsc::Sender},
     task::JoinSet,
 };
 use tracing::instrument;
 
 pub struct SingleMode {
-    pub server: Builder<TokioExecutor>,
-    pub script_name: String,
+    pub executor: Builder<TokioExecutor>,
+    pub server: Arc<Server>,
     pub sender: Sender<RequestJob>,
-    pub shutdown_timeout: f64,
-    pub scheduler_class: Option<String>,
     pub(crate) listeners: Arc<Vec<Arc<Listener>>>,
     pub(crate) thread_workers: Arc<Vec<ThreadWorker>>,
+    pub(crate) lifecycle_channel: broadcast::Sender<LifecycleEvent>,
 }
 
 pub enum RunningPhase {
@@ -50,23 +47,23 @@ pub enum RunningPhase {
 
 impl SingleMode {
     pub(crate) fn new(
-        app: Opaque<Value>,
+        server: Arc<Server>,
         listeners: Arc<Vec<Arc<Listener>>>,
-        thread_count: NonZeroU8,
-        script_name: String,
-        scheduler_class: Option<String>,
-        shutdown_timeout: f64,
+        lifecycle_channel: broadcast::Sender<LifecycleEvent>,
     ) -> Self {
-        let (thread_workers, sender) =
-            build_thread_workers(Pid::this(), thread_count, app, scheduler_class.clone());
+        let (thread_workers, sender) = build_thread_workers(
+            Pid::this(),
+            NonZeroU8::try_from(server.threads).unwrap(),
+            server.app,
+            server.scheduler_class.clone(),
+        );
         Self {
-            server: Builder::new(TokioExecutor::new()),
+            executor: Builder::new(TokioExecutor::new()),
             listeners,
-            script_name,
+            server,
             sender,
-            shutdown_timeout,
-            scheduler_class,
             thread_workers,
+            lifecycle_channel,
         }
     }
 
@@ -83,21 +80,16 @@ impl SingleMode {
 
     #[instrument(skip(self), fields(mode = "single"))]
     pub fn run(self: Arc<Self>) -> Result<()> {
-        let (lifecycle_tx, _) = tokio::sync::broadcast::channel::<LifecycleEvent>(100);
-        let lifecycle_tx = Arc::new(lifecycle_tx);
         let mut listener_task_set = JoinSet::new();
-
         let self_ref = Arc::new(self);
-
         self_ref.build_runtime().block_on(async {
-          let signals_task = tokio::spawn(handle_signals(lifecycle_tx.clone()));
+
           for listener in self_ref.listeners.clone().iter() {
               let listener = Arc::new(listener.to_tokio_listener());
-              let mut lifecycle_rx = lifecycle_tx.subscribe();
+              let mut lifecycle_rx = self_ref.lifecycle_channel.subscribe();
               let self_ref = self_ref.clone();
               let listener = listener.clone();
               let (shutdown_sender, mut shutdown_receiver) = tokio::sync::watch::channel::<RunningPhase>(RunningPhase::Running);
-
               listener_task_set.spawn(async move {
                 let strategy = self_ref.clone();
                 loop {
@@ -132,9 +124,6 @@ impl SingleMode {
           }
 
           while let Some(_res) = listener_task_set.join_next().await {}
-          if let Err(e) =  signals_task.await {
-              error!("Error closing server: {:?}", e);
-          }
         });
 
         Ok(())
@@ -149,12 +138,13 @@ impl SingleMode {
         let sender_clone = self.sender.clone();
         let addr = stream.addr();
         let io: TokioIo<Pin<Box<IoStream>>> = TokioIo::new(Box::pin(stream));
-        let script_name = self.script_name.clone();
         let server = self.server.clone();
+        let executor = self.executor.clone();
         let mut shutdown_channel_clone = shutdown_channel.clone();
         tokio::spawn(async move {
-            let mut server = server.clone();
-            let mut binding = server.http1();
+            let server = server.clone();
+            let mut executor = executor.clone();
+            let mut binding = executor.http1();
             let shutdown_channel = shutdown_channel_clone.clone();
             let mut serve = Box::pin(
                 binding
@@ -166,7 +156,7 @@ impl SingleMode {
                             ItsiRequest::process_request(
                                 hyper_request,
                                 sender_clone.clone(),
-                                script_name.clone(),
+                                server.clone(),
                                 listener.clone(),
                                 addr.clone(),
                                 shutdown_channel.clone(),
@@ -212,12 +202,12 @@ impl SingleMode {
             shutdown_sender
                 .send(RunningPhase::ShutdownPending)
                 .expect("Failed to send shutdown pending signal");
-            let deadline = Instant::now() + Duration::from_secs_f64(self.shutdown_timeout);
+            let deadline = Instant::now() + Duration::from_secs_f64(self.server.shutdown_timeout);
             for worker in &*self.thread_workers {
                 worker.request_shutdown().await;
             }
             while Instant::now() < deadline {
-                tokio::time::sleep(Duration::from_millis(500)).await;
+                tokio::time::sleep(Duration::from_millis(50)).await;
                 let alive_threads = self
                     .thread_workers
                     .iter()
@@ -229,6 +219,7 @@ impl SingleMode {
                 if alive_threads == 0 {
                     break;
                 }
+                tokio::time::sleep(Duration::from_millis(200)).await;
             }
 
             info!("Sending shutdown signal");
