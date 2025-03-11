@@ -56,6 +56,7 @@ pub struct ServerConfig {
     pub stream_body: Option<bool>,
 }
 
+#[derive(Debug)]
 pub enum RequestJob {
     ProcessRequest(ItsiRequest),
     Shutdown,

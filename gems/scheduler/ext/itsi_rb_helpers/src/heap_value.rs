@@ -1,4 +1,5 @@
 use magnus::IntoValue;
+use magnus::rb_sys::AsRawValue;
 use magnus::value::BoxValue;
 use magnus::{Ruby, Value, value::ReprValue};
 use std::fmt::{self, Debug, Formatter};
@@ -12,6 +13,15 @@ use std::ops::Deref;
 pub struct HeapValue<T>(pub BoxValue<T>)
 where
     T: ReprValue;
+
+impl<T> PartialEq for HeapValue<T>
+where
+    T: ReprValue,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.0.as_raw() == other.0.as_raw()
+    }
+}
 
 impl<T> Deref for HeapValue<T>
 where

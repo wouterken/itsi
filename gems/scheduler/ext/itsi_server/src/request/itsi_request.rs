@@ -8,6 +8,7 @@ use crate::{
     },
 };
 use bytes::Bytes;
+use derive_more::Debug;
 use futures::StreamExt;
 use http::{request::Parts, Response, StatusCode};
 use http_body_util::{combinators::BoxBody, BodyExt, Empty};
@@ -27,18 +28,21 @@ use tokio::sync::{
     mpsc::{self, Sender},
     watch,
 };
-
 static ID_CALL: LazyId = LazyId::new("call");
 static ID_MESSAGE: LazyId = LazyId::new("message");
 static ID_BACKTRACE: LazyId = LazyId::new("backtrace");
 
+#[derive(Debug)]
 #[magnus::wrap(class = "Itsi::Request", free_immediately, size)]
 pub struct ItsiRequest {
     pub parts: Parts,
+    #[debug(skip)]
     pub body: ItsiBody,
     pub remote_addr: String,
     pub version: String,
+    #[debug(skip)]
     pub(crate) listener: Arc<TokioListener>,
+    #[debug(skip)]
     pub server: Arc<Server>,
     pub response: ItsiResponse,
     pub start: Instant,

@@ -1,4 +1,4 @@
-use std::sync::LazyLock;
+use std::sync::{atomic::AtomicI8, LazyLock};
 
 use nix::libc::{self, sighandler_t};
 use tokio::sync::{self, broadcast};
@@ -10,25 +10,24 @@ pub static SIGNAL_HANDLER_CHANNEL: LazyLock<(
     broadcast::Receiver<LifecycleEvent>,
 )> = LazyLock::new(|| sync::broadcast::channel(5));
 
+pub static SIGINT_COUNT: AtomicI8 = AtomicI8::new(0);
 fn receive_signal(signum: i32, _: sighandler_t) {
+    SIGINT_COUNT.fetch_add(-1, std::sync::atomic::Ordering::SeqCst);
     match signum {
-        libc::SIGTERM => {
-            SIGNAL_HANDLER_CHANNEL.0.send(LifecycleEvent::Shutdown).ok();
-        }
-        libc::SIGINT => {
-            SIGNAL_HANDLER_CHANNEL.0.send(LifecycleEvent::Shutdown).ok();
+        libc::SIGTERM | libc::SIGINT => {
+            SIGINT_COUNT.fetch_add(2, std::sync::atomic::Ordering::SeqCst);
+            if SIGINT_COUNT.load(std::sync::atomic::Ordering::SeqCst) < 2 {
+                SIGNAL_HANDLER_CHANNEL.0.send(LifecycleEvent::Shutdown).ok();
+            } else {
+                // Not messing about. Force shutdown.
+                SIGNAL_HANDLER_CHANNEL
+                    .0
+                    .send(LifecycleEvent::ForceShutdown)
+                    .ok();
+            }
         }
         libc::SIGUSR1 => {
-            SIGNAL_HANDLER_CHANNEL
-                .0
-                .send(LifecycleEvent::RestartWorkers)
-                .ok();
-        }
-        libc::SIGUSR2 => {
-            SIGNAL_HANDLER_CHANNEL
-                .0
-                .send(LifecycleEvent::RestartWorkersFreshConfig)
-                .ok();
+            SIGNAL_HANDLER_CHANNEL.0.send(LifecycleEvent::Restart).ok();
         }
         libc::SIGTTIN => {
             SIGNAL_HANDLER_CHANNEL

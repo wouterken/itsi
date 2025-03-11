@@ -178,20 +178,17 @@ impl ThreadWorker {
         let (waker_sender, waker_receiver) = watch::channel(TerminateWakerSignal(false));
         let leader: Arc<Mutex<Option<RequestJob>>> = Arc::new(Mutex::new(None));
         let server = ruby.get_inner(&ITSI_SERVER);
+        let scheduler_task = ServerSchedulerTask::new(
+            app,
+            leader.clone(),
+            receiver.clone(),
+            terminated.clone(),
+            waker_sender.clone(),
+        );
         let (scheduler, scheduler_fiber) = server
             .funcall::<_, _, (Value, Fiber)>(
                 "start_scheduler_loop",
-                (
-                    scheduler_class,
-                    Self::build_scheduler_proc(
-                        app,
-                        &ruby,
-                        &leader,
-                        &receiver,
-                        &terminated,
-                        &waker_sender,
-                    ),
-                ),
+                (scheduler_class, scheduler_task),
             )
             .unwrap();
         Self::start_waker_thread(
@@ -249,78 +246,6 @@ impl ThreadWorker {
         });
     }
 
-    pub fn build_scheduler_proc(
-        app: Opaque<Value>,
-        ruby: &Ruby,
-        leader: &Arc<Mutex<Option<RequestJob>>>,
-        receiver: &Arc<Mutex<Receiver<RequestJob>>>,
-        terminated: &Arc<AtomicBool>,
-        waker_sender: &watch::Sender<TerminateWakerSignal>,
-    ) -> magnus::block::Proc {
-        let leader = leader.clone();
-        let receiver = receiver.clone();
-        let terminated = terminated.clone();
-        let waker_sender = waker_sender.clone();
-        ruby.proc_from_fn(move |ruby, _args, _blk| {
-            let scheduler = ruby
-                .get_inner(&CLASS_FIBER)
-                .funcall::<_, _, Value>(*ID_SCHEDULER, ())
-                .unwrap();
-            let server = ruby.get_inner(&ITSI_SERVER);
-            let thread_current = ruby.thread_current();
-            let leader_clone = leader.clone();
-            let receiver = receiver.clone();
-            let terminated = terminated.clone();
-            let waker_sender = waker_sender.clone();
-            let mut batch = Vec::with_capacity(MAX_BATCH_SIZE as usize);
-
-            static MAX_BATCH_SIZE: i32 = 25;
-            call_without_gvl(move || loop {
-                if let Some(v) = leader_clone.lock().take() {
-                    batch.push(v)
-                }
-                let mut recv_lock = receiver.lock();
-                for _ in 0..MAX_BATCH_SIZE {
-                    if let Ok(req) = recv_lock.try_recv() {
-                        batch.push(req);
-                    } else {
-                        break;
-                    }
-                }
-                drop(recv_lock);
-
-                let shutdown_requested = call_with_gvl(|_| {
-                    for req in batch.drain(..) {
-                        match req {
-                            RequestJob::ProcessRequest(request) => {
-                                server
-                                    .funcall::<_, _, Value>(*ID_SCHEDULE, (app, request))
-                                    .ok();
-                            }
-                            RequestJob::Shutdown => return true,
-                        }
-                    }
-                    false
-                });
-                if receiver.lock().is_empty() {
-                    waker_sender.send(TerminateWakerSignal(false)).unwrap();
-                    call_with_gvl(|_| {
-                        scheduler
-                            .funcall::<_, _, Value>(*ID_BLOCK, (thread_current, None::<u8>))
-                            .unwrap();
-                    });
-                } else {
-                    call_with_gvl(|_| scheduler.funcall::<_, _, Value>(*ID_YIELD, ()).unwrap());
-                }
-
-                if shutdown_requested || terminated.load(Ordering::Relaxed) {
-                    waker_sender.send(TerminateWakerSignal(true)).unwrap();
-                    break;
-                }
-            })
-        })
-    }
-
     #[instrument(skip_all, fields(thread_worker=id))]
     pub fn accept_loop(
         id: String,
@@ -347,5 +272,101 @@ impl ThreadWorker {
                 }
             }
         });
+    }
+}
+
+#[magnus::wrap(class = "Itsi::ServerSchedulerTask")]
+pub struct ServerSchedulerTask {
+    app: Opaque<Value>,
+    leader: Arc<Mutex<Option<RequestJob>>>,
+    receiver: Arc<Mutex<Receiver<RequestJob>>>,
+    terminated: Arc<AtomicBool>,
+    waker_sender: watch::Sender<TerminateWakerSignal>,
+}
+
+impl ServerSchedulerTask {
+    pub fn new(
+        app: Opaque<Value>,
+        leader: Arc<Mutex<Option<RequestJob>>>,
+        receiver: Arc<Mutex<Receiver<RequestJob>>>,
+        terminated: Arc<AtomicBool>,
+        waker_sender: watch::Sender<TerminateWakerSignal>,
+    ) -> Self {
+        ServerSchedulerTask {
+            app,
+            leader,
+            receiver,
+            terminated,
+            waker_sender,
+        }
+    }
+
+    pub fn run(ruby: &Ruby, rself: &Self) {
+        let scheduler = ruby
+            .get_inner(&CLASS_FIBER)
+            .funcall::<_, _, Value>(*ID_SCHEDULER, ())
+            .unwrap();
+        let server = ruby.get_inner(&ITSI_SERVER);
+        let thread_current = ruby.thread_current();
+        let leader_clone = rself.leader.clone();
+        let receiver = rself.receiver.clone();
+        let terminated = rself.terminated.clone();
+        let waker_sender = rself.waker_sender.clone();
+        let mut batch = Vec::with_capacity(MAX_BATCH_SIZE as usize);
+
+        static MAX_BATCH_SIZE: i32 = 25;
+        call_without_gvl(move || loop {
+            if let Some(v) = leader_clone.lock().take() {
+                if matches!(v, RequestJob::Shutdown) {
+                    waker_sender.send(TerminateWakerSignal(true)).unwrap();
+                    break;
+                }
+                batch.push(v)
+            }
+
+            let mut recv_lock = receiver.lock();
+            for _ in 0..MAX_BATCH_SIZE {
+                if let Ok(req) = recv_lock.try_recv() {
+                    if matches!(req, RequestJob::Shutdown) {
+                        batch.push(req);
+                        break;
+                    }
+                    batch.push(req);
+                } else {
+                    break;
+                }
+            }
+            drop(recv_lock);
+
+            let shutdown_requested = call_with_gvl(|_| {
+                for req in batch.drain(..) {
+                    match req {
+                        RequestJob::ProcessRequest(request) => {
+                            server
+                                .funcall::<_, _, Value>(*ID_SCHEDULE, (rself.app, request))
+                                .ok();
+                        }
+                        RequestJob::Shutdown => return true,
+                    }
+                }
+                false
+            });
+
+            if shutdown_requested || terminated.load(Ordering::Relaxed) {
+                waker_sender.send(TerminateWakerSignal(true)).unwrap();
+                break;
+            }
+
+            if receiver.lock().is_empty() {
+                waker_sender.send(TerminateWakerSignal(false)).unwrap();
+                call_with_gvl(|_| {
+                    scheduler
+                        .funcall::<_, _, Value>(*ID_BLOCK, (thread_current, None::<u8>))
+                        .unwrap();
+                });
+            } else {
+                call_with_gvl(|_| scheduler.funcall::<_, _, Value>(*ID_YIELD, ()).unwrap());
+            }
+        })
     }
 }

@@ -181,7 +181,6 @@ impl SingleMode {
                 // A lifecycle event triggers shutdown.
                 _ = shutdown_channel_clone.changed() => {
                     // Initiate graceful shutdown.
-                    info!("Received shutdown signal in serve_fn");
                     serve.as_mut().graceful_shutdown();
                     // Now await the connection to finish shutting down.
                     if let Err(e) = serve.await {

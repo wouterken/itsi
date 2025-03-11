@@ -1,8 +1,8 @@
+- Segfault
 - Print PIDs
 - Signals:
-  - Support restore after trap
-  - Signal based scaling (Easy)
   - Signal based phased restart (Easy)
+- Segfault in Fiber Scheduler
 - Memory based cycling (Easy)
 - OOB GC (Easy)
 - Autocert (Hard. And dev certs use local CA)

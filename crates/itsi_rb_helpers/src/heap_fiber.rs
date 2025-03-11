@@ -1,18 +1,20 @@
-use magnus::rb_sys::AsRawValue;
-use magnus::value::BoxValue;
-use magnus::{Fiber, IntoValue};
+use magnus::value::{BoxValue, ReprValue};
+use magnus::{Fiber, IntoValue, Object};
 use magnus::{Ruby, Value};
 use std::fmt::{self, Debug, Formatter};
 use std::ops::Deref;
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use crate::heap_value::HeapValue;
 
-#[derive(Clone)]
-pub struct HeapFiber(HeapValue<Fiber>);
+#[derive(Clone, PartialEq)]
+pub struct HeapFiber(HeapValue<Fiber>, i64);
 
 impl From<magnus::Fiber> for HeapFiber {
     fn from(value: magnus::Fiber) -> Self {
-        HeapFiber(HeapValue(BoxValue::new(value)))
+        let id = value.hash().unwrap().to_i64().unwrap();
+        HeapFiber(HeapValue(BoxValue::new(value)), id)
     }
 }
 
@@ -28,6 +30,10 @@ impl HeapFiber {
     pub fn inner(self) -> Fiber {
         *self.0
     }
+
+    pub fn id(&self) -> i64 {
+        self.1
+    }
 }
 
 impl IntoValue for HeapFiber {
@@ -40,8 +46,12 @@ cfg_if::cfg_if! {
   if #[cfg(debug_assertions)] {
     impl Debug for HeapFiber {
         fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-            let raw_id = self.0.as_raw();
-            let short_name = get_fiber_name(raw_id);
+            let raw_id = self.1;
+            let short_name = if raw_id == 0 {
+                "main".to_string()
+            } else {
+                format!("F{}", raw_id)
+            };
             let full_str = format!("{:?}", self.0);
             let (path_line, state) = parse_fiber_debug(&full_str);
             if path_line.is_empty() && state.is_empty() {
@@ -75,37 +85,11 @@ cfg_if::cfg_if! {
         ("", "")
     }
 
-    use std::sync::{LazyLock, RwLock};
-    use std::collections::HashMap;
-    use std::sync::atomic::{AtomicU64, Ordering};
-
-    static FIBER_NAMES: LazyLock<RwLock<HashMap<u64, String>>> =
-        LazyLock::new(|| RwLock::new(HashMap::new()));
-    static FIBER_COUNTER: AtomicU64 = AtomicU64::new(0);
-
-
-    fn get_fiber_name(id: u64) -> String {
-        let mut map = FIBER_NAMES.write().unwrap();
-        if let Some(existing_name) = map.get(&id) {
-            return existing_name.clone();
-        }
-
-        // Not in map yet – assign a new name
-        let new_idx = FIBER_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let name = if new_idx == 0 {
-            "FMain".to_string()
-        } else {
-            format!("F{}", new_idx)
-        };
-        map.insert(id, name.clone());
-        name
-    }
-
   }
   else if #[cfg(not(debug_assertions))] {
     impl Debug for HeapFiber {
         fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-            let raw_id = self.0.as_raw();
+            let raw_id = self.id();
             write!(f, "F({})", raw_id)
         }
     }
