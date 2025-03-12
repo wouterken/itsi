@@ -1,7 +1,10 @@
 # frozen_string_literal: true
 
-require "itsi/scheduler"
+require "minitest/reporters"
+Minitest::Reporters.use! Minitest::Reporters::SpecReporter.new
 
+require "itsi/scheduler"
+require 'debug'
 module Itsi::Scheduler::TestHelper
   SchedulerClass = Itsi::Scheduler
 

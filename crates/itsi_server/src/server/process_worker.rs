@@ -1,4 +1,5 @@
 use super::serve_strategy::{cluster_mode::ClusterMode, single_mode::SingleMode};
+use itsi_error::{ItsiError, Result};
 use itsi_rb_helpers::{call_with_gvl, call_without_gvl, create_ruby_thread, fork};
 use itsi_tracing::error;
 use nix::{
@@ -18,17 +19,31 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+use sysinfo::System;
+
+use tokio::{sync::watch, time::sleep};
 use tracing::{info, instrument, warn};
 
-#[derive(Default, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct ProcessWorker {
     pub worker_id: usize,
     pub child_pid: Arc<Mutex<Option<Pid>>>,
+    pub started_at: Instant,
+}
+
+impl Default for ProcessWorker {
+    fn default() -> Self {
+        Self {
+            worker_id: 0,
+            child_pid: Arc::new(Mutex::new(None)),
+            started_at: Instant::now(),
+        }
+    }
 }
 
 impl ProcessWorker {
     #[instrument(skip(self, cluster_template), fields(self.worker_id = %self.worker_id))]
-    pub(crate) fn boot(&self, cluster_template: Arc<ClusterMode>) {
+    pub(crate) fn boot(&self, cluster_template: Arc<ClusterMode>) -> Result<()> {
         let child_pid = *self.child_pid.lock();
         if let Some(pid) = child_pid {
             if self.is_alive() {
@@ -50,24 +65,58 @@ impl ProcessWorker {
                 ) {
                     error!("Failed to set process group ID: {}", e);
                 }
-                if let Err(e) = Arc::new(SingleMode::new(
+                match SingleMode::new(
                     cluster_template.server.clone(),
                     cluster_template.listeners.clone(),
                     cluster_template.lifecycle_channel.clone(),
-                ))
-                .run()
-                {
-                    error!("Failed to boot into worker mode: {}", e);
+                ) {
+                    Ok(single_mode) => {
+                        Arc::new(single_mode).run().ok();
+                    }
+                    Err(e) => {
+                        error!("Failed to boot into worker mode: {}", e);
+                    }
                 }
                 exit(0)
             }
         }
+        Ok(())
     }
 
-    pub(crate) async fn reboot(&self, cluster_template: Arc<ClusterMode>) {
+    pub(crate) fn memory_usage(&self) -> Option<u64> {
+        if let Some(pid) = *self.child_pid.lock() {
+            let s = System::new_all();
+            if let Some(process) = s.process(sysinfo::Pid::from(pid.as_raw() as usize)) {
+                return Some(process.memory());
+            }
+        }
+        None
+    }
+
+    pub(crate) async fn reboot(&self, cluster_template: Arc<ClusterMode>) -> Result<bool> {
         self.graceful_shutdown(cluster_template.clone()).await;
         let self_clone = self.clone();
-        create_ruby_thread(move || call_without_gvl(move || self_clone.boot(cluster_template)));
+        let (booted_sender, mut booted_receiver) = watch::channel(false);
+        create_ruby_thread(move || {
+            call_without_gvl(move || {
+                if self_clone.boot(cluster_template).is_ok() {
+                    booted_sender.send(true).ok()
+                } else {
+                    booted_sender.send(false).ok()
+                };
+            })
+        });
+
+        booted_receiver
+            .changed()
+            .await
+            .map_err(|_| ItsiError::InternalServerError("Failed to boot worker".to_owned()))?;
+
+        let guard = booted_receiver.borrow();
+        let result = guard.to_owned();
+        // Not very robust, we should check to see if the worker is actually listening before considering this successful.
+        sleep(Duration::from_secs(1)).await;
+        Ok(result)
     }
 
     pub(crate) async fn graceful_shutdown(&self, cluster_template: Arc<ClusterMode>) {
@@ -83,12 +132,24 @@ impl ProcessWorker {
         }
     }
 
-    pub(crate) fn boot_if_dead(&self, cluster_template: Arc<ClusterMode>) {
+    pub(crate) fn boot_if_dead(&self, cluster_template: Arc<ClusterMode>) -> bool {
         if !self.is_alive() {
-            warn!("Worker no longer running. Rebooting");
-            let self_clone = self.clone();
-            create_ruby_thread(move || call_without_gvl(move || self_clone.boot(cluster_template)));
+            if self.just_started() {
+                error!(
+                    "Worker in crash loop {:?}. Refusing to restart",
+                    self.child_pid.lock()
+                );
+                return false;
+            } else {
+                let self_clone = self.clone();
+                create_ruby_thread(move || {
+                    call_without_gvl(move || {
+                        self_clone.boot(cluster_template).ok();
+                    })
+                });
+            }
         }
+        true
     }
 
     pub(crate) fn request_shutdown(&self) {
@@ -107,6 +168,11 @@ impl ProcessWorker {
                 error!("Failed to force kill process {}: {}", pid, e);
             }
         }
+    }
+
+    pub(crate) fn just_started(&self) -> bool {
+        let now = Instant::now();
+        now.duration_since(self.started_at).as_millis() < 2000
     }
 
     pub(crate) fn is_alive(&self) -> bool {

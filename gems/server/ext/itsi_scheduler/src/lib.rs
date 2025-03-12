@@ -1,5 +1,5 @@
 use itsi_scheduler::ItsiScheduler;
-use magnus::{function, method, Error, Module, Object, Ruby};
+use magnus::{function, method, Class, Error, Module, Object, Ruby};
 mod itsi_scheduler;
 
 #[magnus::init]
@@ -7,20 +7,32 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     itsi_tracing::init();
     let module = ruby.define_module("Itsi")?;
     let scheduler = module.define_class("Scheduler", ruby.class_object())?;
-    scheduler.define_singleton_method("new", function!(ItsiScheduler::new, 0))?;
-    scheduler.define_method("io_wait", method!(ItsiScheduler::io_wait, 3))?;
-    scheduler.define_method("kernel_sleep", method!(ItsiScheduler::kernel_sleep, 1))?;
-    scheduler.define_method("process_wait", method!(ItsiScheduler::process_wait, 2))?;
+    scheduler.define_singleton_method("info", function!(ItsiScheduler::class_info, 1))?;
+    scheduler.define_alloc_func::<ItsiScheduler>();
+    scheduler.define_method("initialize", method!(ItsiScheduler::initialize, 0))?;
+    scheduler.define_method("wake", method!(ItsiScheduler::wake, 0))?;
+    scheduler.define_method(
+        "register_io_wait",
+        method!(ItsiScheduler::register_io_wait, 4),
+    )?;
+    scheduler.define_method("info", method!(ItsiScheduler::info, 1))?;
+    scheduler.define_method("debug", method!(ItsiScheduler::debug, 1))?;
+    scheduler.define_method("warn", method!(ItsiScheduler::warn, 1))?;
+    scheduler.define_method("start_timer", method!(ItsiScheduler::start_timer, 2))?;
     scheduler.define_method(
         "address_resolve",
         method!(ItsiScheduler::address_resolve, 1),
     )?;
-    scheduler.define_method("block", method!(ItsiScheduler::block, -1))?;
-    scheduler.define_method("unblock", method!(ItsiScheduler::unblock, 2))?;
-    scheduler.define_method("scheduler_close", method!(ItsiScheduler::run, 0))?;
-    scheduler.define_method("run", method!(ItsiScheduler::run, 0))?;
-    scheduler.define_method("shutdown", method!(ItsiScheduler::shutdown, 0))?;
-    scheduler.define_method("yield", method!(ItsiScheduler::scheduler_yield, 0))?;
-    scheduler.define_method("fiber", method!(ItsiScheduler::fiber, 0))?;
+    scheduler.define_method("has_pending_io?", method!(ItsiScheduler::has_pending_io, 0))?;
+
+    scheduler.define_method(
+        "fetch_due_timers",
+        method!(ItsiScheduler::fetch_due_timers, 0),
+    )?;
+    scheduler.define_method(
+        "fetch_due_events",
+        method!(ItsiScheduler::fetch_due_events, 0),
+    )?;
+
     Ok(())
 }

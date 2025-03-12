@@ -11,6 +11,7 @@ module Itsi
       path = self.path
       host = self.host
       version = self.version
+      body = self.body
       {
         "SERVER_SOFTWARE" => "Itsi",
         "SCRIPT_NAME" => script_name,
@@ -26,7 +27,12 @@ module Itsi
         "HTTP_VERSION" => version,
         "rack.version" => [version],
         "rack.url_scheme" => scheme,
-        "rack.input" => StringIO.new(body),
+        "rack.input" => \
+          case body
+          when Array then File.open(body.first, "rb")
+          when String then StringIO.new(body)
+          else body
+          end,
         "rack.errors" => $stderr,
         "rack.multithread" => true,
         "rack.multiprocess" => true,
@@ -43,7 +49,7 @@ module Itsi
             app_sock
           end
         end
-        }.tap{|r| headers.each{|(k,v)| r[k] = v}}
+      }.tap { |r| headers.each { |(k, v)| r[k] = v } }
     end
   end
 end

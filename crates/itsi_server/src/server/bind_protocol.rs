@@ -7,6 +7,7 @@ pub enum BindProtocol {
     Https,
     Http,
     Unix,
+    Unixs,
 }
 
 impl FromStr for BindProtocol {
@@ -17,7 +18,20 @@ impl FromStr for BindProtocol {
             "http" => Ok(BindProtocol::Http),
             "https" => Ok(BindProtocol::Https),
             "unix" => Ok(BindProtocol::Unix),
+            "tls" => Ok(BindProtocol::Unixs),
             _ => Err(ItsiError::UnsupportedProtocol(s.to_string())),
         }
+    }
+}
+
+impl std::fmt::Display for BindProtocol {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            BindProtocol::Https => "https",
+            BindProtocol::Http => "http",
+            BindProtocol::Unix => "unix",
+            BindProtocol::Unixs => "tls",
+        };
+        write!(f, "{}", s)
     }
 }

@@ -25,7 +25,7 @@ use std::{
 };
 use tokio::{
     runtime::{Builder as RuntimeBuilder, Runtime},
-    sync::{broadcast, mpsc::Sender},
+    sync::broadcast,
     task::JoinSet,
 };
 use tracing::instrument;
@@ -33,7 +33,7 @@ use tracing::instrument;
 pub struct SingleMode {
     pub executor: Builder<TokioExecutor>,
     pub server: Arc<Server>,
-    pub sender: Sender<RequestJob>,
+    pub sender: async_channel::Sender<RequestJob>,
     pub(crate) listeners: Arc<Vec<Arc<Listener>>>,
     pub(crate) thread_workers: Arc<Vec<ThreadWorker>>,
     pub(crate) lifecycle_channel: broadcast::Sender<LifecycleEvent>,
@@ -46,25 +46,26 @@ pub enum RunningPhase {
 }
 
 impl SingleMode {
+    #[instrument(parent=None, skip_all, fields(pid=format!("{:?}", Pid::this())))]
     pub(crate) fn new(
         server: Arc<Server>,
         listeners: Arc<Vec<Arc<Listener>>>,
         lifecycle_channel: broadcast::Sender<LifecycleEvent>,
-    ) -> Self {
+    ) -> Result<Self> {
         let (thread_workers, sender) = build_thread_workers(
             Pid::this(),
             NonZeroU8::try_from(server.threads).unwrap(),
             server.app,
             server.scheduler_class.clone(),
-        );
-        Self {
+        )?;
+        Ok(Self {
             executor: Builder::new(TokioExecutor::new()),
             listeners,
             server,
             sender,
             thread_workers,
             lifecycle_channel,
-        }
+        })
     }
 
     pub fn build_runtime(&self) -> Runtime {
@@ -78,7 +79,11 @@ impl SingleMode {
             .expect("Failed to build Tokio runtime")
     }
 
-    #[instrument(skip(self), fields(mode = "single"))]
+    pub fn stop(&self) -> Result<()> {
+        Ok(())
+    }
+
+    #[instrument(parent=None, skip(self))]
     pub fn run(self: Arc<Self>) -> Result<()> {
         let mut listener_task_set = JoinSet::new();
         let self_ref = Arc::new(self);
@@ -210,10 +215,7 @@ impl SingleMode {
                 let alive_threads = self
                     .thread_workers
                     .iter()
-                    .filter(|worker| {
-                        info!("Checking worker status {}", worker.id);
-                        worker.poll_shutdown(deadline)
-                    })
+                    .filter(|worker| worker.poll_shutdown(deadline))
                     .count();
                 if alive_threads == 0 {
                     break;

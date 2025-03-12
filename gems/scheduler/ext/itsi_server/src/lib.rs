@@ -2,9 +2,7 @@ use body_proxy::itsi_body_proxy::ItsiBodyProxy;
 use magnus::{error::Result, function, method, value::Lazy, Module, Object, RClass, RModule, Ruby};
 use request::itsi_request::ItsiRequest;
 use response::itsi_response::ItsiResponse;
-use server::{
-    itsi_server::Server, signal::reset_signal_handlers, thread_worker::ServerSchedulerTask,
-};
+use server::{itsi_server::Server, signal::reset_signal_handlers};
 use tracing::*;
 
 pub mod body_proxy;
@@ -100,9 +98,6 @@ fn init(ruby: &Ruby) -> Result<()> {
     response.define_method("close_read", method!(ItsiResponse::close_read, 0))?;
     response.define_method("close", method!(ItsiResponse::close, 0))?;
     response.define_method("hijack", method!(ItsiResponse::hijack, 1))?;
-
-    let server_scheduler = ruby.get_inner(&ITSI_SERVER_SCHEDULER_TASK);
-    server_scheduler.define_method("run", method!(ServerSchedulerTask::run, 0))?;
 
     Ok(())
 }

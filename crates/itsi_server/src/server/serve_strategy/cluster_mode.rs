@@ -5,7 +5,10 @@ use crate::server::{
 use itsi_error::{ItsiError, Result};
 use itsi_rb_helpers::{call_without_gvl, create_ruby_thread};
 use itsi_tracing::{error, info, warn};
-use nix::libc::{self, exit};
+use nix::{
+    libc::{self, exit},
+    unistd::Pid,
+};
 
 use std::{
     sync::{atomic::AtomicUsize, Arc},
@@ -14,7 +17,7 @@ use std::{
 use tokio::{
     runtime::{Builder as RuntimeBuilder, Runtime},
     sync::{broadcast, watch, Mutex},
-    time::sleep,
+    time::{self, sleep},
 };
 use tracing::instrument;
 pub(crate) struct ClusterMode {
@@ -63,6 +66,7 @@ impl ClusterMode {
             .expect("Failed to build Tokio runtime")
     }
 
+    #[allow(clippy::await_holding_lock)]
     pub async fn handle_lifecycle_event(
         self: Arc<Self>,
         lifecycle_event: LifecycleEvent,
@@ -74,7 +78,7 @@ impl ClusterMode {
             }
             LifecycleEvent::Restart => {
                 for worker in self.process_workers.lock().iter() {
-                    worker.reboot(self.clone()).await
+                    worker.reboot(self.clone()).await?;
                 }
                 Ok(())
             }
@@ -88,7 +92,7 @@ impl ClusterMode {
                 let self_clone = self.clone();
                 create_ruby_thread(move || {
                     call_without_gvl(move || {
-                        worker_clone.boot(self_clone);
+                        worker_clone.boot(self_clone).ok();
                     })
                 });
                 workers.push(worker);
@@ -117,7 +121,6 @@ impl ClusterMode {
                     worker.force_kill();
                 }
                 unsafe { exit(0) };
-                Ok(())
             }
         }
     }
@@ -172,12 +175,25 @@ impl ClusterMode {
         }
     }
 
-    #[instrument(skip(self), fields(mode = "cluster"))]
+    pub fn stop(&self) -> Result<()> {
+        unsafe { libc::signal(libc::SIGCHLD, libc::SIG_DFL) };
+
+        for worker in self.process_workers.lock().iter() {
+            if worker.is_alive() {
+                worker.force_kill();
+            }
+        }
+
+        Ok(())
+    }
+
+    #[instrument(skip(self), fields(mode = "cluster", pid=format!("{:?}", Pid::this())))]
     pub fn run(self: Arc<Self>) -> Result<()> {
+        info!("Starting in Cluster mode");
         self.process_workers
             .lock()
             .iter()
-            .for_each(|worker| worker.boot(Arc::clone(&self)));
+            .try_for_each(|worker| worker.boot(Arc::clone(&self)))?;
 
         let (sender, mut receiver) = watch::channel(());
         *CHILD_SIGNAL_SENDER.lock() = Some(sender);
@@ -186,26 +202,50 @@ impl ClusterMode {
 
         let mut lifecycle_rx = self.lifecycle_channel.subscribe();
         let self_ref = self.clone();
-        self.build_runtime().block_on(async {
-            loop {
-                tokio::select! {
-                  _ = receiver.changed() => {
-                    self_ref.process_workers.lock().iter().for_each(|worker| worker.boot_if_dead(Arc::clone(&self_ref)));
-                  }
-                  lifecycle_event = lifecycle_rx.recv() => match lifecycle_event{
-                    Ok(lifecycle_event) => {
-                      if let Err(e) = self_ref.clone().handle_lifecycle_event(lifecycle_event).await{
-                        match e {
-                          ItsiError::Break() => break,
-                          _ => error!("Error in handle_lifecycle_event {:?}", e)
-                        }
-                      }
 
-                    },
-                    Err(e) => error!("Error receiving lifecycle_event: {:?}", e),
+        self.build_runtime().block_on(async {
+          let self_ref = self_ref.clone();
+          let mut memory_check_interval = time::interval(time::Duration::from_secs(2));
+          loop {
+            tokio::select! {
+              _ = receiver.changed() => {
+                let mut workers = self_ref.process_workers.lock();
+                workers.retain(|worker| {
+                  worker.boot_if_dead(Arc::clone(&self_ref))
+                });
+                if workers.is_empty() {
+                    warn!("No workers running. Send SIGTTIN to increase worker count");
                 }
+              }
+              _ = memory_check_interval.tick() => {
+                if let Some(memory_limit) = self_ref.server.worker_memory_limit {
+                  let largest_worker = {
+                    let workers = self_ref.process_workers.lock();
+                    workers.iter().max_by(|wa, wb| wa.memory_usage().cmp(&wb.memory_usage())).cloned()
+                  };
+                  if let Some(largest_worker) = largest_worker {
+                    if let Some(current_mem_usage) = largest_worker.memory_usage(){
+                      if current_mem_usage > memory_limit {
+                        largest_worker.reboot(self_ref.clone()).await.ok();
+                      }
+                    }
+                  }
+                }
+              }
+              lifecycle_event = lifecycle_rx.recv() => match lifecycle_event{
+                Ok(lifecycle_event) => {
+                  if let Err(e) = self_ref.clone().handle_lifecycle_event(lifecycle_event).await{
+                    match e {
+                      ItsiError::Break() => break,
+                      _ => error!("Error in handle_lifecycle_event {:?}", e)
+                    }
+                  }
+
+                },
+                Err(e) => error!("Error receiving lifecycle_event: {:?}", e),
+              }
             }
-            }
+          }
         });
 
         Ok(())

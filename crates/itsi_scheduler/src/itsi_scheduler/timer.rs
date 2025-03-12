@@ -1,67 +1,44 @@
 use std::{
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
+    cmp::Ordering,
     time::{Duration, Instant},
 };
 
-use itsi_rb_helpers::HeapFiber;
+use mio::Token;
 
-use super::FdReadinessPair;
-
-#[derive(Debug, Clone)]
-pub enum TimerKind {
-    IoWait(FdReadinessPair),
-    Block(usize),
-    Sleep,
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Timer {
     pub wake_time: Instant,
-    pub fiber: HeapFiber,
-    pub kind: TimerKind,
-    pub canceled: Arc<AtomicBool>,
+    pub token: Token,
 }
-
-impl Timer {
-    pub fn new(wake_in: Duration, fiber: HeapFiber, kind: TimerKind) -> Self {
-        Self {
-            fiber,
-            kind,
-            wake_time: Instant::now() + wake_in,
-            canceled: Arc::new(AtomicBool::new(false)),
-        }
-    }
-
-    pub fn cancel(&self) {
-        self.canceled.store(true, Ordering::Relaxed);
-    }
-
-    pub fn canceled(&self) -> bool {
-        self.canceled.load(Ordering::Relaxed)
-    }
-
-    pub fn due(&self) -> bool {
-        self.wake_time <= Instant::now() && !self.canceled()
-    }
-}
-
-impl PartialEq for Timer {
-    fn eq(&self, other: &Self) -> bool {
-        self.wake_time.eq(&other.wake_time)
-    }
-}
-impl Eq for Timer {}
 impl PartialOrd for Timer {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
 impl Ord for Timer {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        other.wake_time.cmp(&self.wake_time)
+    fn cmp(&self, other: &Self) -> Ordering {
+        // Reverse the order: a timer with an earlier wake_time should be considered greater.
+        other
+            .wake_time
+            .cmp(&self.wake_time)
+            .then_with(|| other.token.cmp(&self.token))
+    }
+}
+
+impl Timer {
+    pub fn new(wake_in: Duration, token: Token) -> Self {
+        Self {
+            wake_time: Instant::now() + wake_in,
+            token,
+        }
+    }
+
+    pub fn is_due(&self) -> bool {
+        self.wake_time <= Instant::now()
+    }
+
+    pub(crate) fn duration(&self) -> Option<Duration> {
+        self.wake_time.checked_duration_since(Instant::now())
     }
 }

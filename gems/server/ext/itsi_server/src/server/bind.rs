@@ -20,13 +20,38 @@ impl Default for BindAddress {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Default, Clone)]
 #[magnus::wrap(class = "Itsi::Bind")]
 pub struct Bind {
     pub address: BindAddress,
     pub port: Option<u16>, // None for Unix Sockets
     pub protocol: BindProtocol,
     pub tls_config: Option<ServerConfig>,
+}
+
+impl std::fmt::Debug for Bind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.address {
+            BindAddress::Ip(ip) => match self.protocol {
+                BindProtocol::Unix | BindProtocol::Unixs => {
+                    write!(f, "{}://{}", self.protocol, ip)
+                }
+                BindProtocol::Https if self.port == Some(443) => {
+                    write!(f, "{}://{}", self.protocol, ip)
+                }
+                BindProtocol::Http if self.port == Some(80) => {
+                    write!(f, "{}://{}", self.protocol, ip)
+                }
+                _ => match self.port {
+                    Some(port) => write!(f, "{}://{}:{}", self.protocol, ip, port),
+                    None => write!(f, "{}://{}", self.protocol, ip),
+                },
+            },
+            BindAddress::UnixSocket(path) => {
+                write!(f, "{}://{}", self.protocol, path.display())
+            }
+        }
+    }
 }
 
 /// We can build a Bind from a string in the format `protocol://host:port?options`
@@ -94,15 +119,14 @@ impl FromStr for Bind {
             BindProtocol::Http => (port.or(Some(80)), address),
             BindProtocol::Https => (port.or(Some(443)), address),
             BindProtocol::Unix => (None, BindAddress::UnixSocket(host.into())),
+            BindProtocol::Unixs => (None, BindAddress::UnixSocket(host.into())),
         };
 
-        // Use HTTPs if we've bound to an https://<address> string OR the cert option was manually provided.
-        // Otherwise, use plain old HTTP
         let tls_config = match protocol {
             BindProtocol::Http => None,
             BindProtocol::Https => Some(configure_tls(host, &options)?),
-            _ if options.contains_key("cert") => Some(configure_tls(host, &options)?),
-            _ => None,
+            BindProtocol::Unix => None,
+            BindProtocol::Unixs => Some(configure_tls(host, &options)?),
         };
 
         Ok(Self {
@@ -127,14 +151,13 @@ fn resolve_hostname(hostname: &str) -> Option<IpAddr> {
     (hostname, 0)
         .to_socket_addrs()
         .ok()?
-        .filter_map(|addr| {
+        .find_map(|addr| {
             if addr.is_ipv6() {
                 Some(addr.ip()) // Prefer IPv6
             } else {
                 None
             }
         })
-        .next()
         .or_else(|| {
             (hostname, 0)
                 .to_socket_addrs()

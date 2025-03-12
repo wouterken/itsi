@@ -36,6 +36,7 @@ class TestFileIO < Minitest::Test
       Fiber.schedule do
         # When no data is available, wait_readable should return nil after the timeout.
         result = reader.wait_readable(0.05)
+        puts "Awoken"
       end
     end
 
@@ -159,26 +160,30 @@ class TestFileIO < Minitest::Test
   def test_multiple_fibers_waiting_on_same_fd
     reader, writer = IO.pipe
     results = []
+    data = "data"
 
     with_scheduler do |_scheduler|
       Fiber.schedule do
-        res = reader.wait_readable(0.1)
+        if res = reader.wait_readable(0.1)
+          reader.read(data.length)
+        end
         results << (res ? "readable" : "timeout")
       end
 
       Fiber.schedule do
-        res = reader.wait_readable(0.2)
+        if res = reader.wait_readable(0.1)
+          reader.read(data.length)
+        end
         results << (res ? "readable" : "timeout")
       end
 
       Fiber.schedule do
-        sleep 0.005
-        writer.write("data")
+        writer.write(data)
       end
     end
 
-    reader.close
     writer.close
+    reader.close
 
     # One fiber should be resumed with "readable" while the other times out.
     assert_equal 2, results.size

@@ -25,7 +25,7 @@ use magnus::{
 };
 use std::{convert::Infallible, fmt, io::Write, sync::Arc, time::Instant};
 use tokio::sync::{
-    mpsc::{self, Sender},
+    mpsc::{self},
     watch,
 };
 static ID_CALL: LazyId = LazyId::new("call");
@@ -79,41 +79,51 @@ impl ItsiRequest {
         }
     }
 
-    pub fn process(self, ruby: &Ruby, server: RClass, app: Opaque<Value>) {
+    pub fn process(
+        self,
+        ruby: &Ruby,
+        server: RClass,
+        app: Opaque<Value>,
+    ) -> magnus::error::Result<()> {
         let req = format!("{}", self);
         let response = self.response.clone();
         let start = self.start;
         debug!("{} Started", req);
         let result = server.funcall::<_, _, Value>(*ID_CALL, (app, self));
+        if let Err(err) = result {
+            Self::internal_error(ruby, response, err);
+        }
         debug!("{} Finished in {:?}", req, start.elapsed());
 
-        if let Err(err) = &result {
-            if Self::is_connection_closed_err(ruby, err) {
-                debug!("Connection closed by client");
-                response.close();
-            } else if let Some(rb_err) = err.value() {
-                let backtrace = rb_err
-                    .funcall::<_, _, Vec<String>>(*ID_BACKTRACE, ())
-                    .unwrap_or_default();
+        Ok(())
+    }
 
-                error!("Error occurred in Handler: {:?}", rb_err);
-                for line in backtrace {
-                    error!("{}", line);
-                }
-            } else {
-                error!("Error occurred: {}", err);
-                response.error(err.to_string());
+    pub fn internal_error(ruby: &Ruby, response: ItsiResponse, err: Error) {
+        if Self::is_connection_closed_err(ruby, &err) {
+            debug!("Connection closed by client");
+            response.close();
+        } else if let Some(rb_err) = err.value() {
+            let backtrace = rb_err
+                .funcall::<_, _, Vec<String>>(*ID_BACKTRACE, ())
+                .unwrap_or_default();
+
+            error!("Error occurred in Handler: {:?}", rb_err);
+            for line in backtrace {
+                error!("{}", line);
             }
+            response.internal_server_error(err.to_string());
+        } else {
+            response.internal_server_error(err.to_string());
         }
     }
 
     pub fn error(self, message: String) {
-        self.response.error(message);
+        self.response.internal_server_error(message);
     }
 
     pub(crate) async fn process_request(
         hyper_request: Request<Incoming>,
-        sender: Sender<RequestJob>,
+        sender: async_channel::Sender<RequestJob>,
         server: Arc<Server>,
         listener: Arc<TokioListener>,
         addr: SockAddr,
@@ -179,8 +189,8 @@ impl ItsiRequest {
             .unwrap_or(self.parts.uri.path()))
     }
 
-    pub(crate) fn script_name(&self) -> MagnusResult<String> {
-        Ok(self.server.script_name.clone())
+    pub(crate) fn script_name(&self) -> MagnusResult<&str> {
+        Ok(&self.server.script_name)
     }
 
     pub(crate) fn query_string(&self) -> MagnusResult<&str> {

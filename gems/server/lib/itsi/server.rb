@@ -71,13 +71,9 @@ module Itsi
     end
 
     def self.start_scheduler_loop(scheduler_class, scheduler_task)
-      unless Kernel.const_defined?(scheduler_class)
-        raise "Itsi cannot find scheduler by the name of #{scheduler_class}. Please ensure it is loaded and required as a dependency"
-      end
-
-      scheduler = Kernel.const_get(scheduler_class).new
+      scheduler = scheduler_class.new
       Fiber.set_scheduler(scheduler)
-      [scheduler, Fiber.schedule(&scheduler_task.method(:run))]
+      [scheduler, Fiber.schedule(&scheduler_task)]
     end
 
     # If scheduler is enabled

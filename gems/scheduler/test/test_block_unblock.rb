@@ -44,27 +44,18 @@ class TestBlockUnblock < Minitest::Test
 
   def test_double_unblock
     result = nil
-
-    fiber = scheduler = nil
-
-
-
-    Thread.new do
-      sleep 0.01
-      scheduler.unblock(:self, fiber)
-      scheduler.unblock(:self, fiber)
-    end
-
     with_scheduler do |sched|
-      scheduler = sched
       fiber = Fiber.schedule do
         # This fiber blocks indefinitely until manually unblocked.
-        sleep 0.1
         Fiber.scheduler.block(:self, nil)
         result = :resumed
       end
-    end
 
+      fiber_2 = Fiber.schedule do
+        Fiber.scheduler.unblock(:self, fiber)
+        Fiber.scheduler.unblock(:self, fiber)
+      end
+    end
 
     assert_equal :resumed, result
   end
@@ -145,9 +136,7 @@ class TestBlockUnblock < Minitest::Test
       end.join
 
       # Wait until the fiber finishes execution.
-      Timeout.timeout(1) do
-        sleep 0.001 while fiber.alive?
-      end
+      sleep 0.1 while fiber.alive?
     end
     assert_equal :hello, result
   end
@@ -208,22 +197,17 @@ class TestBlockUnblock < Minitest::Test
     assert_equal :resumed, result
   end
 
-  def test_block_with_no_timeout_and_no_unblock
+  def test_block_with_no_unblock
     result = nil
 
     with_scheduler(join: false) do |_scheduler|
       Fiber.schedule do
-        Fiber.scheduler.block(:resource, nil)
+        Fiber.scheduler.block(:resource, 0.1)
         result = :resumed
       end
-
-      # No unblock is called, and no timeout is set.
-      sleep 0.1
     end
 
-    sleep 0.2
-
-    assert_nil result, "Fiber should remain blocked indefinitely"
+    assert_nil result, :resumed
   end
 
   def test_unblock_non_blocked_fiber_v2

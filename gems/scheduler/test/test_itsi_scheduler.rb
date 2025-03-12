@@ -27,6 +27,6 @@ class TestItsiScheduler < Minitest::Test
     end
 
     assert_equal total, 6
-    assert_match /Fiber.* raised internal exception:/, out
+    assert_match /Failed to resume fiber /, out
   end
 end

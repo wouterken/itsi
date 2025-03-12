@@ -1,35 +1,20 @@
-use std::{
-    collections::VecDeque,
-    os::fd::RawFd,
-    sync::atomic::{AtomicUsize, Ordering},
-};
-
 use derive_more::Debug;
-use itsi_rb_helpers::HeapFiber;
-
 use mio::{event::Source, unix::SourceFd, Interest, Token};
+use std::os::fd::RawFd;
 
-static WAITER_TOKEN: AtomicUsize = AtomicUsize::new(1);
-
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct IoWaiter {
-    #[debug(skip)]
-    pub fibers: VecDeque<HeapFiber>,
-    fd: RawFd,
+    pub fd: RawFd,
+    pub readiness: i16,
     pub token: Token,
 }
 
-/// Creates a new token for use with the scheduler.
-fn new_token() -> Token {
-    Token(WAITER_TOKEN.fetch_add(1, Ordering::SeqCst))
-}
-
 impl IoWaiter {
-    pub fn new(fd: RawFd) -> Self {
+    pub fn new(fd: RawFd, readiness: i16, token: Token) -> Self {
         Self {
             fd,
-            token: new_token(),
-            fibers: VecDeque::new(),
+            readiness,
+            token,
         }
     }
 }

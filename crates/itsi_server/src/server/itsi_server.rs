@@ -12,12 +12,12 @@ use magnus::{
     block::Proc,
     error::Result,
     scan_args::{get_kwargs, scan_args, Args, KwArgs},
-    value::{InnerValue, Opaque},
-    RHash, Ruby, Value,
+    value::{InnerValue, Opaque, ReprValue},
+    RHash, Ruby, Symbol, Value,
 };
 use parking_lot::Mutex;
 use std::{cmp::max, ops::Deref, sync::Arc};
-use tracing::instrument;
+use tracing::{info, instrument};
 
 static DEFAULT_BIND: &str = "localhost:3000";
 
@@ -54,6 +54,7 @@ pub struct ServerConfig {
     pub after_fork: AfterFork,
     pub scheduler_class: Option<String>,
     pub stream_body: Option<bool>,
+    pub worker_memory_limit: Option<u64>,
 }
 
 #[derive(Debug)]
@@ -70,7 +71,9 @@ impl Server {
         fields(workers = 1, threads = 1, shutdown_timeout = 5)
     )]
     pub fn new(args: &[Value]) -> Result<Self> {
-        type OptionalArgs = (
+        let scan_args: Args<(), (), (), (), RHash, ()> = scan_args(args)?;
+
+        type ArgSet1 = (
             Option<u8>,
             Option<u8>,
             Option<f64>,
@@ -82,9 +85,27 @@ impl Server {
             Option<bool>,
         );
 
-        let scan_args: Args<(), (), (), (), RHash, ()> = scan_args(args)?;
-        let args: KwArgs<(Value,), OptionalArgs, ()> = get_kwargs(
-            scan_args.keywords,
+        type ArgSet2 = (Option<u64>,);
+
+        let args1: KwArgs<(Value,), ArgSet1, ()> = get_kwargs(
+            scan_args
+                .keywords
+                .funcall::<_, _, RHash>(
+                    "slice",
+                    (
+                        Symbol::new("app"),
+                        Symbol::new("workers"),
+                        Symbol::new("threads"),
+                        Symbol::new("shutdown_timeout"),
+                        Symbol::new("script_name"),
+                        Symbol::new("binds"),
+                        Symbol::new("before_fork"),
+                        Symbol::new("after_fork"),
+                        Symbol::new("scheduler_class"),
+                        Symbol::new("stream_body"),
+                    ),
+                )
+                .unwrap(),
             &["app"],
             &[
                 "workers",
@@ -99,21 +120,31 @@ impl Server {
             ],
         )?;
 
+        let args2: KwArgs<(), ArgSet2, ()> = get_kwargs(
+            scan_args
+                .keywords
+                .funcall::<_, _, RHash>("slice", (Symbol::new("worker_memory_limit"),))
+                .unwrap(),
+            &[],
+            &["worker_memory_limit"],
+        )?;
+
         let config = ServerConfig {
-            app: Opaque::from(args.required.0),
-            workers: max(args.optional.0.unwrap_or(1), 1),
-            threads: max(args.optional.1.unwrap_or(1), 1),
-            shutdown_timeout: args.optional.2.unwrap_or(5.0),
-            script_name: args.optional.3.unwrap_or("".to_string()),
+            app: Opaque::from(args1.required.0),
+            workers: max(args1.optional.0.unwrap_or(1), 1),
+            threads: max(args1.optional.1.unwrap_or(1), 1),
+            shutdown_timeout: args1.optional.2.unwrap_or(5.0),
+            script_name: args1.optional.3.unwrap_or("".to_string()),
             binds: Mutex::new(
-                args.optional
+                args1
+                    .optional
                     .4
                     .unwrap_or_else(|| vec![DEFAULT_BIND.to_string()])
                     .into_iter()
                     .map(|s| s.parse())
                     .collect::<itsi_error::Result<Vec<Bind>>>()?,
             ),
-            before_fork: Mutex::new(args.optional.5.map(|p| {
+            before_fork: Mutex::new(args1.optional.5.map(|p| {
                 let opaque_proc = Opaque::from(p);
                 Box::new(move || {
                     opaque_proc
@@ -122,7 +153,7 @@ impl Server {
                         .unwrap();
                 }) as Box<dyn FnOnce() + Send + Sync>
             })),
-            after_fork: Mutex::new(Arc::new(args.optional.6.map(|p| {
+            after_fork: Mutex::new(Arc::new(args1.optional.6.map(|p| {
                 let opaque_proc = Opaque::from(p);
                 Box::new(move || {
                     opaque_proc
@@ -131,9 +162,16 @@ impl Server {
                         .unwrap();
                 }) as Box<dyn Fn() + Send + Sync>
             }))),
-            scheduler_class: args.optional.7,
-            stream_body: args.optional.8,
+            scheduler_class: args1.optional.7.clone(),
+            stream_body: args1.optional.8,
+            worker_memory_limit: args2.optional.0,
         };
+
+        if let Some(scheduler_class) = args1.optional.7 {
+            info!(scheduler_class, fiber_scheduler = true);
+        } else {
+            info!(fiber_scheduler = false);
+        }
 
         Ok(Server {
             config: Arc::new(config),
@@ -153,6 +191,7 @@ impl Server {
             .into_iter()
             .map(Arc::new)
             .collect::<Vec<_>>();
+        info!("Bound {:?} listeners", listeners.len());
         Ok(Arc::new(listeners))
     }
 
@@ -165,7 +204,7 @@ impl Server {
                 server,
                 listeners,
                 SIGNAL_HANDLER_CHANNEL.0.clone(),
-            )))
+            )?))
         } else {
             ServeStrategy::Cluster(Arc::new(ClusterMode::new(
                 server,
@@ -178,9 +217,12 @@ impl Server {
 
     pub fn start(&self) -> Result<()> {
         reset_signal_handlers();
-        call_without_gvl(|| {
-            if let Err(e) = self.clone().build_strategy()?.run() {
+        let rself = self.clone();
+        call_without_gvl(move || {
+            let strategy = rself.build_strategy()?;
+            if let Err(e) = strategy.run() {
                 error!("Error running server: {}", e);
+                strategy.stop()?;
             }
             Ok(())
         })

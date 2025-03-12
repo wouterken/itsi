@@ -1,10 +1,6 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
-
-require "rack"
 require "optparse"
-require "etc"
-require "uri"
 
 # Default options used when starting Osprey from the CLI using `osprey`
 DEFAULT_OPTIONS = {
@@ -30,7 +26,7 @@ options = DEFAULT_OPTIONS.to_a.select(&:last).to_h
 
 # Define the option parser
 OptionParser.new do |opts|
-  opts.banner = "Usage: script.rb [options]"
+  opts.banner = "Usage: itsi [options]"
 
   opts.on("-w", "--workers WORKERS", Integer, "Number of workers (default: #{options[:workers]})") do |w|
     options[:workers] = w
@@ -44,7 +40,12 @@ OptionParser.new do |opts|
     options[:rackup_file] = rf
   end
 
-  opts.on("-f", "--fiber_scheduler [CLASS_NAME]", String, "Scheduler class to use (default: nil)") do |scheduler_class|
+  opts.on("--worker-memory-limit MEMORY_LIMIT", Integer,
+          "Memory limit for each worker (default: #{options[:worker_memory_limit] || 'None'}). If this limit is breached the worker is gracefully restarted") do |ml|
+    options[:worker_memory_limit] = ml
+  end
+
+  opts.on("-f", "--fiber_scheduler [CLASS_NAME]", [String], "Scheduler class to use (default: nil). Provide blank or true to use Itsi::Scheduler, or a classname to use an alternative scheduler") do |scheduler_class|
     if scheduler_class.nil? || scheduler_class == "true"
       options[:scheduler_class] = "Itsi::Scheduler"
     elsif scheduler_class == "false"
@@ -54,17 +55,26 @@ OptionParser.new do |opts|
     end
   end
 
-  opts.on("--no-preload", FalseClass, "Disable preloading the application") do |no_preload|
-    options[:preload] = no_preload
+  opts.on("--preload [true, false, :bundle_group_name]", String, " Toggle preloading the application") do |preload|
+    if preload == "true"
+      options[:preload] = true
+    elsif preload == "false"
+      options[:preload] = false
+    else
+      # Not supported yet
+    end
   end
 
-  opts.on("--http_port HTTP_PORT", Integer, "HTTP port for the application (default: #{options[:http_port]})") do |hp|
-    options[:http_port] = hp
+
+  opts.on("-b", "--bind BIND", String, "Bind address (default: #{options[:binds].join(", ")}). You can specify this flag multiple times to bind to multiple addresses.") do |bind|
+    options[:binds].pop if options[:binds].first.frozen?
+    options[:binds] << bind
   end
 
   opts.on("-c", "--cert_path CERT_PATH", String,
-          "Path to the SSL certificate file (must follow a --bind option)") do |cp|
+          "Path to the SSL certificate file (must follow a --bind option). You can specify this flag multiple times.") do |cp|
     raise OptionParser::InvalidOption, "--cert_path must follow a --bind" if options[:binds].empty?
+    require "uri"
 
     # Modify the last bind entry to add/update the cert query parameter
     uri = URI.parse("http://#{options[:binds].last}") # Ensure valid URI parsing
@@ -74,8 +84,9 @@ OptionParser.new do |opts|
     options[:binds][-1] = "#{uri.host}?#{query_string}"
   end
 
-  opts.on("-k", "--key_path KEY_PATH", String, "Path to the SSL key file (must follow a --bind option)") do |kp|
+  opts.on("-k", "--key_path KEY_PATH", String, "Path to the SSL key file (must follow a --bind option). You can specify this flag multiple times.") do |kp|
     raise OptionParser::InvalidOption, "--key_path must follow a --bind" if options[:binds].empty?
+    require "uri"
 
     # Modify the last bind entry to add/update the key query parameter
     uri = URI.parse("http://#{options[:binds].last}") # Ensure valid URI parsing
@@ -94,16 +105,11 @@ OptionParser.new do |opts|
     options[:script_name] = script_name
   end
 
-  opts.on("-b", "--bind BIND", String, "Bind address (default: #{options[:binds].join(", ")})") do |bind|
-    options[:binds].pop if options[:binds].first.frozen?
-    options[:binds] << bind
-  end
-
   opts.on("--stream-body", TrueClass, "Stream body frames (default: false for best compatibility)") do |stream_body|
     options[:stream_body] = stream_body
   end
 
-  opts.on("--help", "Show this help message") do
+  opts.on("-h", "--help", "Show this help message") do
     puts opts
     exit
   end
@@ -113,26 +119,26 @@ end.parse!
 # This is a no-op if preloading is enabled (we just return the preloaded app).
 preloader = \
   if options[:preload]
+    require "rack"
+
     app = Array(Rack::Builder.parse_file(options[:rackup_file])).first
     require_relative "../lib/itsi/server/scheduler_mode" if options[:scheduler_class]
     app.method(:itself).to_proc
   else
     lambda do
+      require "rack"
+
       app = Array(Rack::Builder.parse_file(options[:rackup_file])).first
       require_relative "../lib/itsi/server/scheduler_mode" if options[:scheduler_class]
       app
     end
   end
 
-# Make sure osprey is loaded, if not already loaded by the rack_app above.
-# Start the Osprey server
+# Make sure Itsi is loaded, if not already loaded by the rack_app above.
+# Start the Itsi server
 require "itsi/server"
 
-begin
-  Itsi::Server.new(
-    app: preloader,
-    **options.except(:preload, :rackup_file)
-  ).start
-rescue Interrupt
-  # Shutdown
-end
+Itsi::Server.new(
+  app: preloader,
+  **options.except(:preload, :rackup_file)
+).start

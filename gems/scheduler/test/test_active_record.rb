@@ -81,7 +81,7 @@ class TestActiveRecordFiberScheduler < Minitest::Test
       host: "localhost",
       database: "fiber_scheduler_test",
       pool: 1,
-      checkout_timeout: 10
+      checkout_timeout: 0.25
     )
     # ActiveRecord::Base.connection_pool.disconnect!
 

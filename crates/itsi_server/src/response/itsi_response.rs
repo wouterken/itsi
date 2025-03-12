@@ -253,9 +253,12 @@ impl ItsiResponse {
         Ok(response)
     }
 
-    pub fn error(&self, message: String) {
+    pub fn internal_server_error(&self, message: String) {
         error!(message);
         self.data.response_writer.write().take();
+        if let Some(ref mut response) = *self.data.response.write() {
+            *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+        }
     }
 
     pub fn send_frame(&self, frame: Bytes) -> MagnusResult<usize> {
@@ -306,16 +309,11 @@ impl ItsiResponse {
         }
     }
 
-    pub fn add_header(&self, name: String, value: String) -> MagnusResult<()> {
-        let header_name: HeaderName = name.parse().map_err(|e| {
+    pub fn add_header(&self, name: Bytes, value: Bytes) -> MagnusResult<()> {
+        let header_name: HeaderName = HeaderName::from_bytes(&name).map_err(|e| {
             itsi_error::ItsiError::InvalidInput(format!("Invalid header name {:?}: {:?}", name, e))
         })?;
-        let header_value = value.parse().map_err(|e| {
-            itsi_error::ItsiError::InvalidInput(format!(
-                "Invalid header value {:?}: {:?}",
-                value, e
-            ))
-        })?;
+        let header_value = unsafe { HeaderValue::from_maybe_shared_unchecked(value) };
         if let Some(ref mut resp) = *self.data.response.write() {
             resp.headers_mut().insert(header_name, header_value);
         }

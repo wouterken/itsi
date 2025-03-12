@@ -17,4 +17,11 @@ impl ServeStrategy {
             ServeStrategy::Cluster(cluster_router) => cluster_router.clone().run(),
         }
     }
+
+    pub(crate) fn stop(&self) -> Result<()> {
+        match self {
+            ServeStrategy::Single(single_router) => single_router.clone().stop(),
+            ServeStrategy::Cluster(cluster_router) => cluster_router.clone().stop(),
+        }
+    }
 }
