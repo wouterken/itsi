@@ -3,7 +3,8 @@
 - Filters (Medium)
 - Static File Serve (Medium).error pages
 - Preload Groups
-- Broken shutdown (sometimes) in Fiber mode
+- Signal to log info
+- Dashboard
 
 - Polish and Release (At Lake)
 -- Log params (Think long and hard about what we should and shouldn't log)
@@ -11,3 +12,6 @@
 -- No unwrap or except
 -- Switch to direct scheduler integration
 -- Fix Scheduler Hanging test (Or remove it)
+
+Later:
+- Broken shutdown (sometimes) in Fiber mode

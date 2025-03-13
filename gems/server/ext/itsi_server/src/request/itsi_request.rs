@@ -1,5 +1,8 @@
 use crate::{
-    body_proxy::itsi_body_proxy::{BigBytes, ItsiBody, ItsiBodyProxy},
+    body_proxy::{
+        big_bytes::BigBytes,
+        itsi_body_proxy::{ItsiBody, ItsiBodyProxy},
+    },
     response::itsi_response::ItsiResponse,
     server::{
         itsi_server::{RequestJob, Server},

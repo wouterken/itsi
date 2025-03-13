@@ -164,7 +164,7 @@ impl ItsiResponse {
                 .write()
                 .take()
                 .ok_or(itsi_error::ItsiError::InvalidInput(
-                    "Couldnt hijack stream".to_owned(),
+                    "Couldn't hijack stream".to_owned(),
                 ))?;
         let mut reader = TokioUnixStream::from_std(hijacked_socket).unwrap();
         let response_headers = self.read_response_headers(&mut reader).await?;

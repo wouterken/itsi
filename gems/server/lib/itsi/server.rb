@@ -51,7 +51,7 @@ module Itsi
       elsif body.respond_to?(:each) || body.respond_to?(:to_ary)
         unless body.respond_to?(:each)
           body = body.to_ary
-          raise "Body to_ary didn't return an array" unless body.is_a?(Array)
+          raise "Body #to_ary didn't return an array" unless body.is_a?(Array)
         end
         # We offset this iteration intentionally,
         # to optimize for the case where there's only one chunk.

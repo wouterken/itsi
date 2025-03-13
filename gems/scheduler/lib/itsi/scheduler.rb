@@ -69,7 +69,7 @@ module Itsi
     end
 
     def resume_fiber(token)
-      if fiber = @resume_tokens.delete(token)
+      if (fiber = @resume_tokens.delete(token))
         fiber.resume
       end
     rescue StandardError => e

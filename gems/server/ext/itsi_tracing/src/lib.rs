@@ -30,7 +30,7 @@ pub fn init() {
         .event_format(format)
         .with_env_filter(env_filter);
 
-    if is_tty && env::var("ITSI_LOG_PLAIN").is_err() {
+    if (is_tty && env::var("ITSI_LOG_PLAIN").is_err()) || env::var("ITSI_LOG_ANSI").is_ok() {
         subscriber.with_ansi(true).init();
     } else {
         subscriber

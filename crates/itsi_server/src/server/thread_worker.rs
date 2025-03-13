@@ -63,7 +63,7 @@ pub fn build_thread_workers(
         Arc::new(
             (1..=u8::from(threads))
                 .map(|id| {
-                    info!("Thread {}", id);
+                    info!(pid = pid.as_raw(), id, "Thread");
                     ThreadWorker::new(
                         format!("{:?}#{:?}", pid, id),
                         app,
