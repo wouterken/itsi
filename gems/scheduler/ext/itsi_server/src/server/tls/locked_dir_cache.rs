@@ -1,6 +1,8 @@
 use async_trait::async_trait;
-use fs2::FileExt; // for lock_exclusive, unlock
-use std::fs::OpenOptions;
+use fs2::FileExt;
+use parking_lot::Mutex;
+use std::env;
+use std::fs::{self, OpenOptions};
 use std::io::Error as IoError;
 use std::path::{Path, PathBuf};
 use tokio_rustls_acme::caches::DirCache;
@@ -10,25 +12,57 @@ use tokio_rustls_acme::{AccountCache, CertCache};
 pub struct LockedDirCache<P: AsRef<Path> + Send + Sync> {
     inner: DirCache<P>,
     lock_path: PathBuf,
+    current_lock: Mutex<Option<std::fs::File>>,
 }
 
 impl<P: AsRef<Path> + Send + Sync> LockedDirCache<P> {
     pub fn new(dir: P) -> Self {
         let dir_path = dir.as_ref().to_path_buf();
-        let lock_path = dir_path.join(".acme.lock");
+        std::fs::create_dir_all(&dir_path).unwrap();
+        let lock_path =
+            dir_path.join(env::var("ITSI_ACME_LOCK_FILE_NAME").unwrap_or(".acme.lock".to_string()));
+        Self::touch_file(&lock_path).expect("Failed to create lock file");
+
         Self {
             inner: DirCache::new(dir),
             lock_path,
+            current_lock: Mutex::new(None),
         }
     }
 
-    fn lock_exclusive(&self) -> Result<std::fs::File, IoError> {
+    fn touch_file(path: &PathBuf) -> std::io::Result<()> {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(path)?;
+        Ok(())
+    }
+
+    fn lock_exclusive(&self) -> Result<(), IoError> {
+        if self.current_lock.lock().is_some() {
+            return Ok(());
+        }
+
+        if let Some(parent) = self.lock_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
         let lockfile = OpenOptions::new()
+            .create(true)
             .write(true)
             .truncate(true)
             .open(&self.lock_path)?;
         lockfile.lock_exclusive()?;
-        Ok(lockfile)
+        *self.current_lock.lock() = Some(lockfile);
+        Ok(())
+    }
+
+    fn unlock(&self) -> Result<(), IoError> {
+        self.current_lock.lock().take();
+        Ok(())
     }
 }
 
@@ -41,8 +75,14 @@ impl<P: AsRef<Path> + Send + Sync> CertCache for LockedDirCache<P> {
         domains: &[String],
         directory_url: &str,
     ) -> Result<Option<Vec<u8>>, Self::EC> {
-        // Just delegate to the inner DirCache
-        self.inner.load_cert(domains, directory_url).await
+        self.lock_exclusive()?;
+        let result = self.inner.load_cert(domains, directory_url).await;
+
+        if let Ok(Some(_)) = result {
+            self.unlock()?;
+        }
+
+        result
     }
 
     async fn store_cert(
@@ -52,13 +92,14 @@ impl<P: AsRef<Path> + Send + Sync> CertCache for LockedDirCache<P> {
         cert: &[u8],
     ) -> Result<(), Self::EC> {
         // Acquire the lock before storing
-        let lockfile = self.lock_exclusive()?;
+        self.lock_exclusive()?;
 
         // Perform the store operation
         let result = self.inner.store_cert(domains, directory_url, cert).await;
 
-        // Unlock and return
-        let _ = fs2::FileExt::unlock(&lockfile);
+        if let Ok(()) = result {
+            self.unlock()?;
+        }
         result
     }
 }
@@ -72,6 +113,7 @@ impl<P: AsRef<Path> + Send + Sync> AccountCache for LockedDirCache<P> {
         contact: &[String],
         directory_url: &str,
     ) -> Result<Option<Vec<u8>>, Self::EA> {
+        self.lock_exclusive()?;
         self.inner.load_account(contact, directory_url).await
     }
 
@@ -81,14 +123,10 @@ impl<P: AsRef<Path> + Send + Sync> AccountCache for LockedDirCache<P> {
         directory_url: &str,
         account: &[u8],
     ) -> Result<(), Self::EA> {
-        let lockfile = self.lock_exclusive()?;
+        self.lock_exclusive()?;
 
-        let result = self
-            .inner
+        self.inner
             .store_account(contact, directory_url, account)
-            .await;
-
-        let _ = fs2::FileExt::unlock(&lockfile);
-        result
+            .await
     }
 }

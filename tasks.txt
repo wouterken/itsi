@@ -1,5 +1,6 @@
-- Release v0.1.3
-- Autocert (Hard. And dev certs use local CA)
+- Autocert
+-- Verify locking (Failed)
+-- Pass mailto for lets encrypt
 - Test on MOD
 - Filters (Medium)
 - Static File Serve (Medium).error pages

@@ -83,7 +83,7 @@ impl SingleMode {
         Ok(())
     }
 
-    #[instrument(parent=None, skip(self))]
+    #[instrument(parent=None, skip(self), fields(pid=format!("{}", Pid::this())))]
     pub fn run(self: Arc<Self>) -> Result<()> {
         let mut listener_task_set = JoinSet::new();
         let self_ref = Arc::new(self);

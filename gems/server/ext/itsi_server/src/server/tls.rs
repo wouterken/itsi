@@ -3,7 +3,10 @@ use itsi_error::Result;
 use itsi_tracing::info;
 use locked_dir_cache::LockedDirCache;
 use rcgen::{CertificateParams, DnType, KeyPair, SanType};
-use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+use rustls::{
+    pki_types::{CertificateDer, PrivateKeyDer},
+    ClientConfig, RootCertStore,
+};
 use rustls_pemfile::{certs, pkcs8_private_keys};
 use std::{
     collections::HashMap,
@@ -49,10 +52,41 @@ pub fn configure_tls(
                 domains = format!("{:?}", domains),
                 directory_url, "Requesting acme cert"
             );
+
+            let mut root_cert_store = RootCertStore::empty();
+            if let Ok(ca_pem_path) = env::var("ITSI_ACME_CA_PEM_PATH") {
+                let ca_pem = fs::read(ca_pem_path).expect("failed to read CA pem file");
+                let mut ca_reader = BufReader::new(&ca_pem[..]);
+                let der_certs: Vec<CertificateDer> = certs(&mut ca_reader)
+                    .collect::<std::result::Result<Vec<CertificateDer>, _>>()
+                    .map_err(|e| {
+                        itsi_error::ItsiError::ArgumentError(format!(
+                            "Invalid ACME CA Pem path {:?}",
+                            e
+                        ))
+                    })?;
+                root_cert_store.add_parsable_certificates(der_certs);
+            }
+
+            let client_config = ClientConfig::builder()
+                .with_root_certificates(root_cert_store)
+                .with_no_client_auth();
+
+            let contact_email = env::var("ITSI_ACME_CONTACT_EMAIL").map_err(|_| {
+                itsi_error::ItsiError::ArgumentError(
+                    "ITSI_ACME_CONTACT_EMAIL must be set before you can auto-generate production certificates"
+                        .to_string(),
+                )
+            })?;
+
+            let cache_dir = env::var("ITSI_ACME_CACHE_DIR")
+                .unwrap_or_else(|_| "./.rustls_acme_cache".to_string());
+
             let acme_state = AcmeConfig::new(domains)
-                .contact(["mailto:wc@pico.net.nz"])
-                .cache(LockedDirCache::new("./rustls_acme_cache"))
+                .contact([format!("mailto:{}", contact_email)])
+                .cache(LockedDirCache::new(cache_dir))
                 .directory(directory_url)
+                .client_tls_config(Arc::new(client_config))
                 .state();
             let rustls_config = ServerConfig::builder()
                 .with_no_client_auth()
