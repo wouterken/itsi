@@ -72,6 +72,7 @@ impl ClusterMode {
         lifecycle_event: LifecycleEvent,
     ) -> Result<()> {
         match lifecycle_event {
+            LifecycleEvent::Start => Ok(()),
             LifecycleEvent::Shutdown => {
                 self.shutdown().await?;
                 Ok(())

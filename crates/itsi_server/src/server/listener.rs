@@ -41,6 +41,14 @@ pub(crate) enum TokioListener {
 }
 
 impl TokioListener {
+    pub fn unbind(self) {
+        match self {
+            TokioListener::Tcp { listener, .. } => drop(listener.into_std().unwrap()),
+            TokioListener::TcpTls { listener, .. } => drop(listener.into_std().unwrap()),
+            TokioListener::Unix { listener } => drop(listener.into_std().unwrap()),
+            TokioListener::UnixTls { listener, .. } => drop(listener.into_std().unwrap()),
+        };
+    }
     pub(crate) async fn accept(&self) -> Result<IoStream> {
         match self {
             TokioListener::Tcp { listener, .. } => TokioListener::accept_tcp(listener).await,
@@ -166,6 +174,14 @@ impl std::fmt::Display for SockAddr {
 }
 
 impl Listener {
+    pub fn unbind(self) {
+        match self {
+            Listener::Tcp(listener) => drop(listener),
+            Listener::TcpTls((listener, _)) => drop(listener),
+            Listener::Unix(listener) => drop(listener),
+            Listener::UnixTls((listener, _)) => drop(listener),
+        };
+    }
     pub fn to_tokio_listener(&self) -> TokioListener {
         match self {
             Listener::Tcp(listener) => TokioListener::Tcp {

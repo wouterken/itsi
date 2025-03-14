@@ -9,6 +9,20 @@ require_relative "server/rack/handler/itsi"
 
 module Itsi
   class Server
+
+    def self.running?
+      @running ||= false
+    end
+
+    def self.start(app:, **opts)
+      server = new(app: ->{app}, **opts)
+      @running = true
+      Signal.trap('INT', 'DEFAULT')
+      server.start
+    ensure
+      @running = false
+    end
+
     def self.call(app, request)
       respond request, app.call(request.to_env)
     end

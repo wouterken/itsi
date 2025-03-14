@@ -124,6 +124,9 @@ impl SingleMode {
                       }
                     }
                 }
+                if let Ok(listener) = Arc::try_unwrap(listener){
+                  listener.unbind();
+                }
             });
 
           }

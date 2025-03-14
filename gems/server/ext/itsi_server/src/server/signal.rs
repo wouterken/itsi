@@ -45,7 +45,8 @@ fn receive_signal(signum: i32, _: sighandler_t) {
     }
 }
 
-pub fn reset_signal_handlers() {
+pub fn reset_signal_handlers() -> bool {
+    SIGINT_COUNT.store(0, std::sync::atomic::Ordering::SeqCst);
     unsafe {
         libc::signal(libc::SIGTERM, receive_signal as usize);
         libc::signal(libc::SIGINT, receive_signal as usize);
@@ -53,5 +54,17 @@ pub fn reset_signal_handlers() {
         libc::signal(libc::SIGUSR2, receive_signal as usize);
         libc::signal(libc::SIGTTIN, receive_signal as usize);
         libc::signal(libc::SIGTTOU, receive_signal as usize);
+    }
+    true
+}
+
+pub fn clear_signal_handlers() {
+    unsafe {
+        libc::signal(libc::SIGTERM, libc::SIG_DFL);
+        libc::signal(libc::SIGINT, libc::SIG_DFL);
+        libc::signal(libc::SIGUSR1, libc::SIG_DFL);
+        libc::signal(libc::SIGUSR2, libc::SIG_DFL);
+        libc::signal(libc::SIGTTIN, libc::SIG_DFL);
+        libc::signal(libc::SIGTTOU, libc::SIG_DFL);
     }
 }

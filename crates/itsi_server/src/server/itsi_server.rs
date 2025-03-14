@@ -2,7 +2,7 @@ use super::{
     bind::Bind,
     listener::Listener,
     serve_strategy::{cluster_mode::ClusterMode, single_mode::SingleMode},
-    signal::{reset_signal_handlers, SIGNAL_HANDLER_CHANNEL},
+    signal::{clear_signal_handlers, reset_signal_handlers, SIGNAL_HANDLER_CHANNEL},
 };
 use crate::{request::itsi_request::ItsiRequest, server::serve_strategy::ServeStrategy};
 use derive_more::Debug;
@@ -195,9 +195,11 @@ impl Server {
         Ok(Arc::new(listeners))
     }
 
-    pub(crate) fn build_strategy(self) -> Result<ServeStrategy> {
+    pub(crate) fn build_strategy(
+        self,
+        listeners: Arc<Vec<Arc<Listener>>>,
+    ) -> Result<ServeStrategy> {
         let server = Arc::new(self);
-        let listeners = server.listeners()?;
 
         let strategy = if server.config.workers == 1 {
             ServeStrategy::Single(Arc::new(SingleMode::new(
@@ -218,13 +220,25 @@ impl Server {
     pub fn start(&self) -> Result<()> {
         reset_signal_handlers();
         let rself = self.clone();
-        call_without_gvl(move || {
-            let strategy = rself.build_strategy()?;
+        let listeners = self.listeners()?;
+        let listeners_clone = listeners.clone();
+        call_without_gvl(move || -> Result<()> {
+            let strategy = rself.build_strategy(listeners_clone)?;
             if let Err(e) = strategy.run() {
                 error!("Error running server: {}", e);
                 strategy.stop()?;
             }
+            drop(strategy);
             Ok(())
-        })
+        })?;
+        if let Ok(listeners) = Arc::try_unwrap(listeners) {
+            listeners.into_iter().for_each(|listener| {
+                if let Ok(listener) = Arc::try_unwrap(listener) {
+                    listener.unbind()
+                };
+            });
+        }
+        clear_signal_handlers();
+        Ok(())
     }
 }
