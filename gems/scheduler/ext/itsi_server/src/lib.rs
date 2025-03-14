@@ -56,6 +56,9 @@ pub fn log_error(msg: String) {
 #[magnus::init]
 fn init(ruby: &Ruby) -> Result<()> {
     itsi_tracing::init();
+    rustls::crypto::aws_lc_rs::default_provider()
+        .install_default()
+        .ok();
 
     let itsi = ruby.get_inner(&ITSI_MODULE);
     itsi.define_singleton_method("log_debug", function!(log_debug, 1))?;

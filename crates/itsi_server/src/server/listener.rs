@@ -1,7 +1,8 @@
 use super::bind::{Bind, BindAddress};
 use super::bind_protocol::BindProtocol;
 use super::io_stream::IoStream;
-use itsi_error::Result;
+use super::tls::ItsiTlsAcceptor;
+use itsi_error::{ItsiError, Result};
 use itsi_tracing::info;
 use socket2::{Domain, Protocol, Socket, Type};
 use std::net::{IpAddr, SocketAddr, TcpListener};
@@ -11,12 +12,14 @@ use tokio::net::TcpListener as TokioTcpListener;
 use tokio::net::UnixListener as TokioUnixListener;
 use tokio::net::{unix, TcpStream, UnixStream};
 use tokio_rustls::TlsAcceptor;
+use tokio_stream::StreamExt;
+use tracing::error;
 
 pub(crate) enum Listener {
     Tcp(TcpListener),
-    TcpTls((TcpListener, TlsAcceptor)),
+    TcpTls((TcpListener, ItsiTlsAcceptor)),
     Unix(UnixListener),
-    UnixTls((UnixListener, TlsAcceptor)),
+    UnixTls((UnixListener, ItsiTlsAcceptor)),
 }
 
 pub(crate) enum TokioListener {
@@ -27,7 +30,7 @@ pub(crate) enum TokioListener {
     },
     TcpTls {
         listener: TokioTcpListener,
-        acceptor: TlsAcceptor,
+        acceptor: ItsiTlsAcceptor,
         host: String,
         port: u16,
     },
@@ -36,7 +39,7 @@ pub(crate) enum TokioListener {
     },
     UnixTls {
         listener: TokioUnixListener,
-        acceptor: TlsAcceptor,
+        acceptor: ItsiTlsAcceptor,
     },
 }
 
@@ -67,9 +70,49 @@ impl TokioListener {
         Self::to_tokio_io(Stream::TcpStream(tcp_stream), None).await
     }
 
-    async fn accept_tls(listener: &TokioTcpListener, acceptor: &TlsAcceptor) -> Result<IoStream> {
+    pub async fn spawn_state_task(&self) {
+        if let TokioListener::TcpTls {
+            acceptor: ItsiTlsAcceptor::Automatic(_acme_acceptor, state, _server_config),
+            ..
+        } = self
+        {
+            let mut state = state.lock().await;
+            loop {
+                match StreamExt::next(&mut *state).await {
+                    Some(event) => info!("Received acme event: {:?}", event),
+                    None => error!("Received no acme event"),
+                }
+            }
+        }
+    }
+
+    async fn accept_tls(
+        listener: &TokioTcpListener,
+        acceptor: &ItsiTlsAcceptor,
+    ) -> Result<IoStream> {
         let tcp_stream = listener.accept().await?;
-        Self::to_tokio_io(Stream::TcpStream(tcp_stream), Some(acceptor)).await
+        match acceptor {
+            ItsiTlsAcceptor::Manual(tls_acceptor) => {
+                Self::to_tokio_io(Stream::TcpStream(tcp_stream), Some(tls_acceptor)).await
+            }
+            ItsiTlsAcceptor::Automatic(acme_acceptor, _, rustls_config) => {
+                let accept_future = acme_acceptor.accept(tcp_stream.0);
+                match accept_future.await {
+                    Ok(None) => Err(ItsiError::Pass()),
+                    Ok(Some(start_handshake)) => {
+                        let tls_stream = start_handshake.into_stream(rustls_config.clone()).await?;
+                        Ok(IoStream::TcpTls {
+                            stream: tls_stream,
+                            addr: SockAddr::Tcp(Arc::new(tcp_stream.1)),
+                        })
+                    }
+                    Err(error) => {
+                        error!(error = format!("{:?}", error));
+                        Err(ItsiError::Pass())
+                    }
+                }
+            }
+        }
     }
 
     async fn accept_unix(listener: &TokioUnixListener) -> Result<IoStream> {
@@ -79,10 +122,20 @@ impl TokioListener {
 
     async fn accept_unix_tls(
         listener: &TokioUnixListener,
-        acceptor: &TlsAcceptor,
+        acceptor: &ItsiTlsAcceptor,
     ) -> Result<IoStream> {
         let unix_stream = listener.accept().await?;
-        Self::to_tokio_io(Stream::UnixStream(unix_stream), Some(acceptor)).await
+        match acceptor {
+            ItsiTlsAcceptor::Manual(tls_acceptor) => {
+                Self::to_tokio_io(Stream::UnixStream(unix_stream), Some(tls_acceptor)).await
+            }
+            ItsiTlsAcceptor::Automatic(_, _, _) => {
+                error!("Automatic TLS not supported on Unix sockets");
+                Err(ItsiError::UnsupportedProtocol(
+                    "Automatic TLS on Unix Sockets".to_owned(),
+                ))
+            }
+        }
     }
 
     async fn to_tokio_io(
@@ -229,16 +282,12 @@ impl TryFrom<Bind> for Listener {
                 BindProtocol::Http => Listener::Tcp(connect_tcp_socket(addr, bind.port.unwrap())?),
                 BindProtocol::Https => {
                     let tcp_listener = connect_tcp_socket(addr, bind.port.unwrap())?;
-                    let tls_acceptor = TlsAcceptor::from(Arc::new(bind.tls_config.unwrap()));
-                    Listener::TcpTls((tcp_listener, tls_acceptor))
+                    Listener::TcpTls((tcp_listener, bind.tls_config.unwrap()))
                 }
                 _ => unreachable!(),
             },
             BindAddress::UnixSocket(path) => match bind.tls_config {
-                Some(tls_config) => {
-                    let tls_acceptor = TlsAcceptor::from(Arc::new(tls_config));
-                    Listener::UnixTls((connect_unix_socket(&path)?, tls_acceptor))
-                }
+                Some(tls_config) => Listener::UnixTls((connect_unix_socket(&path)?, tls_config)),
                 None => Listener::Unix(connect_unix_socket(&path)?),
             },
         };
@@ -253,9 +302,11 @@ fn connect_tcp_socket(addr: IpAddr, port: u16) -> Result<TcpListener> {
     };
     let socket = Socket::new(domain, Type::STREAM, Some(Protocol::TCP))?;
     let socket_address: SocketAddr = SocketAddr::new(addr, port);
+    socket.set_reuse_port(true).ok();
+    socket.set_reuse_address(true).ok();
     socket.set_nonblocking(true).ok();
     socket.set_nodelay(true).ok();
-    socket.set_recv_buffer_size(1_048_576).ok();
+    socket.set_recv_buffer_size(262_144).ok();
     socket.bind(&socket_address.into())?;
     socket.listen(1024)?;
     Ok(socket.into())
@@ -265,6 +316,7 @@ fn connect_unix_socket(path: &PathBuf) -> Result<UnixListener> {
     let _ = std::fs::remove_file(path);
     let socket = Socket::new(Domain::UNIX, Type::STREAM, None)?;
     socket.set_nonblocking(true).ok();
+
     let socket_address = socket2::SockAddr::unix(path)?;
 
     info!("Binding to {:?}", path);

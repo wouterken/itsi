@@ -65,6 +65,7 @@ impl From<ItsiError> for magnus::Error {
             ItsiError::ClientConnectionClosed => {
                 magnus::Error::new(magnus::exception::eof_error(), CLIENT_CONNECTION_CLOSED)
             }
+            ItsiError::Pass() => magnus::Error::new(magnus::exception::interrupt(), "Pass"),
         }
     }
 }

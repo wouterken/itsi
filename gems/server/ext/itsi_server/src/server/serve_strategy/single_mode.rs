@@ -95,6 +95,12 @@ impl SingleMode {
               let self_ref = self_ref.clone();
               let listener = listener.clone();
               let (shutdown_sender, mut shutdown_receiver) = tokio::sync::watch::channel::<RunningPhase>(RunningPhase::Running);
+              let listener_clone = listener.clone();
+
+              tokio::spawn(async move {
+                listener_clone.spawn_state_task().await;
+              });
+
               listener_task_set.spawn(async move {
                 let strategy = self_ref.clone();
                 loop {

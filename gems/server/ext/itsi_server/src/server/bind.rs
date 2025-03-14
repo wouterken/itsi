@@ -1,4 +1,7 @@
-use super::{bind_protocol::BindProtocol, tls::configure_tls};
+use super::{
+    bind_protocol::BindProtocol,
+    tls::{configure_tls, ItsiTlsAcceptor},
+};
 use itsi_error::ItsiError;
 use std::{
     collections::HashMap,
@@ -6,8 +9,6 @@ use std::{
     path::PathBuf,
     str::FromStr,
 };
-use tokio_rustls::rustls::ServerConfig;
-
 #[derive(Debug, Clone)]
 pub enum BindAddress {
     Ip(IpAddr),
@@ -26,7 +27,7 @@ pub struct Bind {
     pub address: BindAddress,
     pub port: Option<u16>, // None for Unix Sockets
     pub protocol: BindProtocol,
-    pub tls_config: Option<ServerConfig>,
+    pub tls_config: Option<ItsiTlsAcceptor>,
 }
 
 impl std::fmt::Debug for Bind {

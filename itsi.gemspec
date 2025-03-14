@@ -33,8 +33,8 @@ Gem::Specification.new do |spec|
 
   spec.require_paths = ['lib']
 
-  spec.add_dependency 'itsi-server', '~> 0.1.2'
-  spec.add_dependency 'itsi-scheduler', '~> 0.1.2'
+  spec.add_dependency 'itsi-server', '~> 0.1.4'
+  spec.add_dependency 'itsi-scheduler', '~> 0.1.4'
 
   # For more information and examples about making a new gem, check out our
   # guide at: https://bundler.io/guides/creating_gem.html

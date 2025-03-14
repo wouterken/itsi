@@ -19,4 +19,6 @@ pub enum ItsiError {
     Jump(String),
     #[error("Break")]
     Break(),
+    #[error("Pass")]
+    Pass(),
 }
