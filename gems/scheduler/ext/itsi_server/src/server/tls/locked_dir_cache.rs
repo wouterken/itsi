@@ -1,12 +1,13 @@
 use async_trait::async_trait;
 use fs2::FileExt;
 use parking_lot::Mutex;
-use std::env;
 use std::fs::{self, OpenOptions};
 use std::io::Error as IoError;
 use std::path::{Path, PathBuf};
 use tokio_rustls_acme::caches::DirCache;
 use tokio_rustls_acme::{AccountCache, CertCache};
+
+use crate::env::ITSI_ACME_LOCK_FILE_NAME;
 
 /// A wrapper around DirCache that locks a file before writing cert/account data.
 pub struct LockedDirCache<P: AsRef<Path> + Send + Sync> {
@@ -19,8 +20,7 @@ impl<P: AsRef<Path> + Send + Sync> LockedDirCache<P> {
     pub fn new(dir: P) -> Self {
         let dir_path = dir.as_ref().to_path_buf();
         std::fs::create_dir_all(&dir_path).unwrap();
-        let lock_path =
-            dir_path.join(env::var("ITSI_ACME_LOCK_FILE_NAME").unwrap_or(".acme.lock".to_string()));
+        let lock_path = dir_path.join(&*ITSI_ACME_LOCK_FILE_NAME);
         Self::touch_file(&lock_path).expect("Failed to create lock file");
 
         Self {

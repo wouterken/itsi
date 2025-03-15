@@ -2,7 +2,9 @@ use base64::{engine::general_purpose, Engine as _};
 use itsi_error::Result;
 use itsi_tracing::info;
 use locked_dir_cache::LockedDirCache;
-use rcgen::{CertificateParams, DnType, KeyPair, SanType};
+use rcgen::{
+    generate_simple_self_signed, CertificateParams, CertifiedKey, DnType, KeyPair, SanType,
+};
 use rustls::{
     pki_types::{CertificateDer, PrivateKeyDer},
     ClientConfig, RootCertStore,
@@ -10,16 +12,19 @@ use rustls::{
 use rustls_pemfile::{certs, pkcs8_private_keys};
 use std::{
     collections::HashMap,
-    env, fs,
+    fs,
     io::{BufReader, Error},
     sync::Arc,
 };
 use tokio::sync::Mutex;
 use tokio_rustls::{rustls::ServerConfig, TlsAcceptor};
 use tokio_rustls_acme::{AcmeAcceptor, AcmeConfig, AcmeState};
+
+use crate::env::{
+    ITSI_ACME_CACHE_DIR, ITSI_ACME_CA_PEM_PATH, ITSI_ACME_CONTACT_EMAIL, ITSI_ACME_DIRECTORY_URL,
+    ITSI_LOCAL_CA_DIR,
+};
 mod locked_dir_cache;
-const ITS_CA_CERT: &str = include_str!("./itsi_ca/itsi_ca.crt");
-const ITS_CA_KEY: &str = include_str!("./itsi_ca/itsi_ca.key");
 
 #[derive(Clone)]
 pub enum ItsiTlsAcceptor {
@@ -31,11 +36,12 @@ pub enum ItsiTlsAcceptor {
     ),
 }
 
-// Generates a TLS configuration based on either :
-// * Input "cert" and "key" options (either paths or Base64-encoded strings) or
-// * Performs automatic certificate generation/retrieval. Generated certs use an internal self-signed Isti CA.
-// If a non-local host or optional domain parameter is provided,
-// an automated certificate will attempt to be fetched using let's encrypt.
+/// Generates a TLS configuration based on either :
+/// * Input "cert" and "key" options (either paths or Base64-encoded strings) or
+/// * Performs automatic certificate generation/retrieval. Generated certs use an internal self-signed Isti CA.
+///
+/// If a non-local host or optional domain parameter is provided,
+/// an automated certificate will attempt to be fetched using let's encrypt.
 pub fn configure_tls(
     host: &str,
     query_params: &HashMap<String, String>,
@@ -44,17 +50,27 @@ pub fn configure_tls(
         .get("domains")
         .map(|v| v.split(',').map(String::from).collect::<Vec<_>>());
 
-    if query_params.get("cert").is_none() || query_params.get("key").is_none() {
+    if query_params.get("cert").is_some_and(|c| c == "auto") {
         if let Some(domains) = domains {
-            let directory_url = env::var("ACME_DIRECTORY_URL")
-                .unwrap_or_else(|_| "https://acme-v02.api.letsencrypt.org/directory".to_string());
+            let directory_url = &*ITSI_ACME_DIRECTORY_URL;
             info!(
                 domains = format!("{:?}", domains),
                 directory_url, "Requesting acme cert"
             );
 
-            let mut root_cert_store = RootCertStore::empty();
-            if let Ok(ca_pem_path) = env::var("ITSI_ACME_CA_PEM_PATH") {
+            let acme_config = AcmeConfig::new(domains)
+                .contact([format!("mailto:{}", (*ITSI_ACME_CONTACT_EMAIL).as_ref().map_err(|_| {
+                    itsi_error::ItsiError::ArgumentError(
+                      "ITSI_ACME_CONTACT_EMAIL must be set before you can auto-generate production certificates"
+                          .to_string(),
+                  )
+                })?)])
+                .cache(LockedDirCache::new(&*ITSI_ACME_CACHE_DIR))
+                .directory(directory_url);
+
+            let acme_state = if let Ok(ca_pem_path) = &*ITSI_ACME_CA_PEM_PATH {
+                let mut root_cert_store = RootCertStore::empty();
+
                 let ca_pem = fs::read(ca_pem_path).expect("failed to read CA pem file");
                 let mut ca_reader = BufReader::new(&ca_pem[..]);
                 let der_certs: Vec<CertificateDer> = certs(&mut ca_reader)
@@ -66,31 +82,23 @@ pub fn configure_tls(
                         ))
                     })?;
                 root_cert_store.add_parsable_certificates(der_certs);
-            }
 
-            let client_config = ClientConfig::builder()
-                .with_root_certificates(root_cert_store)
-                .with_no_client_auth();
+                let client_config = ClientConfig::builder()
+                    .with_root_certificates(root_cert_store)
+                    .with_no_client_auth();
+                acme_config
+                    .client_tls_config(Arc::new(client_config))
+                    .state()
+            } else {
+                acme_config.state()
+            };
 
-            let contact_email = env::var("ITSI_ACME_CONTACT_EMAIL").map_err(|_| {
-                itsi_error::ItsiError::ArgumentError(
-                    "ITSI_ACME_CONTACT_EMAIL must be set before you can auto-generate production certificates"
-                        .to_string(),
-                )
-            })?;
-
-            let cache_dir = env::var("ITSI_ACME_CACHE_DIR")
-                .unwrap_or_else(|_| "./.rustls_acme_cache".to_string());
-
-            let acme_state = AcmeConfig::new(domains)
-                .contact([format!("mailto:{}", contact_email)])
-                .cache(LockedDirCache::new(cache_dir))
-                .directory(directory_url)
-                .client_tls_config(Arc::new(client_config))
-                .state();
-            let rustls_config = ServerConfig::builder()
+            let mut rustls_config = ServerConfig::builder()
                 .with_no_client_auth()
                 .with_cert_resolver(acme_state.resolver());
+
+            rustls_config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
+
             let acceptor = acme_state.acceptor();
             return Ok(ItsiTlsAcceptor::Automatic(
                 acceptor,
@@ -107,7 +115,7 @@ pub fn configure_tls(
         let key = load_private_key(key_path);
         (certs, key)
     } else {
-        generate_ca_signed_cert(vec![host.to_owned()])?
+        generate_ca_signed_cert(domains.unwrap_or(vec![host.to_owned()]))?
     };
 
     let mut config = ServerConfig::builder()
@@ -179,9 +187,10 @@ pub fn generate_ca_signed_cert(
     domains: Vec<String>,
 ) -> Result<(Vec<CertificateDer<'static>>, PrivateKeyDer<'static>)> {
     info!("Generating New Itsi CA - Self signed Certificate. Use `itsi ca export` to export the CA certificate for import into your local trust store.");
+    let (ca_key_pem, ca_cert_pem) = get_or_create_local_dev_ca()?;
 
-    let ca_kp = KeyPair::from_pem(ITS_CA_KEY).expect("Failed to load embedded CA key");
-    let ca_cert = CertificateParams::from_ca_cert_pem(ITS_CA_CERT)
+    let ca_kp = KeyPair::from_pem(&ca_key_pem).expect("Failed to load CA key");
+    let ca_cert = CertificateParams::from_ca_cert_pem(&ca_cert_pem)
         .expect("Failed to parse embedded CA certificate")
         .self_signed(&ca_kp)
         .expect("Failed to self-sign embedded CA cert");
@@ -220,4 +229,30 @@ pub fn generate_ca_signed_cert(
         vec![ee_cert, ca_cert],
         PrivateKeyDer::try_from(ee_key.serialize_der()).unwrap(),
     ))
+}
+
+fn get_or_create_local_dev_ca() -> Result<(String, String)> {
+    let ca_dir = &*ITSI_LOCAL_CA_DIR;
+    fs::create_dir_all(ca_dir)?;
+
+    let key_path = ca_dir.join("itsi_dev_ca.key");
+    let cert_path = ca_dir.join("itsi_dev_ca.crt");
+
+    if key_path.exists() && cert_path.exists() {
+        // Already have a local CA
+        let key_pem = fs::read_to_string(&key_path)?;
+        let cert_pem = fs::read_to_string(&cert_path)?;
+
+        Ok((key_pem, cert_pem))
+    } else {
+        let subject_alt_names = vec!["dev.itsi.fyi".to_string(), "localhost".to_string()];
+
+        let CertifiedKey { cert, key_pair } =
+            generate_simple_self_signed(subject_alt_names).unwrap();
+
+        fs::write(&key_path, key_pair.serialize_pem())?;
+        fs::write(&cert_path, cert.pem())?;
+
+        Ok((key_pair.serialize_pem(), cert.pem()))
+    }
 }

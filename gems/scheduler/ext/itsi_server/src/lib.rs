@@ -6,6 +6,7 @@ use server::{itsi_server::Server, signal::reset_signal_handlers};
 use tracing::*;
 
 pub mod body_proxy;
+pub mod env;
 pub mod request;
 pub mod response;
 pub mod server;
