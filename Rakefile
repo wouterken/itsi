@@ -74,3 +74,24 @@ task :build_all do
     end
   end
 end
+
+task :test_env_up do
+  system("terraform -chdir=sandbox/deploy apply")
+end
+
+task :test_env_down do
+  system("terraform -chdir=sandbox/deploy destroy")
+end
+
+require 'debug'
+%w(itsi puma iodine falcon unicorn ).each do |server|
+  namespace server do
+    %w(hanami roda async rack rack_lint rails sinatra).each do |sandbox|
+      namespace sandbox do
+        task :serve do |args|
+          sh "(cd sandbox/itsi_sandbox_#{sandbox} && bundle exec #{server} #{ARGV[2..]&.join(" ")} )"
+        end
+      end
+    end
+  end
+end

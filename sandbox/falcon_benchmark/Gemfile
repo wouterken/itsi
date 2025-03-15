@@ -1,0 +1,10 @@
+source 'https://rubygems.org'
+
+gem 'iodine'
+gem 'unicorn'
+gem 'puma'
+gem 'passenger'
+gem 'agoo'
+gem 'falcon'
+gem "itsi-server", path: "../../gems/server"
+gem "itsi-scheduler", path: "../../gems/scheduler"

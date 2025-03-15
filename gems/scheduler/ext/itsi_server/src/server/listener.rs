@@ -1,6 +1,7 @@
 use super::bind::{Bind, BindAddress};
 use super::bind_protocol::BindProtocol;
 use super::io_stream::IoStream;
+use super::serve_strategy::single_mode::RunningPhase;
 use super::tls::ItsiTlsAcceptor;
 use itsi_error::{ItsiError, Result};
 use itsi_tracing::info;
@@ -11,6 +12,7 @@ use std::{os::unix::net::UnixListener, path::PathBuf};
 use tokio::net::TcpListener as TokioTcpListener;
 use tokio::net::UnixListener as TokioUnixListener;
 use tokio::net::{unix, TcpStream, UnixStream};
+use tokio::sync::watch::Receiver;
 use tokio_rustls::TlsAcceptor;
 use tokio_stream::StreamExt;
 use tracing::error;
@@ -23,45 +25,79 @@ pub(crate) enum Listener {
 }
 
 pub(crate) enum TokioListener {
-    Tcp {
-        listener: TokioTcpListener,
-        host: String,
-        port: u16,
-    },
-    TcpTls {
-        listener: TokioTcpListener,
-        acceptor: ItsiTlsAcceptor,
-        host: String,
-        port: u16,
-    },
-    Unix {
-        listener: TokioUnixListener,
-    },
-    UnixTls {
-        listener: TokioUnixListener,
-        acceptor: ItsiTlsAcceptor,
-    },
+    Tcp(TokioTcpListener),
+    TcpTls(TokioTcpListener, ItsiTlsAcceptor),
+    Unix(TokioUnixListener),
+    UnixTls(TokioUnixListener, ItsiTlsAcceptor),
+}
+
+#[derive(Debug, Clone)]
+pub struct ListenerInfo {
+    pub host: String,
+    pub port: u16,
+    pub scheme: String,
 }
 
 impl TokioListener {
-    pub fn unbind(self) {
+    pub fn listener_info(&self) -> ListenerInfo {
         match self {
-            TokioListener::Tcp { listener, .. } => drop(listener.into_std().unwrap()),
-            TokioListener::TcpTls { listener, .. } => drop(listener.into_std().unwrap()),
-            TokioListener::Unix { listener } => drop(listener.into_std().unwrap()),
-            TokioListener::UnixTls { listener, .. } => drop(listener.into_std().unwrap()),
-        };
+            TokioListener::Tcp(listener) => ListenerInfo {
+                host: listener
+                    .local_addr()
+                    .unwrap()
+                    .ip()
+                    .to_canonical()
+                    .to_string(),
+                port: listener.local_addr().unwrap().port(),
+                scheme: "http".to_string(),
+            },
+            TokioListener::TcpTls(listener, _) => ListenerInfo {
+                host: listener
+                    .local_addr()
+                    .unwrap()
+                    .ip()
+                    .to_canonical()
+                    .to_string(),
+                port: listener.local_addr().unwrap().port(),
+                scheme: "https".to_string(),
+            },
+            TokioListener::Unix(listener) => ListenerInfo {
+                host: listener
+                    .local_addr()
+                    .unwrap()
+                    .as_pathname()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .to_owned(),
+                port: 0,
+                scheme: "unix".to_string(),
+            },
+            TokioListener::UnixTls(listener, _) => ListenerInfo {
+                host: listener
+                    .local_addr()
+                    .unwrap()
+                    .as_pathname()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .to_owned(),
+                port: 0,
+                scheme: "ssl".to_string(),
+            },
+        }
     }
+
     pub(crate) async fn accept(&self) -> Result<IoStream> {
         match self {
-            TokioListener::Tcp { listener, .. } => TokioListener::accept_tcp(listener).await,
-            TokioListener::TcpTls {
-                listener, acceptor, ..
-            } => TokioListener::accept_tls(listener, acceptor).await,
-            TokioListener::Unix { listener, .. } => TokioListener::accept_unix(listener).await,
-            TokioListener::UnixTls {
-                listener, acceptor, ..
-            } => TokioListener::accept_unix_tls(listener, acceptor).await,
+            TokioListener::Tcp(listener) => TokioListener::accept_tcp(listener).await,
+            TokioListener::TcpTls(listener, acceptor) => {
+                TokioListener::accept_tls(listener, acceptor).await
+            }
+            TokioListener::Unix(listener) => TokioListener::accept_unix(listener).await,
+            TokioListener::UnixTls(listener, acceptor) => {
+                TokioListener::accept_unix_tls(listener, acceptor).await
+            }
         }
     }
 
@@ -70,17 +106,24 @@ impl TokioListener {
         Self::to_tokio_io(Stream::TcpStream(tcp_stream), None).await
     }
 
-    pub async fn spawn_state_task(&self) {
-        if let TokioListener::TcpTls {
-            acceptor: ItsiTlsAcceptor::Automatic(_acme_acceptor, state, _server_config),
-            ..
-        } = self
+    pub async fn spawn_state_task(&self, mut shutdown_receiver: Receiver<RunningPhase>) {
+        if let TokioListener::TcpTls(
+            _,
+            ItsiTlsAcceptor::Automatic(_acme_acceptor, state, _server_config),
+        ) = self
         {
             let mut state = state.lock().await;
             loop {
-                match StreamExt::next(&mut *state).await {
-                    Some(event) => info!("Received acme event: {:?}", event),
-                    None => error!("Received no acme event"),
+                tokio::select! {
+                  stream_event = StreamExt::next(&mut *state) => {
+                      match stream_event {
+                        Some(event) => info!("Received acme event: {:?}", event),
+                        None => error!("Received no acme event"),
+                      }
+                  },
+                  _ = shutdown_receiver.changed() => {
+                      break;
+                  }
                 }
             }
         }
@@ -175,33 +218,6 @@ impl TokioListener {
             },
         }
     }
-
-    pub(crate) fn scheme(&self) -> String {
-        match self {
-            TokioListener::Tcp { .. } => "http".to_string(),
-            TokioListener::TcpTls { .. } => "https".to_string(),
-            TokioListener::Unix { .. } => "http".to_string(),
-            TokioListener::UnixTls { .. } => "https".to_string(),
-        }
-    }
-
-    pub(crate) fn port(&self) -> u16 {
-        match self {
-            TokioListener::Tcp { port, .. } => *port,
-            TokioListener::TcpTls { port, .. } => *port,
-            TokioListener::Unix { .. } => 0,
-            TokioListener::UnixTls { .. } => 0,
-        }
-    }
-
-    pub(crate) fn host(&self) -> String {
-        match self {
-            TokioListener::Tcp { host, .. } => host.to_string(),
-            TokioListener::TcpTls { host, .. } => host.to_string(),
-            TokioListener::Unix { .. } => "unix".to_string(),
-            TokioListener::UnixTls { .. } => "unix".to_string(),
-        }
-    }
 }
 
 enum Stream {
@@ -227,48 +243,22 @@ impl std::fmt::Display for SockAddr {
 }
 
 impl Listener {
-    pub fn unbind(self) {
-        match self {
-            Listener::Tcp(listener) => drop(listener),
-            Listener::TcpTls((listener, _)) => drop(listener),
-            Listener::Unix(listener) => drop(listener),
-            Listener::UnixTls((listener, _)) => drop(listener),
-        };
-    }
     pub fn to_tokio_listener(&self) -> TokioListener {
         match self {
-            Listener::Tcp(listener) => TokioListener::Tcp {
-                listener: TokioTcpListener::from_std(TcpListener::try_clone(listener).unwrap())
-                    .unwrap(),
-                host: listener
-                    .local_addr()
-                    .unwrap()
-                    .ip()
-                    .to_canonical()
-                    .to_string(),
-                port: listener.local_addr().unwrap().port(),
-            },
-            Listener::TcpTls((listener, acceptor)) => TokioListener::TcpTls {
-                listener: TokioTcpListener::from_std(TcpListener::try_clone(listener).unwrap())
-                    .unwrap(),
-                acceptor: acceptor.clone(),
-                host: listener
-                    .local_addr()
-                    .unwrap()
-                    .ip()
-                    .to_canonical()
-                    .to_string(),
-                port: listener.local_addr().unwrap().port(),
-            },
-            Listener::Unix(listener) => TokioListener::Unix {
-                listener: TokioUnixListener::from_std(UnixListener::try_clone(listener).unwrap())
-                    .unwrap(),
-            },
-            Listener::UnixTls((listener, acceptor)) => TokioListener::UnixTls {
-                listener: TokioUnixListener::from_std(UnixListener::try_clone(listener).unwrap())
-                    .unwrap(),
-                acceptor: acceptor.clone(),
-            },
+            Listener::Tcp(listener) => TokioListener::Tcp(
+                TokioTcpListener::from_std(TcpListener::try_clone(listener).unwrap()).unwrap(),
+            ),
+            Listener::TcpTls((listener, acceptor)) => TokioListener::TcpTls(
+                TokioTcpListener::from_std(TcpListener::try_clone(listener).unwrap()).unwrap(),
+                acceptor.clone(),
+            ),
+            Listener::Unix(listener) => TokioListener::Unix(
+                TokioUnixListener::from_std(UnixListener::try_clone(listener).unwrap()).unwrap(),
+            ),
+            Listener::UnixTls((listener, acceptor)) => TokioListener::UnixTls(
+                TokioUnixListener::from_std(UnixListener::try_clone(listener).unwrap()).unwrap(),
+                acceptor.clone(),
+            ),
         }
     }
 }
@@ -307,6 +297,7 @@ fn connect_tcp_socket(addr: IpAddr, port: u16) -> Result<TcpListener> {
     socket.set_nonblocking(true).ok();
     socket.set_nodelay(true).ok();
     socket.set_recv_buffer_size(262_144).ok();
+    info!("Binding to {:?}", socket_address);
     socket.bind(&socket_address.into())?;
     socket.listen(1024)?;
     Ok(socket.into())

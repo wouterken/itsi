@@ -4,7 +4,7 @@ use crate::{
         io_stream::IoStream,
         itsi_server::{RequestJob, Server},
         lifecycle_event::LifecycleEvent,
-        listener::{Listener, TokioListener},
+        listener::{Listener, ListenerInfo},
         thread_worker::{build_thread_workers, ThreadWorker},
     },
 };
@@ -87,18 +87,25 @@ impl SingleMode {
     pub fn run(self: Arc<Self>) -> Result<()> {
         let mut listener_task_set = JoinSet::new();
         let self_ref = Arc::new(self);
-        self_ref.build_runtime().block_on(async {
+        let runtime = self_ref.build_runtime();
 
-          for listener in self_ref.listeners.clone().iter() {
-              let listener = Arc::new(listener.to_tokio_listener());
+        runtime.block_on(async {
+          let tokio_listeners = self_ref
+              .listeners
+              .iter()
+              .map(|list| Arc::new(list.to_tokio_listener()))
+              .collect::<Vec<_>>();
+          for listener in tokio_listeners.iter() {
               let mut lifecycle_rx = self_ref.lifecycle_channel.subscribe();
+              let listener_info = Arc::new(listener.listener_info());
               let self_ref = self_ref.clone();
               let listener = listener.clone();
               let (shutdown_sender, mut shutdown_receiver) = tokio::sync::watch::channel::<RunningPhase>(RunningPhase::Running);
               let listener_clone = listener.clone();
 
-              tokio::spawn(async move {
-                listener_clone.spawn_state_task().await;
+              let shutdown_receiver_clone = shutdown_receiver.clone();
+              listener_task_set.spawn(async move {
+                listener_clone.spawn_state_task(shutdown_receiver_clone).await;
               });
 
               listener_task_set.spawn(async move {
@@ -107,8 +114,11 @@ impl SingleMode {
                     tokio::select! {
                         accept_result = listener.accept() => match accept_result {
                           Ok(accept_result) => {
-                            if let Err(e) = strategy.serve_connection(accept_result, listener.clone(), shutdown_receiver.clone()).await {
-                              error!("Error in serve_connection {:?}", e)
+                            match strategy.serve_connection(accept_result, listener_info.clone(), shutdown_receiver.clone()).await {
+                              Ok(_) => {
+                                debug!("Connection accepted and served");
+                              },
+                              Err(e) => error!("Error in serve_connection {:?}", e)
                             }
                           },
                           Err(e) => debug!("Listener.accept failed {:?}", e),
@@ -130,23 +140,23 @@ impl SingleMode {
                       }
                     }
                 }
-                if let Ok(listener) = Arc::try_unwrap(listener){
-                  listener.unbind();
-                }
             });
 
           }
 
           while let Some(_res) = listener_task_set.join_next().await {}
-        });
 
+        });
+        runtime.shutdown_timeout(Duration::from_millis(100));
+
+        info!("Runtime has shut down");
         Ok(())
     }
 
     pub(crate) async fn serve_connection(
         &self,
         stream: IoStream,
-        listener: Arc<TokioListener>,
+        listener: Arc<ListenerInfo>,
         shutdown_channel: tokio::sync::watch::Receiver<RunningPhase>,
     ) -> Result<()> {
         let sender_clone = self.sender.clone();

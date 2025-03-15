@@ -19,7 +19,7 @@ use parking_lot::Mutex;
 use std::{cmp::max, ops::Deref, sync::Arc};
 use tracing::{info, instrument};
 
-static DEFAULT_BIND: &str = "localhost:3000";
+static DEFAULT_BIND: &str = "http://localhost:3000";
 
 #[magnus::wrap(class = "Itsi::Server", free_immediately, size)]
 #[derive(Clone)]
@@ -231,13 +231,6 @@ impl Server {
             drop(strategy);
             Ok(())
         })?;
-        if let Ok(listeners) = Arc::try_unwrap(listeners) {
-            listeners.into_iter().for_each(|listener| {
-                if let Ok(listener) = Arc::try_unwrap(listener) {
-                    listener.unbind()
-                };
-            });
-        }
         clear_signal_handlers();
         Ok(())
     }

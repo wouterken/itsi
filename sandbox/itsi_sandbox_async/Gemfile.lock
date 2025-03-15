@@ -1,0 +1,69 @@
+PATH
+  remote: ../../../osprey_scheduler
+  specs:
+    osprey_scheduler (0.1.0)
+      async (= 2.21.1)
+      rb_sys (~> 0.9.91)
+
+PATH
+  remote: ../../gems/server
+  specs:
+    itsi-server (0.1.1)
+      libclang (~> 14.0)
+      rack (~> 2.2)
+      rb_sys (~> 0.9.91)
+
+GEM
+  remote: https://rubygems.org/
+  specs:
+    async (2.21.1)
+      console (~> 1.29)
+      fiber-annotation
+      io-event (~> 1.6, >= 1.6.5)
+    console (1.29.3)
+      fiber-annotation
+      fiber-local (~> 1.1)
+      json
+    date (3.4.1)
+    debug (1.10.0)
+      irb (~> 1.10)
+      reline (>= 0.3.8)
+    fiber-annotation (0.2.0)
+    fiber-local (1.1.0)
+      fiber-storage
+    fiber-storage (1.0.0)
+    io-console (0.8.0)
+    io-event (1.9.0)
+    irb (1.15.1)
+      pp (>= 0.6.0)
+      rdoc (>= 4.0.0)
+      reline (>= 0.4.2)
+    json (2.10.1)
+    libclang (14.0.6-arm64-darwin)
+    pp (0.6.2)
+      prettyprint
+    prettyprint (0.2.0)
+    psych (5.2.3)
+      date
+      stringio
+    rack (2.2.12)
+    rake-compiler-dock (1.9.1)
+    rb_sys (0.9.111)
+      rake-compiler-dock (= 1.9.1)
+    rdoc (6.12.0)
+      psych (>= 4.0.0)
+    reline (0.6.0)
+      io-console (~> 0.5)
+    stringio (3.1.5)
+
+PLATFORMS
+  arm64-darwin-23
+  ruby
+
+DEPENDENCIES
+  debug
+  itsi-server!
+  osprey_scheduler!
+
+BUNDLED WITH
+   2.6.3

@@ -12,6 +12,7 @@
 *.a
 mkmf.log
 target/
-sandbox/
 .DS_Store
 .rustls_acme_cache/
+.terraform*
+terraform.tfstate*

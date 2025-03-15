@@ -186,7 +186,15 @@ pub fn load_private_key(path: &str) -> PrivateKeyDer<'static> {
 pub fn generate_ca_signed_cert(
     domains: Vec<String>,
 ) -> Result<(Vec<CertificateDer<'static>>, PrivateKeyDer<'static>)> {
-    info!("Generating New Itsi CA - Self signed Certificate. Use `itsi ca export` to export the CA certificate for import into your local trust store.");
+    info!(
+        domains = format!("{}", domains.join(", ")),
+        "Self signed cert",
+    );
+    info!(
+        "Add {} to your system's trusted cert store to resolve certificate errors.",
+        format!("{}/itsi_dev_ca.crt", ITSI_LOCAL_CA_DIR.to_str().unwrap())
+    );
+    info!("Dev CA path can be overridden by setting env var: `ITSI_LOCAL_CA_DIR`.");
     let (ca_key_pem, ca_cert_pem) = get_or_create_local_dev_ca()?;
 
     let ca_kp = KeyPair::from_pem(&ca_key_pem).expect("Failed to load CA key");
@@ -198,10 +206,6 @@ pub fn generate_ca_signed_cert(
     let ee_key = KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256).unwrap();
     let mut ee_params = CertificateParams::default();
 
-    info!(
-        "Generated certificate will be valid for domains {:?}",
-        domains
-    );
     use std::net::IpAddr;
 
     ee_params.subject_alt_names = domains

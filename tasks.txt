@@ -1,16 +1,18 @@
+- Support adding let's encrypt email to cert string
+- Support single domain (not domain(s)).
 - Test on MOD
 - Filters (Medium)
 - Static File Serve (Medium).error pages
 - Preload Groups
-- Signal to log info
+- Support a Signal for logging live server info
 - Dashboard
+- Auto-redirect? Or auto HTTP?
 
 - Polish and Release (At Lake)
 -- Log params (Think long and hard about what we should and shouldn't log)
--- Parameterize EVERYTHING (OOB GC, and others)
+-- Parameterize EVERYTHING (OOB GC - Make sure this works for non fiber mode, and others)
 -- No unwrap or except
--- Switch to direct scheduler integration
--- Fix Scheduler Hanging test (Or remove it)
+-- Add notes on: PGGSSENCMODE="disable"
 
 Later:
 - Broken shutdown (sometimes) in Fiber mode

@@ -9,6 +9,7 @@ use std::{
     path::PathBuf,
     str::FromStr,
 };
+
 #[derive(Debug, Clone)]
 pub enum BindAddress {
     Ip(IpAddr),
@@ -129,13 +130,13 @@ impl FromStr for Bind {
             BindProtocol::Unix => None,
             BindProtocol::Unixs => Some(configure_tls(host, &options)?),
         };
-
-        Ok(Self {
+        let bind = Self {
             address,
             port,
             protocol,
             tls_config,
-        })
+        };
+        Ok(bind)
     }
 }
 

@@ -6,7 +6,7 @@ use crate::{
     response::itsi_response::ItsiResponse,
     server::{
         itsi_server::{RequestJob, Server},
-        listener::{SockAddr, TokioListener},
+        listener::{ListenerInfo, SockAddr},
         serve_strategy::single_mode::RunningPhase,
     },
 };
@@ -44,7 +44,7 @@ pub struct ItsiRequest {
     pub remote_addr: String,
     pub version: String,
     #[debug(skip)]
-    pub(crate) listener: Arc<TokioListener>,
+    pub(crate) listener: Arc<ListenerInfo>,
     #[debug(skip)]
     pub server: Arc<Server>,
     pub response: ItsiResponse,
@@ -128,7 +128,7 @@ impl ItsiRequest {
         hyper_request: Request<Incoming>,
         sender: async_channel::Sender<RequestJob>,
         server: Arc<Server>,
-        listener: Arc<TokioListener>,
+        listener: Arc<ListenerInfo>,
         addr: SockAddr,
         shutdown_rx: watch::Receiver<RunningPhase>,
     ) -> itsi_error::Result<Response<BoxBody<Bytes, Infallible>>> {
@@ -153,7 +153,7 @@ impl ItsiRequest {
         request: Request<Incoming>,
         sock_addr: SockAddr,
         server: Arc<Server>,
-        listener: Arc<TokioListener>,
+        listener: Arc<ListenerInfo>,
     ) -> (ItsiRequest, mpsc::Receiver<Option<Bytes>>) {
         let (parts, body) = request.into_parts();
         let body = if server.stream_body.is_some_and(|f| f) {
@@ -231,7 +231,7 @@ impl ItsiRequest {
             .uri
             .host()
             .map(|host| host.to_string())
-            .unwrap_or_else(|| self.listener.host()))
+            .unwrap_or_else(|| self.listener.host.clone()))
     }
 
     pub(crate) fn scheme(&self) -> MagnusResult<String> {
@@ -240,7 +240,7 @@ impl ItsiRequest {
             .uri
             .scheme()
             .map(|scheme| scheme.to_string())
-            .unwrap_or_else(|| self.listener.scheme()))
+            .unwrap_or_else(|| self.listener.scheme.clone()))
     }
 
     pub(crate) fn headers(&self) -> MagnusResult<Vec<(String, &str)>> {
@@ -264,7 +264,7 @@ impl ItsiRequest {
     }
 
     pub(crate) fn port(&self) -> MagnusResult<u16> {
-        Ok(self.parts.uri.port_u16().unwrap_or(self.listener.port()))
+        Ok(self.parts.uri.port_u16().unwrap_or(self.listener.port))
     }
 
     pub(crate) fn body(&self) -> MagnusResult<Value> {

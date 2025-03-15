@@ -1,0 +1,10 @@
+# frozen_string_literal: true
+
+source "https://rubygems.org"
+
+# gem "rails"
+
+# gem "async"
+gem "debug"
+gem "itsi-server", path: "../../gems/server"
+gem "osprey_scheduler", path: "../../../osprey_scheduler"

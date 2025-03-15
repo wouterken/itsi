@@ -6,6 +6,9 @@ require_relative "signals"
 require_relative "request"
 require_relative "stream_io"
 require_relative "server/rack/handler/itsi"
+require 'erb'
+
+DEFAULT_INDEX = IO.read(__dir__ + '/index.html.erb')
 
 module Itsi
   class Server
@@ -14,8 +17,25 @@ module Itsi
       @running ||= false
     end
 
-    def self.start(app:, **opts)
-      server = new(app: ->{app}, **opts)
+    def self.start(
+      app: ->(env){
+        [env['CONTENT_TYPE'], env['HTTP_ACCEPT']].include?('application/json') ?
+          [200, {"Content-Type" => "application/json"}, ["{\"message\": \"You're running on Itsi!\"}"]] :
+          [200, {"Content-Type" => "text/html"}, [
+            DEFAULT_INDEX % {
+              REQUEST_METHOD: env['REQUEST_METHOD'],
+              PATH_INFO: env['PATH_INFO'],
+              SERVER_NAME: env['SERVER_NAME'],
+              SERVER_PORT: env['SERVER_PORT'],
+              REMOTE_ADDR: env['REMOTE_ADDR'],
+              HTTP_USER_AGENT: env['HTTP_USER_AGENT']
+            }
+          ]]
+      },
+      binds: ['http://0.0.0.0:3000'],
+      **opts
+    )
+      server = new(app: ->{app}, binds: binds, **opts)
       @running = true
       Signal.trap('INT', 'DEFAULT')
       server.start

@@ -1,0 +1,27 @@
+PATH
+  remote: ../../gems/server
+  specs:
+    itsi-server (0.1.7)
+      rack (>= 1.6)
+      rb_sys (~> 0.9.91)
+
+GEM
+  remote: https://rubygems.org/
+  specs:
+    rack (2.2.12)
+    rake-compiler-dock (1.9.1)
+    rb_sys (0.9.111)
+      rake-compiler-dock (= 1.9.1)
+
+PLATFORMS
+  aarch64-linux
+  arm64-darwin
+  x86_64-darwin
+  x86_64-linux
+  x86_64-linux-musl
+
+DEPENDENCIES
+  itsi-server!
+
+BUNDLED WITH
+   2.6.3

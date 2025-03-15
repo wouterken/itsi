@@ -1,0 +1,40 @@
+# SQLite. Versions 3.8.0 and up are supported.
+#   gem install sqlite3
+#
+#   Ensure the SQLite 3 gem is defined in your Gemfile
+#   gem "sqlite3"
+#
+default: &default
+  adapter: postgresql
+  pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+  timeout: 5000
+
+development:
+  <<: *default
+  database: itsi_sandbox_development
+
+# Warning: The database defined as "test" will be erased and
+# re-generated from your development database when you run "rake".
+# Do not set this db to the same as development or production.
+test:
+  <<: *default
+  database: itsi_sandbox_test
+
+# Store production database in the storage/ directory, which by default
+# is mounted as a persistent Docker volume in config/deploy.yml.
+production:
+  primary:
+    <<: *default
+    database: itsi_sandbox_rails_production
+  cache:
+    <<: *default
+    database: itsi_sandbox_rails_production_cache
+    migrations_paths: db/cache_migrate
+  queue:
+    <<: *default
+    database: itsi_sandbox_rails_production_queue
+    migrations_paths: db/queue_migrate
+  cable:
+    <<: *default
+    database: itsi_sandbox_rails_production_cable
+    migrations_paths: db/cable_migrate
