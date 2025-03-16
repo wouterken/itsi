@@ -10,6 +10,13 @@ pub static SIGNAL_HANDLER_CHANNEL: LazyLock<(
     broadcast::Receiver<LifecycleEvent>,
 )> = LazyLock::new(|| sync::broadcast::channel(5));
 
+pub fn send_shutdown_event() {
+    SIGNAL_HANDLER_CHANNEL
+        .0
+        .send(LifecycleEvent::Shutdown)
+        .expect("Failed to send shutdown event");
+}
+
 pub static SIGINT_COUNT: AtomicI8 = AtomicI8::new(0);
 fn receive_signal(signum: i32, _: sighandler_t) {
     SIGINT_COUNT.fetch_add(-1, std::sync::atomic::Ordering::SeqCst);

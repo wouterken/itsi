@@ -1,7 +1,7 @@
 use super::itsi_server::RequestJob;
 use crate::{request::itsi_request::ItsiRequest, ITSI_SERVER};
 use itsi_rb_helpers::{
-    call_with_gvl, call_without_gvl, create_ruby_thread, kill_threads, HeapValue,
+    call_with_gvl, call_without_gvl, create_ruby_thread, kill_threads, HeapVal, HeapValue,
 };
 use itsi_tracing::{debug, error, info, warn};
 use magnus::{
@@ -52,7 +52,7 @@ pub struct TerminateWakerSignal(bool);
 pub fn build_thread_workers(
     pid: Pid,
     threads: NonZeroU8,
-    app: Opaque<Value>,
+    app: HeapVal,
     scheduler_class: Option<String>,
 ) -> Result<(Arc<Vec<ThreadWorker>>, async_channel::Sender<RequestJob>)> {
     let (sender, receiver) = async_channel::bounded(20);
@@ -79,11 +79,10 @@ pub fn build_thread_workers(
 }
 
 pub fn load_app(
-    app: Opaque<Value>,
+    app: HeapVal,
     scheduler_class: Option<String>,
 ) -> Result<(Opaque<Value>, Option<Opaque<Value>>)> {
     call_with_gvl(|ruby| {
-        let app = app.get_inner_with(&ruby);
         let app = Opaque::from(
             app.funcall::<_, _, Value>(*ID_CALL, ())
                 .expect("Couldn't load app"),

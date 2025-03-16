@@ -13,7 +13,7 @@ use crate::{
 use bytes::Bytes;
 use derive_more::Debug;
 use futures::StreamExt;
-use http::{request::Parts, Response, StatusCode};
+use http::{request::Parts, HeaderValue, Response, StatusCode};
 use http_body_util::{combinators::BoxBody, BodyExt, Empty};
 use hyper::{body::Incoming, Request};
 use itsi_error::from::CLIENT_CONNECTION_CLOSED;
@@ -49,6 +49,7 @@ pub struct ItsiRequest {
     pub server: Arc<Server>,
     pub response: ItsiResponse,
     pub start: Instant,
+    pub content_type: String,
 }
 
 impl fmt::Display for ItsiRequest {
@@ -80,6 +81,14 @@ impl ItsiRequest {
                         .unwrap_or(false)
             }
         }
+    }
+
+    pub fn is_json(&self) -> bool {
+        self.content_type.eq("application/json")
+    }
+
+    pub fn is_html(&self) -> bool {
+        self.content_type.eq("text/html")
     }
 
     pub fn process(
@@ -175,8 +184,27 @@ impl ItsiRequest {
                 server,
                 listener,
                 version: format!("{:?}", &parts.version),
-                response: ItsiResponse::new(parts.clone(), response_channel.0),
+                response: ItsiResponse::new(
+                    parts.clone(),
+                    response_channel.0,
+                    parts
+                        .headers
+                        .get("Accept")
+                        .unwrap_or(&HeaderValue::from_static("text/html"))
+                        .to_str()
+                        .unwrap()
+                        .to_string(),
+                ),
                 start: Instant::now(),
+                content_type: parts
+                    .headers
+                    .get("Content-Type")
+                    .unwrap_or(&HeaderValue::from_static(
+                        "application/x-www-form-urlencoded",
+                    ))
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
                 parts,
             },
             response_channel.1,

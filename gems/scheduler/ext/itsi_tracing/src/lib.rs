@@ -1,11 +1,13 @@
 use std::env;
 
 use atty::{Stream, is};
+use tracing::level_filters::LevelFilter;
 pub use tracing::{debug, error, info, trace, warn};
 pub use tracing_attributes::instrument; // Explicitly export from tracing-attributes
 use tracing_subscriber::{
-    EnvFilter,
+    EnvFilter, Layer,
     fmt::{self, format},
+    layer::SubscriberExt,
 };
 
 #[instrument]
@@ -38,4 +40,19 @@ pub fn init() {
             .event_format(fmt::format().json())
             .init();
     }
+}
+
+pub fn run_silently<F, R>(f: F) -> R
+where
+    F: FnOnce() -> R,
+{
+    // Build a minimal subscriber that filters *everything* out
+    let no_op_subscriber =
+        tracing_subscriber::registry().with(fmt::layer().with_filter(LevelFilter::OFF));
+
+    // Turn that subscriber into a `Dispatch`
+    let no_op_dispatch = tracing::dispatcher::Dispatch::new(no_op_subscriber);
+
+    // Temporarily set `no_op_dispatch` as the *default* within this closure
+    tracing::dispatcher::with_default(&no_op_dispatch, f)
 }

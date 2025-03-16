@@ -160,6 +160,7 @@ apt-get install zlib1g-dev libyaml-dev libssl-dev libffi-dev libgmp3-dev libclan
 apt-get clean && rm -rf /var/lib/apt/lists/* && apt-get autoremove -y
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 curl https://mise.run | sh
+export HOME=/root
 echo "eval \"\$(/root/.local/bin/mise activate bash)\"" >> ~/.bashrc
 eval "$(/root/.local/bin/mise activate bash)"
 mise use ruby@3.4.2

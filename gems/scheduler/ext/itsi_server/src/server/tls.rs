@@ -48,23 +48,26 @@ pub fn configure_tls(
 ) -> Result<ItsiTlsAcceptor> {
     let domains = query_params
         .get("domains")
-        .map(|v| v.split(',').map(String::from).collect::<Vec<_>>());
+        .map(|v| v.split(',').map(String::from).collect::<Vec<_>>())
+        .or_else(|| query_params.get("domain").map(|v| vec![v.to_string()]));
 
-    if query_params.get("cert").is_some_and(|c| c == "auto") {
+    if query_params.get("cert").is_some_and(|c| c == "acme") {
         if let Some(domains) = domains {
             let directory_url = &*ITSI_ACME_DIRECTORY_URL;
             info!(
                 domains = format!("{:?}", domains),
                 directory_url, "Requesting acme cert"
             );
+            let acme_contact_email = query_params
+                .get("acme_email")
+                .map(|s| s.to_string())
+                .or_else(|| (*ITSI_ACME_CONTACT_EMAIL).as_ref().ok().map(|s| s.to_string()))
+                .ok_or_else(|| itsi_error::ItsiError::ArgumentError(
+                    "acme_cert query param or ITSI_ACME_CONTACT_EMAIL must be set before you can auto-generate let's encrypt certificates".to_string(),
+                ))?;
 
             let acme_config = AcmeConfig::new(domains)
-                .contact([format!("mailto:{}", (*ITSI_ACME_CONTACT_EMAIL).as_ref().map_err(|_| {
-                    itsi_error::ItsiError::ArgumentError(
-                      "ITSI_ACME_CONTACT_EMAIL must be set before you can auto-generate production certificates"
-                          .to_string(),
-                  )
-                })?)])
+                .contact([format!("mailto:{}", acme_contact_email)])
                 .cache(LockedDirCache::new(&*ITSI_ACME_CACHE_DIR))
                 .directory(directory_url);
 

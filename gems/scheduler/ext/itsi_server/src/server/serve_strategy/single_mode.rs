@@ -25,7 +25,10 @@ use std::{
 };
 use tokio::{
     runtime::{Builder as RuntimeBuilder, Runtime},
-    sync::broadcast,
+    sync::{
+        broadcast,
+        watch::{self, Sender},
+    },
     task::JoinSet,
 };
 use tracing::instrument;
@@ -55,7 +58,7 @@ impl SingleMode {
         let (thread_workers, sender) = build_thread_workers(
             Pid::this(),
             NonZeroU8::try_from(server.threads).unwrap(),
-            server.app,
+            server.app.clone(),
             server.scheduler_class.clone(),
         )?;
         Ok(Self {
@@ -80,6 +83,9 @@ impl SingleMode {
     }
 
     pub fn stop(&self) -> Result<()> {
+        self.lifecycle_channel
+            .send(LifecycleEvent::Shutdown)
+            .expect("Failed to send shutdown event");
         Ok(())
     }
 
@@ -95,14 +101,17 @@ impl SingleMode {
               .iter()
               .map(|list| Arc::new(list.to_tokio_listener()))
               .collect::<Vec<_>>();
+          let (shutdown_sender, _) = watch::channel::<RunningPhase>(RunningPhase::Running);
           for listener in tokio_listeners.iter() {
               let mut lifecycle_rx = self_ref.lifecycle_channel.subscribe();
               let listener_info = Arc::new(listener.listener_info());
               let self_ref = self_ref.clone();
               let listener = listener.clone();
-              let (shutdown_sender, mut shutdown_receiver) = tokio::sync::watch::channel::<RunningPhase>(RunningPhase::Running);
-              let listener_clone = listener.clone();
+              let shutdown_sender = shutdown_sender.clone();
 
+
+              let listener_clone = listener.clone();
+              let mut shutdown_receiver = shutdown_sender.clone().subscribe();
               let shutdown_receiver_clone = shutdown_receiver.clone();
               listener_task_set.spawn(async move {
                 listener_clone.spawn_state_task(shutdown_receiver_clone).await;
@@ -157,7 +166,7 @@ impl SingleMode {
         &self,
         stream: IoStream,
         listener: Arc<ListenerInfo>,
-        shutdown_channel: tokio::sync::watch::Receiver<RunningPhase>,
+        shutdown_channel: watch::Receiver<RunningPhase>,
     ) -> Result<()> {
         let sender_clone = self.sender.clone();
         let addr = stream.addr();
@@ -219,12 +228,11 @@ impl SingleMode {
     pub async fn handle_lifecycle_event(
         &self,
         lifecycle_event: LifecycleEvent,
-        shutdown_sender: tokio::sync::watch::Sender<RunningPhase>,
+        shutdown_sender: Sender<RunningPhase>,
     ) -> Result<()> {
+        info!("Handling lifecycle event: {:?}", lifecycle_event);
         if let LifecycleEvent::Shutdown = lifecycle_event {
-            shutdown_sender
-                .send(RunningPhase::ShutdownPending)
-                .expect("Failed to send shutdown pending signal");
+            shutdown_sender.send(RunningPhase::ShutdownPending).ok();
             let deadline = Instant::now() + Duration::from_secs_f64(self.server.shutdown_timeout);
             for worker in &*self.thread_workers {
                 worker.request_shutdown().await;
@@ -243,9 +251,7 @@ impl SingleMode {
             }
 
             info!("Sending shutdown signal");
-            shutdown_sender
-                .send(RunningPhase::Shutdown)
-                .expect("Failed to send shutdown signal");
+            shutdown_sender.send(RunningPhase::Shutdown).ok();
             self.thread_workers.iter().for_each(|worker| {
                 worker.poll_shutdown(deadline);
             });

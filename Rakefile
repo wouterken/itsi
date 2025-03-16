@@ -58,6 +58,7 @@ task :sync_crates do
     Dir.chdir('crates') do
       to_sync = Dir['*'].each do |to_sync|
         system("rsync -q -av #{to_sync}/ ../#{gem_info[:dir]}/ext/#{to_sync} --delete")
+        system("cp ../Cargo.lock ../#{gem_info[:dir]}/Cargo.lock")
       end
     end
   end
@@ -83,10 +84,9 @@ task :test_env_down do
   system("terraform -chdir=sandbox/deploy destroy")
 end
 
-require 'debug'
-%w(itsi puma iodine falcon unicorn ).each do |server|
+%i[itsi puma iodine falcon unicorn].each do |server|
   namespace server do
-    %w(hanami roda async rack rack_lint rails sinatra).each do |sandbox|
+    %i[hanami roda async rack rack_lint rails sinatra].each do |sandbox|
       namespace sandbox do
         task :serve do |args|
           sh "(cd sandbox/itsi_sandbox_#{sandbox} && bundle exec #{server} #{ARGV[2..]&.join(" ")} )"

@@ -117,7 +117,7 @@ impl TokioListener {
                 tokio::select! {
                   stream_event = StreamExt::next(&mut *state) => {
                       match stream_event {
-                        Some(event) => info!("Received acme event: {:?}", event),
+                        Some(event) => info!("ACME Event: {:?}", event),
                         None => error!("Received no acme event"),
                       }
                   },

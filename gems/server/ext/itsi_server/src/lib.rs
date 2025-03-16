@@ -71,6 +71,7 @@ fn init(ruby: &Ruby) -> Result<()> {
     server.define_singleton_method("new", function!(Server::new, -1))?;
     server.define_singleton_method("reset_signal_handlers", function!(reset_signal_handlers, 0))?;
     server.define_method("start", method!(Server::start, 0))?;
+    server.define_method("stop", method!(Server::stop, 0))?;
 
     let request = ruby.get_inner(&ITSI_REQUEST);
     request.define_method("path", method!(ItsiRequest::path, 0))?;
@@ -86,6 +87,8 @@ fn init(ruby: &Ruby) -> Result<()> {
     request.define_method("port", method!(ItsiRequest::port, 0))?;
     request.define_method("body", method!(ItsiRequest::body, 0))?;
     request.define_method("response", method!(ItsiRequest::response, 0))?;
+    request.define_method("json?", method!(ItsiRequest::is_json, 0))?;
+    request.define_method("html?", method!(ItsiRequest::is_html, 0))?;
 
     let body_proxy = ruby.get_inner(&ITSI_BODY_PROXY);
     body_proxy.define_method("gets", method!(ItsiBodyProxy::gets, 0))?;
@@ -102,6 +105,8 @@ fn init(ruby: &Ruby) -> Result<()> {
     response.define_method("close_read", method!(ItsiResponse::close_read, 0))?;
     response.define_method("close", method!(ItsiResponse::close, 0))?;
     response.define_method("hijack", method!(ItsiResponse::hijack, 1))?;
+    response.define_method("json?", method!(ItsiResponse::is_json, 0))?;
+    response.define_method("html?", method!(ItsiResponse::is_html, 0))?;
 
     Ok(())
 }

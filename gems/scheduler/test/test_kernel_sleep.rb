@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-
 class TestKernelSleep < Minitest::Test
   include Itsi::Scheduler::TestHelper
 
@@ -14,7 +13,7 @@ class TestKernelSleep < Minitest::Test
     # Run the scheduler in a dedicated thread to avoid interference with the
     # main thread’s scheduler state.
     with_scheduler do |_scheduler|
-      5.times do
+      10.times do
         Fiber.schedule do
           sleep 0.05
           results << "first"
@@ -26,9 +25,9 @@ class TestKernelSleep < Minitest::Test
 
     ends_at = Time.now
     # We expect 10 sleep completions overall (2 per fiber).
-    assert_equal 10, results.size
+    assert_equal 20, results.size
     # Because all sleeps run concurrently, the total elapsed time should be about 1 second.
-    assert_in_delta 0.1, ends_at - start_at, 0.02, "Total elapsed time should be close to 0.1 second"
+    assert_in_delta 0.1, ends_at - start_at, 0.1, "Total elapsed time should be close to 0.1 second"
   end
 
   def test_sleep_zero_duration

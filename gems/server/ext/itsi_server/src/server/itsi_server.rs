@@ -2,20 +2,22 @@ use super::{
     bind::Bind,
     listener::Listener,
     serve_strategy::{cluster_mode::ClusterMode, single_mode::SingleMode},
-    signal::{clear_signal_handlers, reset_signal_handlers, SIGNAL_HANDLER_CHANNEL},
+    signal::{
+        clear_signal_handlers, reset_signal_handlers, send_shutdown_event, SIGNAL_HANDLER_CHANNEL,
+    },
 };
 use crate::{request::itsi_request::ItsiRequest, server::serve_strategy::ServeStrategy};
 use derive_more::Debug;
-use itsi_rb_helpers::call_without_gvl;
-use itsi_tracing::error;
+use itsi_rb_helpers::{call_without_gvl, HeapVal};
+use itsi_tracing::{error, run_silently};
 use magnus::{
     block::Proc,
     error::Result,
-    scan_args::{get_kwargs, scan_args, Args, KwArgs},
+    scan_args::{get_kwargs, scan_args, Args, KwArgs, ScanArgsKw, ScanArgsOpt, ScanArgsRequired},
     value::{InnerValue, Opaque, ReprValue},
-    RHash, Ruby, Symbol, Value,
+    ArgList, RHash, Ruby, Symbol, Value,
 };
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RwLock};
 use std::{cmp::max, ops::Deref, sync::Arc};
 use tracing::{info, instrument};
 
@@ -39,7 +41,7 @@ type AfterFork = Mutex<Arc<Option<Box<dyn Fn() + Send + Sync>>>>;
 #[derive(Debug)]
 pub struct ServerConfig {
     #[debug(skip)]
-    pub app: Opaque<Value>,
+    pub app: HeapVal,
     #[allow(unused)]
     pub workers: u8,
     #[allow(unused)]
@@ -55,12 +57,44 @@ pub struct ServerConfig {
     pub scheduler_class: Option<String>,
     pub stream_body: Option<bool>,
     pub worker_memory_limit: Option<u64>,
+    #[debug(skip)]
+    pub(crate) strategy: RwLock<Option<ServeStrategy>>,
+    pub silence: bool,
 }
 
 #[derive(Debug)]
 pub enum RequestJob {
     ProcessRequest(ItsiRequest),
     Shutdown,
+}
+
+// Define your helper function.
+// Here P, A, C correspond to the types for the first tuple, second tuple, and extra parameters respectively.
+fn extract_args<Req, Opt, Splat>(
+    scan_args: &Args<(), (), (), (), RHash, ()>,
+    primaries: &[&str],
+    rest: &[&str],
+) -> Result<KwArgs<Req, Opt, Splat>>
+where
+    Req: ScanArgsRequired,
+    Opt: ScanArgsOpt,
+    Splat: ScanArgsKw,
+{
+    // Combine the primary and rest names into one Vec of Symbols.
+    let symbols: Vec<Symbol> = primaries
+        .iter()
+        .chain(rest.iter())
+        .map(|&name| Symbol::new(name))
+        .collect();
+
+    // Call the "slice" function with the combined symbols.
+    let hash = scan_args
+        .keywords
+        .funcall::<_, _, RHash>("slice", symbols.into_arg_list_with(&Ruby::get().unwrap()))
+        .unwrap();
+
+    // Finally, call get_kwargs with the original name slices.
+    get_kwargs(hash, primaries, rest)
 }
 
 impl Server {
@@ -73,39 +107,44 @@ impl Server {
     pub fn new(args: &[Value]) -> Result<Self> {
         let scan_args: Args<(), (), (), (), RHash, ()> = scan_args(args)?;
 
-        type ArgSet1 = (
-            Option<u8>,
-            Option<u8>,
-            Option<f64>,
-            Option<String>,
-            Option<Vec<String>>,
-            Option<Proc>,
-            Option<Proc>,
-            Option<String>,
-            Option<bool>,
-        );
+        type Args1 = KwArgs<
+            (Value,),
+            (
+                // Workers
+                Option<u8>,
+                // Threads
+                Option<u8>,
+                // Shutdown Timeout
+                Option<f64>,
+                // Script Name
+                Option<String>,
+                // Binds
+                Option<Vec<String>>,
+                // Stream Body
+                Option<bool>,
+            ),
+            (),
+        >;
 
-        type ArgSet2 = (Option<u64>,);
+        type Args2 = KwArgs<
+            (),
+            (
+                // Before Fork
+                Option<Proc>,
+                // After Fork
+                Option<Proc>,
+                // Scheduler Class
+                Option<String>,
+                // Worker Memory Limit
+                Option<u64>,
+                // Silence
+                Option<bool>,
+            ),
+            (),
+        >;
 
-        let args1: KwArgs<(Value,), ArgSet1, ()> = get_kwargs(
-            scan_args
-                .keywords
-                .funcall::<_, _, RHash>(
-                    "slice",
-                    (
-                        Symbol::new("app"),
-                        Symbol::new("workers"),
-                        Symbol::new("threads"),
-                        Symbol::new("shutdown_timeout"),
-                        Symbol::new("script_name"),
-                        Symbol::new("binds"),
-                        Symbol::new("before_fork"),
-                        Symbol::new("after_fork"),
-                        Symbol::new("scheduler_class"),
-                        Symbol::new("stream_body"),
-                    ),
-                )
-                .unwrap(),
+        let args1: Args1 = extract_args(
+            &scan_args,
             &["app"],
             &[
                 "workers",
@@ -113,24 +152,24 @@ impl Server {
                 "shutdown_timeout",
                 "script_name",
                 "binds",
-                "before_fork",
-                "after_fork",
-                "scheduler_class",
                 "stream_body",
             ],
         )?;
 
-        let args2: KwArgs<(), ArgSet2, ()> = get_kwargs(
-            scan_args
-                .keywords
-                .funcall::<_, _, RHash>("slice", (Symbol::new("worker_memory_limit"),))
-                .unwrap(),
+        let args2: Args2 = extract_args(
+            &scan_args,
             &[],
-            &["worker_memory_limit"],
+            &[
+                "before_fork",
+                "after_fork",
+                "scheduler_class",
+                "worker_memory_limit",
+                "silence",
+            ],
         )?;
 
         let config = ServerConfig {
-            app: Opaque::from(args1.required.0),
+            app: HeapVal::from(args1.required.0),
             workers: max(args1.optional.0.unwrap_or(1), 1),
             threads: max(args1.optional.1.unwrap_or(1), 1),
             shutdown_timeout: args1.optional.2.unwrap_or(5.0),
@@ -144,7 +183,8 @@ impl Server {
                     .map(|s| s.parse())
                     .collect::<itsi_error::Result<Vec<Bind>>>()?,
             ),
-            before_fork: Mutex::new(args1.optional.5.map(|p| {
+            stream_body: args1.optional.5,
+            before_fork: Mutex::new(args2.optional.0.map(|p| {
                 let opaque_proc = Opaque::from(p);
                 Box::new(move || {
                     opaque_proc
@@ -153,7 +193,7 @@ impl Server {
                         .unwrap();
                 }) as Box<dyn FnOnce() + Send + Sync>
             })),
-            after_fork: Mutex::new(Arc::new(args1.optional.6.map(|p| {
+            after_fork: Mutex::new(Arc::new(args2.optional.1.map(|p| {
                 let opaque_proc = Opaque::from(p);
                 Box::new(move || {
                     opaque_proc
@@ -162,15 +202,18 @@ impl Server {
                         .unwrap();
                 }) as Box<dyn Fn() + Send + Sync>
             }))),
-            scheduler_class: args1.optional.7.clone(),
-            stream_body: args1.optional.8,
-            worker_memory_limit: args2.optional.0,
+            scheduler_class: args2.optional.2.clone(),
+            worker_memory_limit: args2.optional.3,
+            silence: args2.optional.4.is_some_and(|s| s),
+            strategy: RwLock::new(None),
         };
 
-        if let Some(scheduler_class) = args1.optional.7 {
-            info!(scheduler_class, fiber_scheduler = true);
-        } else {
-            info!(fiber_scheduler = false);
+        if !config.silence {
+            if let Some(scheduler_class) = args2.optional.2 {
+                info!(scheduler_class, fiber_scheduler = true);
+            } else {
+                info!(fiber_scheduler = false);
+            }
         }
 
         Ok(Server {
@@ -179,7 +222,7 @@ impl Server {
     }
 
     #[instrument(name = "Bind", skip_all, fields(binds=format!("{:?}", self.config.binds.lock())))]
-    pub(crate) fn listeners(&self) -> Result<Arc<Vec<Arc<Listener>>>> {
+    pub(crate) fn build_listeners(&self) -> Result<Arc<Vec<Arc<Listener>>>> {
         let listeners = self
             .config
             .binds
@@ -195,11 +238,9 @@ impl Server {
         Ok(Arc::new(listeners))
     }
 
-    pub(crate) fn build_strategy(
-        self,
-        listeners: Arc<Vec<Arc<Listener>>>,
-    ) -> Result<ServeStrategy> {
+    pub(crate) fn build_strategy(self, listeners: Arc<Vec<Arc<Listener>>>) -> Result<()> {
         let server = Arc::new(self);
+        let server_clone = server.clone();
 
         let strategy = if server.config.workers == 1 {
             ServeStrategy::Single(Arc::new(SingleMode::new(
@@ -214,24 +255,40 @@ impl Server {
                 SIGNAL_HANDLER_CHANNEL.0.clone(),
             )))
         };
-        Ok(strategy)
+
+        *server_clone.strategy.write() = Some(strategy);
+        Ok(())
+    }
+
+    pub fn stop(&self) -> Result<()> {
+        send_shutdown_event();
+        Ok(())
     }
 
     pub fn start(&self) -> Result<()> {
+        if self.silence {
+            run_silently(|| self.build_and_run_strategy())
+        } else {
+            self.build_and_run_strategy()
+        }
+    }
+
+    fn build_and_run_strategy(&self) -> Result<()> {
         reset_signal_handlers();
         let rself = self.clone();
-        let listeners = self.listeners()?;
+        let listeners = self.build_listeners()?;
         let listeners_clone = listeners.clone();
         call_without_gvl(move || -> Result<()> {
-            let strategy = rself.build_strategy(listeners_clone)?;
-            if let Err(e) = strategy.run() {
+            rself.clone().build_strategy(listeners_clone)?;
+            if let Err(e) = rself.clone().strategy.read().as_ref().unwrap().run() {
                 error!("Error running server: {}", e);
-                strategy.stop()?;
+                rself.strategy.read().as_ref().unwrap().stop()?;
             }
-            drop(strategy);
             Ok(())
         })?;
         clear_signal_handlers();
+        self.strategy.write().take();
+        info!("Server stopped");
         Ok(())
     }
 }

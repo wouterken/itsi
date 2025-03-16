@@ -8,11 +8,11 @@ Gem::Specification.new do |spec|
   spec.authors = ['Wouter Coppieters']
   spec.email = ['wc@pico.net.nz']
 
-  spec.summary = "Wrapper Gem for both the Itsi server and it's Fiber scheduler"
-  spec.description = "Wrapper Gem for both the Itsi server and it's Fiber scheduler"
+  spec.summary = 'Wrapper Gem for both the Itsi server and the Itsi Fiber scheduler'
+  spec.description = 'Wrapper Gem for both the Itsi server and the Itsi Fiber scheduler'
   spec.homepage = 'https://itsi.fyi'
   spec.license = 'MIT'
-  spec.required_ruby_version = '>= 3.0.7'
+  spec.required_ruby_version = '>= 2.7'
   spec.required_rubygems_version = '>= 3.2'
 
   spec.metadata['homepage_uri'] = spec.homepage
@@ -33,8 +33,8 @@ Gem::Specification.new do |spec|
 
   spec.require_paths = ['lib']
 
-  spec.add_dependency 'itsi-server', '~> 0.1.7'
-  spec.add_dependency 'itsi-scheduler', '~> 0.1.7'
+  spec.add_dependency 'itsi-scheduler', '~> 0.1.10'
+  spec.add_dependency 'itsi-server', '~> 0.1.10'
 
   # For more information and examples about making a new gem, check out our
   # guide at: https://bundler.io/guides/creating_gem.html
