@@ -63,7 +63,7 @@ pub fn configure_tls(
                 .map(|s| s.to_string())
                 .or_else(|| (*ITSI_ACME_CONTACT_EMAIL).as_ref().ok().map(|s| s.to_string()))
                 .ok_or_else(|| itsi_error::ItsiError::ArgumentError(
-                    "acme_cert query param or ITSI_ACME_CONTACT_EMAIL must be set before you can auto-generate let's encrypt certificates".to_string(),
+                    "acme_email query param or ITSI_ACME_CONTACT_EMAIL must be set before you can auto-generate let's encrypt certificates".to_string(),
                 ))?;
 
             let acme_config = AcmeConfig::new(domains)

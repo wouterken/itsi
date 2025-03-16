@@ -125,7 +125,7 @@ impl ThreadWorker {
             Ok(_) => {}
             Err(err) => error!("Failed to send shutdown request: {}", err),
         };
-        info!("Requesting shutdown");
+        debug!("Requesting shutdown");
     }
 
     #[instrument(skip(self, deadline), fields(id = self.id))]
@@ -140,7 +140,7 @@ impl ThreadWorker {
                 if thread.funcall::<_, _, bool>(*ID_ALIVE, ()).unwrap_or(false) {
                     return true;
                 }
-                info!("Thread has shut down");
+                debug!("Thread has shut down");
             }
             self.thread.write().take();
 

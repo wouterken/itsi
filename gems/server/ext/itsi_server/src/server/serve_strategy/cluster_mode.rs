@@ -19,9 +19,9 @@ use tokio::{
     sync::{broadcast, watch, Mutex},
     time::{self, sleep},
 };
-use tracing::instrument;
+use tracing::{debug, instrument};
 pub(crate) struct ClusterMode {
-    pub listeners: Arc<Vec<Arc<Listener>>>,
+    pub listeners: parking_lot::Mutex<Vec<Listener>>,
     pub server: Arc<Server>,
     pub process_workers: parking_lot::Mutex<Vec<ProcessWorker>>,
     pub lifecycle_channel: broadcast::Sender<LifecycleEvent>,
@@ -34,7 +34,7 @@ static CHILD_SIGNAL_SENDER: parking_lot::Mutex<Option<watch::Sender<()>>> =
 impl ClusterMode {
     pub fn new(
         server: Arc<Server>,
-        listeners: Arc<Vec<Arc<Listener>>>,
+        listeners: Vec<Listener>,
         lifecycle_channel: broadcast::Sender<LifecycleEvent>,
     ) -> Self {
         if let Some(f) = server.before_fork.lock().take() {
@@ -48,7 +48,7 @@ impl ClusterMode {
             .collect();
 
         Self {
-            listeners,
+            listeners: parking_lot::Mutex::new(listeners),
             server,
             process_workers: parking_lot::Mutex::new(process_workers),
             lifecycle_channel,
@@ -152,7 +152,7 @@ impl ClusterMode {
 
         tokio::select! {
             _ = monitor_handle => {
-              info!("All children exited early, exit normally")
+              debug!("All children exited early, exit normally")
             }
             _ = sleep(Duration::from_secs_f64(shutdown_timeout)) => {
                 warn!("Graceful shutdown timeout reached, force killing remaining children");

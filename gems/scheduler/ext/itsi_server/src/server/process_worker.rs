@@ -67,7 +67,7 @@ impl ProcessWorker {
                 }
                 match SingleMode::new(
                     cluster_template.server.clone(),
-                    cluster_template.listeners.clone(),
+                    cluster_template.listeners.lock().drain(..).collect(),
                     cluster_template.lifecycle_channel.clone(),
                 ) {
                     Ok(single_mode) => {

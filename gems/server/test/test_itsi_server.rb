@@ -76,18 +76,25 @@ class TestItsiServer < Minitest::Test
     end
   end
 
+    require 'debug'
   def test_scheduler_non_blocking
     run_app(
       lambda do |env|
         sleep 0.25
-        [200, { "Content-Type" => "text/plain" }, "Hello, World!"]
+        [200, { "Content-Type" => "text/plain" }, "Response: #{env["PATH_INFO"][1..-1]}"]
       end,
       scheduler_class: "Itsi::Scheduler"
     ) do |uri|
       start_time = Time.now
       20.times.map do
         Thread.new do
-          assert_equal "Hello, World!", Net::HTTP.get(uri)
+          payload = SecureRandom.hex(16)
+          local_uri = uri.dup
+          local_uri.path = "/#{payload}"
+          response = Net::HTTP.start(local_uri.hostname, local_uri.port) do |http|
+            http.request(Net::HTTP::Get.new(local_uri))
+          end
+          assert_equal "Response: #{payload}", response.body
         end
       end.each(&:join)
       assert_in_delta 0.25, Time.now - start_time, 0.5
@@ -276,6 +283,18 @@ class TestItsiServer < Minitest::Test
     end) do |uri|
       uri.query = "param=%C3%A9" # %C3%A9 represents 'é'
       assert_equal "param=%C3%A9", Net::HTTP.get(uri)
+    end
+  end
+
+  def test_https
+    run_app(lambda do |env|
+      [200, { "Content-Type" => "text/plain" }, ["Hello, HTTPS!"]]
+    end, protocol: "https") do |uri|
+      response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, verify_mode: OpenSSL::SSL::VERIFY_NONE) do |http|
+        http.request(Net::HTTP::Get.new(uri))
+      end
+      assert_equal "200", response.code
+      assert_equal "Hello, HTTPS!", response.body
     end
   end
 end

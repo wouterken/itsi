@@ -138,7 +138,7 @@ preloader = \
 # Start the Itsi server
 require "itsi/server"
 
-Itsi::Server.new(
-  app: preloader,
+Itsi::Server.start(
+  preloader: preloader,
   **options.except(:preload, :rackup_file)
-).start
+)

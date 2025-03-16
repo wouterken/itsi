@@ -55,10 +55,11 @@ module Itsi
 
       def build(
         app: DEFAULT_APP[],
+        preloader: nil,
         binds: DEFAULT_BINDS,
         **opts
       )
-        new(app: -> { app }, binds: binds, **opts)
+        new(app: preloader || ->{ app }, binds: binds, **opts)
       end
 
       def start_in_background_thread(silence: true, **opts)

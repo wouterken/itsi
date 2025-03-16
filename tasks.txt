@@ -1,10 +1,10 @@
-- Test on MOD
+- Fix graceful shutdown
 - Filters (Medium)
 - Static File Serve (Medium).error pages
 - Preload Groups
 - Support a Signal for logging live server info
 - Dashboard
-- Auto-redirect? Or auto HTTP?
+- HTTP to HTTPS redirect
 
 - Polish and Release (At Lake)
 -- Log params (Think long and hard about what we should and shouldn't log)
@@ -14,3 +14,4 @@
 
 Later:
 - Broken shutdown (sometimes) in Fiber mode
+- Hunt down sporradic bad file desc during tests

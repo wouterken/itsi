@@ -8,7 +8,6 @@ module Itsi
       unless INTERCEPTED_SIGNALS.include?(signal.to_s) && block.nil? && Itsi::Server.running?
         return super(signal, *args, &block)
       end
-
       Itsi::Server.reset_signal_handlers
       nil
     end

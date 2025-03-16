@@ -77,7 +77,6 @@ impl ItsiResponse {
                 (ReceiverStream::new(receiver), shutdown_rx),
                 |(mut receiver, mut shutdown_rx)| async move {
                     if let RunningPhase::ShutdownPending = *shutdown_rx.borrow() {
-                        warn!("Disconnecting streaming client.");
                         return None;
                     }
                     loop {
@@ -280,7 +279,8 @@ impl ItsiResponse {
         if let Some(writer) = writer.write().as_ref() {
             writer
                 .blocking_send(Some(frame))
-                .map_err(|_| itsi_error::ItsiError::ClientConnectionClosed)?;
+                .map_err(|_| itsi_error::ItsiError::ClientConnectionClosed)
+                .ok();
         }
         Ok(0)
     }

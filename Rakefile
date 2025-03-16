@@ -83,13 +83,16 @@ end
 task :test_env_down do
   system("terraform -chdir=sandbox/deploy destroy")
 end
-
 %i[itsi puma iodine falcon unicorn].each do |server|
   namespace server do
     %i[hanami roda async rack rack_lint rails sinatra].each do |sandbox|
       namespace sandbox do
         task :serve do |args|
-          sh "(cd sandbox/itsi_sandbox_#{sandbox} && bundle exec #{server} #{ARGV[2..]&.join(" ")} )"
+          begin
+            system("(cd sandbox/itsi_sandbox_#{sandbox} && bundle exec #{server} #{ARGV[2..]&.join(" ")} )")
+          rescue Interrupt
+            # Suppress the stacktrace and message for Interrupt
+          end
         end
       end
     end

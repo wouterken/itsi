@@ -11,10 +11,7 @@ pub static SIGNAL_HANDLER_CHANNEL: LazyLock<(
 )> = LazyLock::new(|| sync::broadcast::channel(5));
 
 pub fn send_shutdown_event() {
-    SIGNAL_HANDLER_CHANNEL
-        .0
-        .send(LifecycleEvent::Shutdown)
-        .expect("Failed to send shutdown event");
+    SIGNAL_HANDLER_CHANNEL.0.send(LifecycleEvent::Shutdown).ok();
 }
 
 pub static SIGINT_COUNT: AtomicI8 = AtomicI8::new(0);

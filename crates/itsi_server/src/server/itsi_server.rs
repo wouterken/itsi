@@ -68,8 +68,6 @@ pub enum RequestJob {
     Shutdown,
 }
 
-// Define your helper function.
-// Here P, A, C correspond to the types for the first tuple, second tuple, and extra parameters respectively.
 fn extract_args<Req, Opt, Splat>(
     scan_args: &Args<(), (), (), (), RHash, ()>,
     primaries: &[&str],
@@ -80,20 +78,17 @@ where
     Opt: ScanArgsOpt,
     Splat: ScanArgsKw,
 {
-    // Combine the primary and rest names into one Vec of Symbols.
     let symbols: Vec<Symbol> = primaries
         .iter()
         .chain(rest.iter())
         .map(|&name| Symbol::new(name))
         .collect();
 
-    // Call the "slice" function with the combined symbols.
     let hash = scan_args
         .keywords
         .funcall::<_, _, RHash>("slice", symbols.into_arg_list_with(&Ruby::get().unwrap()))
         .unwrap();
 
-    // Finally, call get_kwargs with the original name slices.
     get_kwargs(hash, primaries, rest)
 }
 
@@ -222,7 +217,7 @@ impl Server {
     }
 
     #[instrument(name = "Bind", skip_all, fields(binds=format!("{:?}", self.config.binds.lock())))]
-    pub(crate) fn build_listeners(&self) -> Result<Arc<Vec<Arc<Listener>>>> {
+    pub(crate) fn build_listeners(&self) -> Result<Vec<Listener>> {
         let listeners = self
             .config
             .binds
@@ -232,13 +227,13 @@ impl Server {
             .map(Listener::try_from)
             .collect::<std::result::Result<Vec<Listener>, _>>()?
             .into_iter()
-            .map(Arc::new)
             .collect::<Vec<_>>();
         info!("Bound {:?} listeners", listeners.len());
-        Ok(Arc::new(listeners))
+        Ok(listeners)
     }
 
-    pub(crate) fn build_strategy(self, listeners: Arc<Vec<Arc<Listener>>>) -> Result<()> {
+    pub(crate) fn build_strategy(self) -> Result<()> {
+        let listeners = self.build_listeners()?;
         let server = Arc::new(self);
         let server_clone = server.clone();
 
@@ -276,11 +271,9 @@ impl Server {
     fn build_and_run_strategy(&self) -> Result<()> {
         reset_signal_handlers();
         let rself = self.clone();
-        let listeners = self.build_listeners()?;
-        let listeners_clone = listeners.clone();
         call_without_gvl(move || -> Result<()> {
-            rself.clone().build_strategy(listeners_clone)?;
-            if let Err(e) = rself.clone().strategy.read().as_ref().unwrap().run() {
+            rself.clone().build_strategy()?;
+            if let Err(e) = rself.strategy.read().as_ref().unwrap().run() {
                 error!("Error running server: {}", e);
                 rself.strategy.read().as_ref().unwrap().stop()?;
             }

@@ -243,20 +243,20 @@ impl std::fmt::Display for SockAddr {
 }
 
 impl Listener {
-    pub fn to_tokio_listener(&self) -> TokioListener {
+    pub fn into_tokio_listener(self) -> TokioListener {
         match self {
-            Listener::Tcp(listener) => TokioListener::Tcp(
-                TokioTcpListener::from_std(TcpListener::try_clone(listener).unwrap()).unwrap(),
-            ),
+            Listener::Tcp(listener) => {
+                TokioListener::Tcp(TokioTcpListener::from_std(listener).unwrap())
+            }
             Listener::TcpTls((listener, acceptor)) => TokioListener::TcpTls(
-                TokioTcpListener::from_std(TcpListener::try_clone(listener).unwrap()).unwrap(),
+                TokioTcpListener::from_std(listener).unwrap(),
                 acceptor.clone(),
             ),
-            Listener::Unix(listener) => TokioListener::Unix(
-                TokioUnixListener::from_std(UnixListener::try_clone(listener).unwrap()).unwrap(),
-            ),
+            Listener::Unix(listener) => {
+                TokioListener::Unix(TokioUnixListener::from_std(listener).unwrap())
+            }
             Listener::UnixTls((listener, acceptor)) => TokioListener::UnixTls(
-                TokioUnixListener::from_std(UnixListener::try_clone(listener).unwrap()).unwrap(),
+                TokioUnixListener::from_std(listener).unwrap(),
                 acceptor.clone(),
             ),
         }

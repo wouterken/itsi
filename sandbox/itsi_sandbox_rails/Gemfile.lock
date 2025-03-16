@@ -8,13 +8,13 @@ PATH
 PATH
   remote: ../../gems/scheduler
   specs:
-    itsi-scheduler (0.1.7)
+    itsi-scheduler (0.1.10)
       rb_sys (~> 0.9.91)
 
 PATH
   remote: ../../gems/server
   specs:
-    itsi-server (0.1.7)
+    itsi-server (0.1.10)
       rack (>= 1.6)
       rb_sys (~> 0.9.91)
 
