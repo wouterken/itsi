@@ -3,8 +3,11 @@ use crate::server::{
     process_worker::ProcessWorker,
 };
 use itsi_error::{ItsiError, Result};
-use itsi_rb_helpers::{call_without_gvl, create_ruby_thread};
+use itsi_rb_helpers::{
+    call_proc_and_log_errors, call_with_gvl, call_without_gvl, create_ruby_thread,
+};
 use itsi_tracing::{error, info, warn};
+use magnus::Value;
 use nix::{
     libc::{self, exit},
     unistd::Pid,
@@ -37,9 +40,6 @@ impl ClusterMode {
         listeners: Vec<Listener>,
         lifecycle_channel: broadcast::Sender<LifecycleEvent>,
     ) -> Self {
-        if let Some(f) = server.before_fork.lock().take() {
-            f();
-        }
         let process_workers = (0..server.workers)
             .map(|_| ProcessWorker {
                 worker_id: WORKER_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
@@ -191,6 +191,9 @@ impl ClusterMode {
     #[instrument(skip(self), fields(mode = "cluster", pid=format!("{:?}", Pid::this())))]
     pub fn run(self: Arc<Self>) -> Result<()> {
         info!("Starting in Cluster mode");
+        if let Some(proc) = self.server.hooks.get("before_fork") {
+            call_with_gvl(|_| call_proc_and_log_errors(proc.clone()))
+        }
         self.process_workers
             .lock()
             .iter()
@@ -228,6 +231,9 @@ impl ClusterMode {
                     if let Some(current_mem_usage) = largest_worker.memory_usage(){
                       if current_mem_usage > memory_limit {
                         largest_worker.reboot(self_ref.clone()).await.ok();
+                        if let Some(hook) = self_ref.server.hooks.get("after_memory_threshold_reached") {
+                          call_with_gvl(|_|  hook.call::<_, Value>((largest_worker.pid(),)).ok() );
+                        }
                       }
                     }
                   }

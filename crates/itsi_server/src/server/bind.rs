@@ -101,7 +101,7 @@ impl FromStr for Bind {
                     "IPv6 addresses must use [ ] when specifying a port".to_owned(),
                 ));
             } else {
-                (h, None) // Treat as a hostname
+                (h, p.parse::<u16>().ok()) // Treat as a hostname
             }
         } else {
             (url, None)
@@ -110,18 +110,22 @@ impl FromStr for Bind {
         let address = if let Ok(ip) = host.parse::<IpAddr>() {
             BindAddress::Ip(ip)
         } else {
-            resolve_hostname(host)
-                .map(BindAddress::Ip)
-                .ok_or(ItsiError::ArgumentError(format!(
-                    "Failed to resolve hostname {}",
-                    host
-                )))?
+            match protocol {
+                BindProtocol::Https | BindProtocol::Http => resolve_hostname(host)
+                    .map(BindAddress::Ip)
+                    .ok_or(ItsiError::ArgumentError(format!(
+                        "Failed to resolve hostname {}",
+                        host
+                    )))?,
+                BindProtocol::Unix | BindProtocol::Unixs => BindAddress::UnixSocket(host.into()),
+            }
         };
-        let (port, address) = match protocol {
-            BindProtocol::Http => (port.or(Some(80)), address),
-            BindProtocol::Https => (port.or(Some(443)), address),
-            BindProtocol::Unix => (None, BindAddress::UnixSocket(host.into())),
-            BindProtocol::Unixs => (None, BindAddress::UnixSocket(host.into())),
+
+        let port = match protocol {
+            BindProtocol::Http => port.or(Some(80)),
+            BindProtocol::Https => port.or(Some(443)),
+            BindProtocol::Unix => None,
+            BindProtocol::Unixs => None,
         };
 
         let tls_config = match protocol {

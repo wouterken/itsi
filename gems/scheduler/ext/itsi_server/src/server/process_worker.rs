@@ -53,8 +53,8 @@ impl ProcessWorker {
             }
             *self.child_pid.lock() = None;
         }
-
-        match call_with_gvl(|_ruby| fork(cluster_template.server.after_fork.lock().clone())) {
+        match call_with_gvl(|_ruby| fork(cluster_template.server.hooks.get("after_fork").cloned()))
+        {
             Some(pid) => {
                 *self.child_pid.lock() = Some(Pid::from_raw(pid));
             }
@@ -81,6 +81,13 @@ impl ProcessWorker {
             }
         }
         Ok(())
+    }
+
+    pub fn pid(&self) -> i32 {
+        if let Some(pid) = *self.child_pid.lock() {
+            return pid.as_raw();
+        }
+        0
     }
 
     pub(crate) fn memory_usage(&self) -> Option<u64> {

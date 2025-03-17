@@ -1,7 +1,8 @@
-use std::{os::raw::c_void, ptr::null_mut, sync::Arc};
+use std::{os::raw::c_void, ptr::null_mut};
 
 use magnus::{
     RArray, Ruby, Thread, Value,
+    block::Proc,
     rb_sys::FromRawValue,
     value::{LazyId, ReprValue},
 };
@@ -17,6 +18,7 @@ static ID_LIST: LazyId = LazyId::new("list");
 static ID_EQ: LazyId = LazyId::new("==");
 static ID_ALIVE: LazyId = LazyId::new("alive?");
 static ID_THREAD_VARIABLE_GET: LazyId = LazyId::new("thread_variable_get");
+static ID_BACKTRACE: LazyId = LazyId::new("backtrace");
 
 pub fn schedule_thread() {
     unsafe {
@@ -120,18 +122,28 @@ where
     *result_box
 }
 
-pub fn fork(after_fork: Arc<Option<impl Fn()>>) -> Option<i32> {
+pub fn fork(after_fork: Option<HeapValue<Proc>>) -> Option<i32> {
     let ruby = Ruby::get().unwrap();
     let fork_result = ruby
         .module_kernel()
         .funcall::<_, _, Option<i32>>(*ID_FORK, ())
         .unwrap();
     if fork_result.is_none() {
-        if let Some(f) = &*after_fork {
-            f()
+        if let Some(proc) = after_fork {
+            call_proc_and_log_errors(proc)
         }
     }
     fork_result
+}
+
+pub fn call_proc_and_log_errors(proc: HeapValue<Proc>) {
+    if let Err(e) = proc.call::<_, Value>(()) {
+        if let Some(value) = e.value() {
+            print_rb_backtrace(value);
+        } else {
+            eprintln!("Error occurred {:?}", e);
+        }
+    }
 }
 
 pub fn kill_threads<T>(threads: Vec<T>)
@@ -175,4 +187,15 @@ pub fn terminate_non_fork_safe_threads() {
         .collect::<Vec<_>>();
 
     kill_threads(non_fork_safe_threads);
+}
+
+pub fn print_rb_backtrace(rb_err: Value) {
+    let backtrace = rb_err
+        .funcall::<_, _, Vec<String>>(*ID_BACKTRACE, ())
+        .unwrap_or_default();
+
+    eprintln!("Ruby exception {:?}", rb_err);
+    for line in backtrace {
+        eprintln!("{}", line);
+    }
 }

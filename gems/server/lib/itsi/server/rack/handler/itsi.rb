@@ -4,12 +4,24 @@ module Rack
   module Handler
     module Itsi
       def self.run(app, options = {})
-        ::Itsi::Server.new(
-          app: -> { app },
-          binds: ["http://#{options.fetch(:host, "127.0.0.1")}:#{options.fetch(:Port, 3001)}"],
-          workers: options.fetch(:workers, 1),
-          threads: options.fetch(:threads, 1)
-        ).start
+        ::Itsi::Server.start(
+          **Itsi::Server::Config.load(
+            {
+              app: app,
+              binds: [
+                "http://#{
+                options.fetch(
+                  :host,
+                  "127.0.0.1"
+                )}:#{
+                options.fetch(
+                  :Port,
+                  3001
+                )}"
+              ]
+            }
+          )
+        )
       end
     end
   end

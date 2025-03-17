@@ -15,6 +15,7 @@ use hyper_util::{
     server::conn::auto::Builder,
 };
 use itsi_error::{ItsiError, Result};
+use itsi_rb_helpers::print_rb_backtrace;
 use itsi_tracing::{debug, error, info};
 use nix::unistd::Pid;
 use parking_lot::Mutex;
@@ -58,11 +59,17 @@ impl SingleMode {
         lifecycle_channel: broadcast::Sender<LifecycleEvent>,
     ) -> Result<Self> {
         let (thread_workers, sender) = build_thread_workers(
+            server.clone(),
             Pid::this(),
             NonZeroU8::try_from(server.threads).unwrap(),
             server.app.clone(),
             server.scheduler_class.clone(),
-        )?;
+        )
+        .inspect_err(|e| {
+            if let Some(err_val) = e.value() {
+                print_rb_backtrace(err_val);
+            }
+        })?;
         Ok(Self {
             executor: Builder::new(TokioExecutor::new()),
             listeners: Mutex::new(listeners),
@@ -233,12 +240,14 @@ impl SingleMode {
         if let LifecycleEvent::Shutdown = lifecycle_event {
             //1. Stop accepting new connections.
             shutdown_sender.send(RunningPhase::ShutdownPending).ok();
-            tokio::time::sleep(Duration::from_millis(50)).await;
+            tokio::time::sleep(Duration::from_millis(25)).await;
 
             //2. Break out of work queues.
             for worker in &*self.thread_workers {
                 worker.request_shutdown().await;
             }
+
+            tokio::time::sleep(Duration::from_millis(25)).await;
 
             //3. Wait for all threads to finish.
             let deadline = Instant::now() + Duration::from_secs_f64(self.server.shutdown_timeout);

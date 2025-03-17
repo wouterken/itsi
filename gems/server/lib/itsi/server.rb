@@ -6,15 +6,18 @@ require_relative "server/rack_interface"
 require_relative "server/signal_trap"
 require_relative "server/scheduler_interface"
 require_relative "server/rack/handler/itsi"
+require_relative "server/config"
 require_relative "request"
 require_relative "stream_io"
 
 # When you Run Itsi without a Rack app,
-# we start a tiny
+# we start a tiny little echo server, just so you can see it in action.
 DEFAULT_INDEX = IO.read("#{__dir__}/index.html").freeze
 DEFAULT_BINDS = ["http://0.0.0.0:3000"].freeze
 DEFAULT_APP = lambda {
   require "json"
+  require "itsi/scheduler"
+  Itsi.log_warn "No config.ru or Itsi.rb app detected. Running default app."
   lambda do |env|
     headers, body = \
       if env["itsi.response"].json?
@@ -55,18 +58,18 @@ module Itsi
 
       def build(
         app: DEFAULT_APP[],
-        preloader: nil,
+        loader: nil,
         binds: DEFAULT_BINDS,
         **opts
       )
-        new(app: preloader || ->{ app }, binds: binds, **opts)
+        new(app: loader || -> { app }, binds: binds, **opts)
       end
 
       def start_in_background_thread(silence: true, **opts)
         start(background: true, silence: silence, **opts)
       end
 
-      def start(background: false, **opts)
+      def start(background: false, silence: false, **opts)
         build(**opts).tap do |server|
           previous_handler = Signal.trap("INT", "DEFAULT")
           @running = true

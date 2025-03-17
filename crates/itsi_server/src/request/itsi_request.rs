@@ -17,6 +17,7 @@ use http::{request::Parts, HeaderValue, Response, StatusCode};
 use http_body_util::{combinators::BoxBody, BodyExt, Empty};
 use hyper::{body::Incoming, Request};
 use itsi_error::from::CLIENT_CONNECTION_CLOSED;
+use itsi_rb_helpers::print_rb_backtrace;
 use itsi_tracing::{debug, error};
 use magnus::{
     error::{ErrorType, Result as MagnusResult},
@@ -33,7 +34,6 @@ use tokio::sync::{
 };
 static ID_CALL: LazyId = LazyId::new("call");
 static ID_MESSAGE: LazyId = LazyId::new("message");
-static ID_BACKTRACE: LazyId = LazyId::new("backtrace");
 
 #[derive(Debug)]
 #[magnus::wrap(class = "Itsi::Request", free_immediately, size)]
@@ -115,14 +115,7 @@ impl ItsiRequest {
             debug!("Connection closed by client");
             response.close();
         } else if let Some(rb_err) = err.value() {
-            let backtrace = rb_err
-                .funcall::<_, _, Vec<String>>(*ID_BACKTRACE, ())
-                .unwrap_or_default();
-
-            error!("Error occurred in Handler: {:?}", rb_err);
-            for line in backtrace {
-                error!("{}", line);
-            }
+            print_rb_backtrace(rb_err);
             response.internal_server_error(err.to_string());
         } else {
             response.internal_server_error(err.to_string());

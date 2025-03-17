@@ -1011,6 +1011,7 @@ dependencies = [
  "crossbeam",
  "derive_more",
  "dirs",
+ "fnv",
  "fs2",
  "futures",
  "http",
@@ -1027,7 +1028,9 @@ dependencies = [
  "pin-project",
  "rb-sys",
  "rcgen",
+ "regex",
  "ring",
+ "route-recognizer",
  "rustls",
  "rustls-pemfile",
  "socket2",
@@ -1757,6 +1760,12 @@ dependencies = [
  "untrusted",
  "windows-sys 0.52.0",
 ]
+
+[[package]]
+name = "route-recognizer"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "afab94fb28594581f62d981211a9a4d53cc8130bbcbbb89a0440d9b8e81a7746"
 
 [[package]]
 name = "rustc-demangle"

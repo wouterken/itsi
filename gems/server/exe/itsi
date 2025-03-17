@@ -1,5 +1,6 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
+
 require "optparse"
 
 # Default options used when starting Osprey from the CLI using `osprey`
@@ -19,7 +20,9 @@ DEFAULT_OPTIONS = {
   # Scheduler class
   scheduler_class: nil,
   # Whether to stream the body or not
-  stream_body: false
+  stream_body: false,
+  # Config file
+  config_file: nil
 }
 
 options = DEFAULT_OPTIONS.to_a.select(&:last).to_h
@@ -27,6 +30,10 @@ options = DEFAULT_OPTIONS.to_a.select(&:last).to_h
 # Define the option parser
 OptionParser.new do |opts|
   opts.banner = "Usage: itsi [options]"
+
+  opts.on("-C", "--config CONFIG_FILE", String, "Itsi Configuration file to use (default: Itsi.rb)") do |config_file|
+    options[:config_file] = config_file
+  end
 
   opts.on("-w", "--workers WORKERS", Integer, "Number of workers (default: #{options[:workers]})") do |w|
     options[:workers] = w
@@ -41,11 +48,12 @@ OptionParser.new do |opts|
   end
 
   opts.on("--worker-memory-limit MEMORY_LIMIT", Integer,
-          "Memory limit for each worker (default: #{options[:worker_memory_limit] || 'None'}). If this limit is breached the worker is gracefully restarted") do |ml|
+          "Memory limit for each worker (default: #{options[:worker_memory_limit] || "None"}). If this limit is breached the worker is gracefully restarted") do |ml|
     options[:worker_memory_limit] = ml
   end
 
-  opts.on("-f", "--fiber_scheduler [CLASS_NAME]", [String], "Scheduler class to use (default: nil). Provide blank or true to use Itsi::Scheduler, or a classname to use an alternative scheduler") do |scheduler_class|
+  opts.on("-f", "--fiber_scheduler [CLASS_NAME]", [String],
+          "Scheduler class to use (default: nil). Provide blank or true to use Itsi::Scheduler, or a classname to use an alternative scheduler") do |scheduler_class|
     if scheduler_class.nil? || scheduler_class == "true"
       options[:scheduler_class] = "Itsi::Scheduler"
     elsif scheduler_class == "false"
@@ -65,8 +73,8 @@ OptionParser.new do |opts|
     end
   end
 
-
-  opts.on("-b", "--bind BIND", String, "Bind address (default: #{options[:binds].join(", ")}). You can specify this flag multiple times to bind to multiple addresses.") do |bind|
+  opts.on("-b", "--bind BIND", String,
+          "Bind address (default: #{options[:binds].join(", ")}). You can specify this flag multiple times to bind to multiple addresses.") do |bind|
     options[:binds].pop if options[:binds].first.frozen?
     options[:binds] << bind
   end
@@ -74,6 +82,7 @@ OptionParser.new do |opts|
   opts.on("-c", "--cert_path CERT_PATH", String,
           "Path to the SSL certificate file (must follow a --bind option). You can specify this flag multiple times.") do |cp|
     raise OptionParser::InvalidOption, "--cert_path must follow a --bind" if options[:binds].empty?
+
     require "uri"
 
     # Modify the last bind entry to add/update the cert query parameter
@@ -84,8 +93,10 @@ OptionParser.new do |opts|
     options[:binds][-1] = "#{uri.host}?#{query_string}"
   end
 
-  opts.on("-k", "--key_path KEY_PATH", String, "Path to the SSL key file (must follow a --bind option). You can specify this flag multiple times.") do |kp|
+  opts.on("-k", "--key_path KEY_PATH", String,
+          "Path to the SSL key file (must follow a --bind option). You can specify this flag multiple times.") do |kp|
     raise OptionParser::InvalidOption, "--key_path must follow a --bind" if options[:binds].empty?
+
     require "uri"
 
     # Modify the last bind entry to add/update the key query parameter
@@ -115,30 +126,49 @@ OptionParser.new do |opts|
   end
 end.parse!
 
-# Rack app loader, invoked per worker.
-# This is a no-op if preloading is enabled (we just return the preloaded app).
-preloader = \
-  if options[:preload]
+require "itsi/server/config"
+if ARGV.pop == "init"
+  Itsi::Server::Config.write_default
+  exit(0)
+  # Add initialization code here
+end
+
+options = Itsi::Server::Config.load(options)
+loader = nil
+
+if options[:app] || File.exist?(options[:rackup_file])
+  loader ||= lambda do
     require "rack"
-
-    app = Array(Rack::Builder.parse_file(options[:rackup_file])).first
     require_relative "../lib/itsi/server/scheduler_mode" if options[:scheduler_class]
-    app.method(:itself).to_proc
-  else
-    lambda do
-      require "rack"
-
-      app = Array(Rack::Builder.parse_file(options[:rackup_file])).first
-      require_relative "../lib/itsi/server/scheduler_mode" if options[:scheduler_class]
-      app
-    end
+    require "itsi/scheduler" if [true, "Itsi::Scheduler"].include?(options[:scheduler_class])
+    require "itsi/server"
+    return options[:app] if options[:app]
+    Array(Rack::Builder.parse_file(options[:rackup_file])).first
   end
+
+  if options[:preload] == true
+    # If preload is true, we'll invoke our loader now, and just return a no-op proc
+    # which returns the app as loader. We still need to optionally load the scheduler class and rack
+    # in case the app has been provided directly in Itsi.rb instead of in config.ru
+    require "rack"
+    require_relative "../lib/itsi/server/scheduler_mode" if options[:scheduler_class]
+    require "itsi/scheduler" if [true, "Itsi::Scheduler"].include?(options[:scheduler_class])
+    loader = (options[:app] || loader[]).method(:itself).to_proc
+  elsif options[:preload]
+    # If a group name is given, we'll stick to just loading the gem group by the same name from the Gemfile.
+    # But we'll fall through to the default delayed loader for the full app.
+    require "bundler"
+    Bundler.setup
+    Bundler.require(options[:preload])
+    nil
+  end
+end
 
 # Make sure Itsi is loaded, if not already loaded by the rack_app above.
 # Start the Itsi server
 require "itsi/server"
 
 Itsi::Server.start(
-  preloader: preloader,
+  loader: loader,
   **options.except(:preload, :rackup_file)
 )

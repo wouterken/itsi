@@ -8,17 +8,17 @@ use super::{
 };
 use crate::{request::itsi_request::ItsiRequest, server::serve_strategy::ServeStrategy};
 use derive_more::Debug;
-use itsi_rb_helpers::{call_without_gvl, HeapVal};
+use itsi_rb_helpers::{call_without_gvl, HeapVal, HeapValue};
 use itsi_tracing::{error, run_silently};
 use magnus::{
     block::Proc,
     error::Result,
     scan_args::{get_kwargs, scan_args, Args, KwArgs, ScanArgsKw, ScanArgsOpt, ScanArgsRequired},
-    value::{InnerValue, Opaque, ReprValue},
-    ArgList, RHash, Ruby, Symbol, Value,
+    value::ReprValue,
+    ArgList, RArray, RHash, Ruby, Symbol, Value,
 };
 use parking_lot::{Mutex, RwLock};
-use std::{cmp::max, ops::Deref, sync::Arc};
+use std::{cmp::max, collections::HashMap, ops::Deref, sync::Arc};
 use tracing::{info, instrument};
 
 static DEFAULT_BIND: &str = "http://localhost:3000";
@@ -36,7 +36,6 @@ impl Deref for Server {
         &self.config
     }
 }
-type AfterFork = Mutex<Arc<Option<Box<dyn Fn() + Send + Sync>>>>;
 
 #[derive(Debug)]
 pub struct ServerConfig {
@@ -51,15 +50,14 @@ pub struct ServerConfig {
     pub script_name: String,
     pub(crate) binds: Mutex<Vec<Bind>>,
     #[debug(skip)]
-    pub before_fork: Mutex<Option<Box<dyn FnOnce() + Send + Sync>>>,
-    #[debug(skip)]
-    pub after_fork: AfterFork,
+    pub hooks: HashMap<String, HeapValue<Proc>>,
     pub scheduler_class: Option<String>,
     pub stream_body: Option<bool>,
     pub worker_memory_limit: Option<u64>,
     #[debug(skip)]
     pub(crate) strategy: RwLock<Option<ServeStrategy>>,
     pub silence: bool,
+    pub oob_gc_responses_threshold: Option<u64>,
 }
 
 #[derive(Debug)]
@@ -124,13 +122,13 @@ impl Server {
         type Args2 = KwArgs<
             (),
             (
-                // Before Fork
-                Option<Proc>,
-                // After Fork
-                Option<Proc>,
+                // Hooks
+                Option<RHash>,
                 // Scheduler Class
                 Option<String>,
                 // Worker Memory Limit
+                Option<u64>,
+                // Out-of-band GC Responses Threshold
                 Option<u64>,
                 // Silence
                 Option<bool>,
@@ -155,13 +153,32 @@ impl Server {
             &scan_args,
             &[],
             &[
-                "before_fork",
-                "after_fork",
+                "hooks",
                 "scheduler_class",
                 "worker_memory_limit",
+                "oob_gc_responses_threshold",
                 "silence",
             ],
         )?;
+
+        let hooks = args2
+            .optional
+            .0
+            .map(|rhash| -> Result<HashMap<String, HeapValue<Proc>>> {
+                let mut hook_map: HashMap<String, HeapValue<Proc>> = HashMap::new();
+                for pair in rhash.enumeratorize::<_, ()>("each", ()) {
+                    if let Some(pair_value) = RArray::from_value(pair?) {
+                        if let (Ok(key), Ok(value)) =
+                            (pair_value.entry::<Value>(0), pair_value.entry::<Proc>(1))
+                        {
+                            hook_map.insert(key.to_string(), HeapValue::from(value));
+                        }
+                    }
+                }
+                Ok(hook_map)
+            })
+            .transpose()?
+            .unwrap_or_default();
 
         let config = ServerConfig {
             app: HeapVal::from(args1.required.0),
@@ -179,32 +196,16 @@ impl Server {
                     .collect::<itsi_error::Result<Vec<Bind>>>()?,
             ),
             stream_body: args1.optional.5,
-            before_fork: Mutex::new(args2.optional.0.map(|p| {
-                let opaque_proc = Opaque::from(p);
-                Box::new(move || {
-                    opaque_proc
-                        .get_inner_with(&Ruby::get().unwrap())
-                        .call::<_, Value>(())
-                        .unwrap();
-                }) as Box<dyn FnOnce() + Send + Sync>
-            })),
-            after_fork: Mutex::new(Arc::new(args2.optional.1.map(|p| {
-                let opaque_proc = Opaque::from(p);
-                Box::new(move || {
-                    opaque_proc
-                        .get_inner_with(&Ruby::get().unwrap())
-                        .call::<_, Value>(())
-                        .unwrap();
-                }) as Box<dyn Fn() + Send + Sync>
-            }))),
-            scheduler_class: args2.optional.2.clone(),
-            worker_memory_limit: args2.optional.3,
-            silence: args2.optional.4.is_some_and(|s| s),
+            hooks,
+            scheduler_class: args2.optional.1.clone(),
+            worker_memory_limit: args2.optional.2,
             strategy: RwLock::new(None),
+            oob_gc_responses_threshold: args2.optional.3,
+            silence: args2.optional.4.is_some_and(|s| s),
         };
 
         if !config.silence {
-            if let Some(scheduler_class) = args2.optional.2 {
+            if let Some(scheduler_class) = args2.optional.1 {
                 info!(scheduler_class, fiber_scheduler = true);
             } else {
                 info!(fiber_scheduler = false);
