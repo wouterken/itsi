@@ -1,16 +1,13 @@
 # app/controllers/uploads_controller.rb
-require 'debug'
 class UploadsController < ApplicationController
   # Disable CSRF for this endpoint (for testing only)
   skip_before_action :verify_authenticity_token
 
   def body
-    puts params
     render plain: params
   end
 
   def create
-    bb
     uploaded_file = params[:file]
 
     if uploaded_file

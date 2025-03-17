@@ -57,7 +57,7 @@ pub fn build_thread_workers(
     app: HeapVal,
     scheduler_class: Option<String>,
 ) -> Result<(Arc<Vec<ThreadWorker>>, async_channel::Sender<RequestJob>)> {
-    let (sender, receiver) = async_channel::bounded(20);
+    let (sender, receiver) = async_channel::bounded((threads.get() * 30) as usize);
     let receiver_ref = Arc::new(receiver);
     let sender_ref = sender;
     let (app, scheduler_class) = load_app(app, scheduler_class)?;

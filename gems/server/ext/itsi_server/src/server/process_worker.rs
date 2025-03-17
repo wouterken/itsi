@@ -171,8 +171,10 @@ impl ProcessWorker {
     pub(crate) fn force_kill(&self) {
         let child_pid = *self.child_pid.lock();
         if let Some(pid) = child_pid {
-            if let Err(e) = kill(pid, SIGKILL) {
-                error!("Failed to force kill process {}: {}", pid, e);
+            if self.is_alive() {
+                if let Err(e) = kill(pid, SIGKILL) {
+                    error!("Failed to force kill process {}: {}", pid, e);
+                }
             }
         }
     }

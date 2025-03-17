@@ -35,7 +35,6 @@ class TestFileIO < Minitest::Test
       Fiber.schedule do
         # When no data is available, wait_readable should return nil after the timeout.
         result = reader.wait_readable(0.05)
-        puts "Awoken"
       end
     end
 

@@ -37,7 +37,6 @@ use crate::server::serve_strategy::single_mode::RunningPhase;
 #[derive(Debug, Clone)]
 pub struct ItsiResponse {
     pub data: Arc<ResponseData>,
-    pub accept: String,
 }
 
 #[derive(Debug)]
@@ -293,20 +292,28 @@ impl ItsiResponse {
         self.data.response_writer.write().take();
         Ok(true)
     }
+    fn accept_str(&self) -> &str {
+        self.data
+            .parts
+            .headers
+            .get("Content-Type")
+            .and_then(|hv| hv.to_str().ok()) // handle invalid utf-8
+            .unwrap_or("application/x-www-form-urlencoded")
+    }
 
     pub fn is_html(&self) -> bool {
-        self.accept.starts_with("text/html")
+        self.accept_str().starts_with("text/html")
     }
 
     pub fn is_json(&self) -> bool {
-        self.accept.starts_with("application/json")
+        self.accept_str().starts_with("application/json")
     }
 
     pub fn close_read(&self) -> MagnusResult<bool> {
         Ok(true)
     }
 
-    pub fn new(parts: Parts, response_writer: mpsc::Sender<Option<Bytes>>, accept: String) -> Self {
+    pub fn new(parts: Parts, response_writer: mpsc::Sender<Option<Bytes>>) -> Self {
         Self {
             data: Arc::new(ResponseData {
                 response: RwLock::new(Some(Response::new(BoxBody::new(Empty::new())))),
@@ -315,7 +322,6 @@ impl ItsiResponse {
                 hijacked_socket: RwLock::new(None),
                 parts,
             }),
-            accept,
         }
     }
 

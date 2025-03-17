@@ -57,12 +57,12 @@ module Itsi
       end
 
       def build(
-        app: DEFAULT_APP[],
+        app: nil,
         loader: nil,
         binds: DEFAULT_BINDS,
         **opts
       )
-        new(app: loader || -> { app }, binds: binds, **opts)
+        new(app: loader || -> { app || DEFAULT_APP[] }, binds: binds, **opts)
       end
 
       def start_in_background_thread(silence: true, **opts)

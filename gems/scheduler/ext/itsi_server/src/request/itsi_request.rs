@@ -6,14 +6,14 @@ use crate::{
     response::itsi_response::ItsiResponse,
     server::{
         itsi_server::{RequestJob, Server},
-        listener::{ListenerInfo, SockAddr},
+        listener::ListenerInfo,
         serve_strategy::single_mode::RunningPhase,
     },
 };
 use bytes::Bytes;
 use derive_more::Debug;
 use futures::StreamExt;
-use http::{request::Parts, HeaderValue, Response, StatusCode};
+use http::{request::Parts, Response, StatusCode, Version};
 use http_body_util::{combinators::BoxBody, BodyExt, Empty};
 use hyper::{body::Incoming, Request};
 use itsi_error::from::CLIENT_CONNECTION_CLOSED;
@@ -42,14 +42,13 @@ pub struct ItsiRequest {
     #[debug(skip)]
     pub body: ItsiBody,
     pub remote_addr: String,
-    pub version: String,
+    pub version: Version,
     #[debug(skip)]
     pub(crate) listener: Arc<ListenerInfo>,
     #[debug(skip)]
     pub server: Arc<Server>,
     pub response: ItsiResponse,
     pub start: Instant,
-    pub content_type: String,
 }
 
 impl fmt::Display for ItsiRequest {
@@ -82,13 +81,20 @@ impl ItsiRequest {
             }
         }
     }
+    fn content_type_str(&self) -> &str {
+        self.parts
+            .headers
+            .get("Content-Type")
+            .and_then(|hv| hv.to_str().ok())
+            .unwrap_or("application/x-www-form-urlencoded")
+    }
 
     pub fn is_json(&self) -> bool {
-        self.content_type.eq("application/json")
+        self.content_type_str() == "application/json"
     }
 
     pub fn is_html(&self) -> bool {
-        self.content_type.eq("text/html")
+        self.content_type_str() == "text/html"
     }
 
     pub fn process(
@@ -97,16 +103,11 @@ impl ItsiRequest {
         server: RClass,
         app: Opaque<Value>,
     ) -> magnus::error::Result<()> {
-        let req = format!("{}", self);
         let response = self.response.clone();
-        let start = self.start;
-        debug!("{} Started", req);
         let result = server.funcall::<_, _, Value>(*ID_CALL, (app, self));
         if let Err(err) = result {
             Self::internal_error(ruby, response, err);
         }
-        debug!("{} Finished in {:?}", req, start.elapsed());
-
         Ok(())
     }
 
@@ -131,10 +132,11 @@ impl ItsiRequest {
         sender: async_channel::Sender<RequestJob>,
         server: Arc<Server>,
         listener: Arc<ListenerInfo>,
-        addr: SockAddr,
+        remote_addr: String,
         shutdown_rx: watch::Receiver<RunningPhase>,
     ) -> itsi_error::Result<Response<BoxBody<Bytes, Infallible>>> {
-        let (request, mut receiver) = ItsiRequest::new(hyper_request, addr, server, listener).await;
+        let (request, mut receiver) =
+            ItsiRequest::new(hyper_request, remote_addr, server, listener).await;
 
         let response = request.response.clone();
         match sender.send(RequestJob::ProcessRequest(request)).await {
@@ -153,7 +155,7 @@ impl ItsiRequest {
 
     pub(crate) async fn new(
         request: Request<Incoming>,
-        sock_addr: SockAddr,
+        remote_addr: String,
         server: Arc<Server>,
         listener: Arc<ListenerInfo>,
     ) -> (ItsiRequest, mpsc::Receiver<Option<Bytes>>) {
@@ -172,32 +174,13 @@ impl ItsiRequest {
         let response_channel = mpsc::channel::<Option<Bytes>>(100);
         (
             Self {
-                remote_addr: sock_addr.to_string(),
+                remote_addr,
                 body,
                 server,
                 listener,
-                version: format!("{:?}", &parts.version),
-                response: ItsiResponse::new(
-                    parts.clone(),
-                    response_channel.0,
-                    parts
-                        .headers
-                        .get("Accept")
-                        .unwrap_or(&HeaderValue::from_static("text/html"))
-                        .to_str()
-                        .unwrap()
-                        .to_string(),
-                ),
+                version: parts.version,
+                response: ItsiResponse::new(parts.clone(), response_channel.0),
                 start: Instant::now(),
-                content_type: parts
-                    .headers
-                    .get("Content-Type")
-                    .unwrap_or(&HeaderValue::from_static(
-                        "application/x-www-form-urlencoded",
-                    ))
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
                 parts,
             },
             response_channel.1,
@@ -226,7 +209,14 @@ impl ItsiRequest {
     }
 
     pub(crate) fn version(&self) -> MagnusResult<&str> {
-        Ok(&self.version)
+        Ok(match self.version {
+            Version::HTTP_09 => "HTTP/0.9",
+            Version::HTTP_10 => "HTTP/1.0",
+            Version::HTTP_11 => "HTTP/1.1",
+            Version::HTTP_2 => "HTTP/2.0",
+            Version::HTTP_3 => "HTTP/3.0",
+            _ => "HTTP/Unknown",
+        })
     }
 
     pub(crate) fn rack_protocol(&self) -> MagnusResult<Vec<&str>> {
@@ -246,22 +236,17 @@ impl ItsiRequest {
             .unwrap_or_else(|| vec!["http"]))
     }
 
-    pub(crate) fn host(&self) -> MagnusResult<String> {
-        Ok(self
-            .parts
-            .uri
-            .host()
-            .map(|host| host.to_string())
-            .unwrap_or_else(|| self.listener.host.clone()))
+    pub(crate) fn host(&self) -> MagnusResult<&str> {
+        Ok(self.parts.uri.host().unwrap_or_else(|| &self.listener.host))
     }
 
-    pub(crate) fn scheme(&self) -> MagnusResult<String> {
+    pub(crate) fn scheme(&self) -> MagnusResult<&str> {
         Ok(self
             .parts
             .uri
             .scheme()
-            .map(|scheme| scheme.to_string())
-            .unwrap_or_else(|| self.listener.scheme.clone()))
+            .map(|scheme| scheme.as_str())
+            .unwrap_or_else(|| &self.listener.scheme))
     }
 
     pub(crate) fn headers(&self) -> MagnusResult<Vec<(String, &str)>> {

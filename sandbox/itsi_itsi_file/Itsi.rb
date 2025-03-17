@@ -37,9 +37,9 @@ fiber_scheduler nil
 # require 'rack'
 # run(Rack::Builder.app do
 #   use Rack::CommonLogger
-#   run ->(_env) { [200, { 'content-type' => 'text/plain' }, ['OK']] }
+run ->(_env) { [200, { 'content-type' => 'text/plain' }, ['OK']] }
 # end)
-rackup_file 'config.ru'
+# rackup_file 'config.ru'
 
 # If you bind to https, without specifying a certificate, Itsi will use a self-signed certificate.
 # The self-signed certificate will use a CA generated for your host and stored inside `ITSI_LOCAL_CA_DIR` (Defaults to ~/.itsi)

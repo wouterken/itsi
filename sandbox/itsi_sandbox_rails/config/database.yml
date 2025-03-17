@@ -8,33 +8,23 @@ default: &default
   adapter: postgresql
   pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
   timeout: 5000
+  database: itsi_sandbox_rails
 
 development:
   <<: *default
-  database: itsi_sandbox_development
 
 # Warning: The database defined as "test" will be erased and
 # re-generated from your development database when you run "rake".
 # Do not set this db to the same as development or production.
 test:
   <<: *default
-  database: itsi_sandbox_test
 
-# Store production database in the storage/ directory, which by default
-# is mounted as a persistent Docker volume in config/deploy.yml.
+# SQLite3 write its data on the local filesystem, as such it requires
+# persistent disks. If you are deploying to a managed service, you should
+# make sure it provides disk persistence, as many don't.
+#
+# Similarly, if you deploy your application as a Docker container, you must
+# ensure the database is located in a persisted volume.
 production:
-  primary:
-    <<: *default
-    database: itsi_sandbox_rails_production
-  cache:
-    <<: *default
-    database: itsi_sandbox_rails_production_cache
-    migrations_paths: db/cache_migrate
-  queue:
-    <<: *default
-    database: itsi_sandbox_rails_production_queue
-    migrations_paths: db/queue_migrate
-  cable:
-    <<: *default
-    database: itsi_sandbox_rails_production_cable
-    migrations_paths: db/cable_migrate
+  <<: *default
+  # database: path/to/persistent/storage/production.sqlite3

@@ -1,26 +1,19 @@
 PATH
   remote: ../../gems/scheduler
   specs:
-    itsi-scheduler (0.1.0)
-      libclang (~> 14.0)
+    itsi-scheduler (0.1.11)
       rb_sys (~> 0.9.91)
 
 PATH
   remote: ../../gems/server
   specs:
-    itsi-server (0.1.1)
-      libclang (~> 14.0)
-      rack (~> 2.2)
+    itsi-server (0.1.11)
+      rack (>= 1.6)
       rb_sys (~> 0.9.91)
 
 GEM
   remote: https://rubygems.org/
   specs:
-    libclang (14.0.6-aarch64-linux)
-    libclang (14.0.6-arm64-darwin)
-    libclang (14.0.6-x86_64-darwin)
-    libclang (14.0.6-x86_64-linux)
-    libclang (14.0.6-x86_64-linux-musl)
     rack (2.2.13)
     rake-compiler-dock (1.9.1)
     rb_sys (0.9.111)

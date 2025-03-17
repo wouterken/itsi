@@ -4,8 +4,9 @@ module Rack
   module Handler
     module Itsi
       def self.run(app, options = {})
+        require "itsi/server"
         ::Itsi::Server.start(
-          **Itsi::Server::Config.load(
+          **::Itsi::Server::Config.load(
             {
               app: app,
               binds: [

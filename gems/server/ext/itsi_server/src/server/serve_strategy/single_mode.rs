@@ -4,12 +4,14 @@ use crate::{
         io_stream::IoStream,
         itsi_server::{RequestJob, Server},
         lifecycle_event::LifecycleEvent,
-        listener::{Listener, ListenerInfo},
+        listener::{Listener, ListenerInfo, SockAddr},
         thread_worker::{build_thread_workers, ThreadWorker},
     },
 };
-use http::Request;
-use hyper::{body::Incoming, service::service_fn};
+use bytes::Bytes;
+use http::{Request, Response};
+use http_body_util::combinators::BoxBody;
+use hyper::{body::Incoming, service::Service};
 use hyper_util::{
     rt::{TokioExecutor, TokioIo, TokioTimer},
     server::conn::auto::Builder,
@@ -20,6 +22,8 @@ use itsi_tracing::{debug, error, info};
 use nix::unistd::Pid;
 use parking_lot::Mutex;
 use std::{
+    convert::Infallible,
+    future::Future,
     num::NonZeroU8,
     panic,
     pin::Pin,
@@ -49,6 +53,48 @@ pub enum RunningPhase {
     Running,
     ShutdownPending,
     Shutdown,
+}
+
+/// A custom Hyper Service that processes requests using your ItsiRequest logic.
+#[derive(Clone)]
+struct ItisService {
+    sender: async_channel::Sender<RequestJob>, // replace with your actual sender type
+    server: Arc<Server>,                       // replace with your actual server type
+    listener: Arc<ListenerInfo>,
+    addr: SockAddr,
+    shutdown_channel: watch::Receiver<RunningPhase>,
+}
+
+impl Service<Request<Incoming>> for ItisService {
+    type Response = Response<BoxBody<Bytes, Infallible>>;
+    // If your `process_request` can never fail, you could use `Infallible`;
+    // otherwise use an error type that matches what `process_request` returns.
+    type Error = ItsiError;
+    // The Future that eventually produces a Response:
+    type Future = Pin<
+        Box<dyn Future<Output = itsi_error::Result<Response<BoxBody<Bytes, Infallible>>>> + Send>,
+    >;
+
+    // This is called once per incoming Request.
+    fn call(&self, req: Request<Incoming>) -> Self::Future {
+        let sender = self.sender.clone();
+        let server = self.server.clone();
+        let listener = self.listener.clone();
+        let remote_addr = self.addr.to_string();
+        let shutdown_channel = self.shutdown_channel.clone();
+
+        Box::pin(async move {
+            ItsiRequest::process_request(
+                req,
+                sender,
+                server,
+                listener,
+                remote_addr,
+                shutdown_channel,
+            )
+            .await
+        })
+    }
 }
 
 impl SingleMode {
@@ -176,33 +222,26 @@ impl SingleMode {
         listener: Arc<ListenerInfo>,
         shutdown_channel: watch::Receiver<RunningPhase>,
     ) {
-        let sender_clone = self.sender.clone();
         let addr = stream.addr();
         let io: TokioIo<Pin<Box<IoStream>>> = TokioIo::new(Box::pin(stream));
-        let server = self.server.clone();
         let executor = self.executor.clone();
         let mut shutdown_channel_clone = shutdown_channel.clone();
-        let server = server.clone();
         let mut executor = executor.clone();
         let mut binding = executor.http1();
         let shutdown_channel = shutdown_channel_clone.clone();
+
+        let service = ItisService {
+            sender: self.sender.clone(),
+            server: self.server.clone(),
+            listener,
+            addr,
+            shutdown_channel: shutdown_channel.clone(),
+        };
         let mut serve = Box::pin(
             binding
-                .timer(TokioTimer::new())
+                .timer(TokioTimer::new()) // your existing timer
                 .header_read_timeout(Duration::from_secs(1))
-                .serve_connection_with_upgrades(
-                    io,
-                    service_fn(move |hyper_request: Request<Incoming>| {
-                        ItsiRequest::process_request(
-                            hyper_request,
-                            sender_clone.clone(),
-                            server.clone(),
-                            listener.clone(),
-                            addr.clone(),
-                            shutdown_channel.clone(),
-                        )
-                    }),
-                ),
+                .serve_connection_with_upgrades(io, service),
         );
 
         tokio::select! {
@@ -213,7 +252,7 @@ impl SingleMode {
                       debug!("Connection closed normally")
                     },
                     Err(res) => {
-                      debug!("Connection finished with error: {:?}", res)
+                      debug!("Connection closed abruptply: {:?}", res)
                     }
                 }
                 serve.as_mut().graceful_shutdown();

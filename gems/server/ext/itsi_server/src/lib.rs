@@ -38,12 +38,6 @@ pub static ITSI_BODY_PROXY: Lazy<RClass> = Lazy::new(|ruby| {
         .unwrap()
 });
 
-pub static ITSI_SERVER_SCHEDULER_TASK: Lazy<RClass> = Lazy::new(|ruby| {
-    ruby.get_inner(&ITSI_MODULE)
-        .define_class("ServerSchedulerTask", ruby.class_object())
-        .unwrap()
-});
-
 pub fn log_debug(msg: String) {
     debug!(msg);
 }
