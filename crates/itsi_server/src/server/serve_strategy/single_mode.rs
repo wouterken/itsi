@@ -1,17 +1,14 @@
 use crate::{
-    request::itsi_request::ItsiRequest,
+    ruby_types::itsi_server::itsi_server_config::ItsiServerConfig,
     server::{
         io_stream::IoStream,
-        itsi_server::{RequestJob, Server},
+        itsi_service::{IstiServiceInner, ItsiService},
         lifecycle_event::LifecycleEvent,
-        listener::{Listener, ListenerInfo, SockAddr},
+        listener::{Listener, ListenerInfo},
+        request_job::RequestJob,
         thread_worker::{build_thread_workers, ThreadWorker},
     },
 };
-use bytes::Bytes;
-use http::{Request, Response};
-use http_body_util::combinators::BoxBody;
-use hyper::{body::Incoming, service::Service};
 use hyper_util::{
     rt::{TokioExecutor, TokioIo, TokioTimer},
     server::conn::auto::Builder,
@@ -22,10 +19,7 @@ use itsi_tracing::{debug, error, info};
 use nix::unistd::Pid;
 use parking_lot::Mutex;
 use std::{
-    convert::Infallible,
-    future::Future,
     num::NonZeroU8,
-    panic,
     pin::Pin,
     sync::Arc,
     time::{Duration, Instant},
@@ -42,7 +36,7 @@ use tracing::instrument;
 
 pub struct SingleMode {
     pub executor: Builder<TokioExecutor>,
-    pub server: Arc<Server>,
+    pub config: Arc<ItsiServerConfig>,
     pub sender: async_channel::Sender<RequestJob>,
     pub(crate) listeners: Mutex<Vec<Listener>>,
     pub(crate) thread_workers: Arc<Vec<ThreadWorker>>,
@@ -55,71 +49,31 @@ pub enum RunningPhase {
     Shutdown,
 }
 
-/// A custom Hyper Service that processes requests using your ItsiRequest logic.
-#[derive(Clone)]
-struct ItisService {
-    sender: async_channel::Sender<RequestJob>, // replace with your actual sender type
-    server: Arc<Server>,                       // replace with your actual server type
-    listener: Arc<ListenerInfo>,
-    addr: SockAddr,
-    shutdown_channel: watch::Receiver<RunningPhase>,
-}
-
-impl Service<Request<Incoming>> for ItisService {
-    type Response = Response<BoxBody<Bytes, Infallible>>;
-    // If your `process_request` can never fail, you could use `Infallible`;
-    // otherwise use an error type that matches what `process_request` returns.
-    type Error = ItsiError;
-    // The Future that eventually produces a Response:
-    type Future = Pin<
-        Box<dyn Future<Output = itsi_error::Result<Response<BoxBody<Bytes, Infallible>>>> + Send>,
-    >;
-
-    // This is called once per incoming Request.
-    fn call(&self, req: Request<Incoming>) -> Self::Future {
-        let sender = self.sender.clone();
-        let server = self.server.clone();
-        let listener = self.listener.clone();
-        let remote_addr = self.addr.to_string();
-        let shutdown_channel = self.shutdown_channel.clone();
-
-        Box::pin(async move {
-            ItsiRequest::process_request(
-                req,
-                sender,
-                server,
-                listener,
-                remote_addr,
-                shutdown_channel,
-            )
-            .await
-        })
-    }
-}
-
 impl SingleMode {
     #[instrument(parent=None, skip_all, fields(pid=format!("{:?}", Pid::this())))]
     pub(crate) fn new(
-        server: Arc<Server>,
+        config: Arc<ItsiServerConfig>,
         listeners: Vec<Listener>,
         lifecycle_channel: broadcast::Sender<LifecycleEvent>,
     ) -> Result<Self> {
+        let config = config.reload_dependencies()?;
+
         let (thread_workers, sender) = build_thread_workers(
-            server.clone(),
+            config.clone(),
             Pid::this(),
-            NonZeroU8::try_from(server.threads).unwrap(),
-            server.app.clone(),
-            server.scheduler_class.clone(),
+            NonZeroU8::try_from(config.threads).unwrap(),
+            config.scheduler_class.clone(),
         )
         .inspect_err(|e| {
             if let Some(err_val) = e.value() {
                 print_rb_backtrace(err_val);
             }
         })?;
+
         Ok(Self {
             executor: Builder::new(TokioExecutor::new()),
             listeners: Mutex::new(listeners),
-            server,
+            config,
             sender,
             thread_workers,
             lifecycle_channel,
@@ -230,12 +184,14 @@ impl SingleMode {
         let mut binding = executor.http1();
         let shutdown_channel = shutdown_channel_clone.clone();
 
-        let service = ItisService {
-            sender: self.sender.clone(),
-            server: self.server.clone(),
-            listener,
-            addr,
-            shutdown_channel: shutdown_channel.clone(),
+        let service = ItsiService {
+            inner: Arc::new(IstiServiceInner {
+                sender: self.sender.clone(),
+                config: self.config.clone(),
+                listener,
+                addr: addr.to_string(),
+                shutdown_channel: shutdown_channel.clone(),
+            }),
         };
         let mut serve = Box::pin(
             binding
@@ -252,7 +208,7 @@ impl SingleMode {
                       debug!("Connection closed normally")
                     },
                     Err(res) => {
-                      debug!("Connection closed abruptply: {:?}", res)
+                      debug!("Connection closed abruptly: {:?}", res)
                     }
                 }
                 serve.as_mut().graceful_shutdown();
@@ -289,7 +245,7 @@ impl SingleMode {
             tokio::time::sleep(Duration::from_millis(25)).await;
 
             //3. Wait for all threads to finish.
-            let deadline = Instant::now() + Duration::from_secs_f64(self.server.shutdown_timeout);
+            let deadline = Instant::now() + Duration::from_secs_f64(self.config.shutdown_timeout);
             while Instant::now() < deadline {
                 let alive_threads = self
                     .thread_workers

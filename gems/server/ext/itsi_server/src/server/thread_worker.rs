@@ -1,7 +1,5 @@
-use super::itsi_server::{RequestJob, Server};
-use crate::{request::itsi_request::ItsiRequest, ITSI_SERVER};
 use itsi_rb_helpers::{
-    call_with_gvl, call_without_gvl, create_ruby_thread, kill_threads, HeapVal, HeapValue,
+    call_with_gvl, call_without_gvl, create_ruby_thread, kill_threads, HeapValue,
 };
 use itsi_tracing::{debug, error, info, warn};
 use magnus::{
@@ -23,10 +21,17 @@ use std::{
 };
 use tokio::{runtime::Builder as RuntimeBuilder, sync::watch};
 use tracing::instrument;
+
+use crate::ruby_types::{
+    itsi_http_request::ItsiHttpRequest,
+    itsi_server::{itsi_server_config::ItsiServerConfig, ItsiServer},
+    ITSI_SERVER,
+};
+
+use super::request_job::RequestJob;
 pub struct ThreadWorker {
-    pub server: Arc<Server>,
+    pub config: Arc<ItsiServerConfig>,
     pub id: String,
-    pub app: Opaque<Value>,
     pub receiver: Arc<async_channel::Receiver<RequestJob>>,
     pub sender: async_channel::Sender<RequestJob>,
     pub thread: RwLock<Option<HeapValue<Thread>>>,
@@ -34,7 +39,6 @@ pub struct ThreadWorker {
     pub scheduler_class: Option<Opaque<Value>>,
 }
 
-static ID_CALL: LazyId = LazyId::new("call");
 static ID_ALIVE: LazyId = LazyId::new("alive?");
 static ID_SCHEDULER: LazyId = LazyId::new("scheduler");
 static ID_SCHEDULE: LazyId = LazyId::new("schedule");
@@ -49,27 +53,25 @@ static CLASS_FIBER: Lazy<RClass> = Lazy::new(|ruby| {
 
 pub struct TerminateWakerSignal(bool);
 
-#[instrument(name = "Boot", parent=None, skip(server, threads, app, pid, scheduler_class))]
+#[instrument(name = "Boot", parent=None, skip(config, threads, pid, scheduler_class))]
 pub fn build_thread_workers(
-    server: Arc<Server>,
+    config: Arc<ItsiServerConfig>,
     pid: Pid,
     threads: NonZeroU8,
-    app: HeapVal,
     scheduler_class: Option<String>,
 ) -> Result<(Arc<Vec<ThreadWorker>>, async_channel::Sender<RequestJob>)> {
     let (sender, receiver) = async_channel::bounded((threads.get() * 30) as usize);
     let receiver_ref = Arc::new(receiver);
     let sender_ref = sender;
-    let (app, scheduler_class) = load_app(app, scheduler_class)?;
+    let scheduler_class = load_scheduler_class(scheduler_class)?;
     Ok((
         Arc::new(
             (1..=u8::from(threads))
                 .map(|id| {
                     info!(pid = pid.as_raw(), id, "Thread");
                     ThreadWorker::new(
-                        server.clone(),
+                        config.clone(),
                         format!("{:?}#{:?}", pid, id),
-                        app,
                         receiver_ref.clone(),
                         sender_ref.clone(),
                         scheduler_class,
@@ -81,12 +83,8 @@ pub fn build_thread_workers(
     ))
 }
 
-pub fn load_app(
-    app: HeapVal,
-    scheduler_class: Option<String>,
-) -> Result<(Opaque<Value>, Option<Opaque<Value>>)> {
+pub fn load_scheduler_class(scheduler_class: Option<String>) -> Result<Option<Opaque<Value>>> {
     call_with_gvl(|ruby| {
-        let app = Opaque::from(app.funcall::<_, _, Value>(*ID_CALL, ())?);
         let scheduler_class = if let Some(scheduler_class) = scheduler_class {
             Some(Opaque::from(
                 ruby.module_kernel()
@@ -95,22 +93,20 @@ pub fn load_app(
         } else {
             None
         };
-        Ok((app, scheduler_class))
+        Ok(scheduler_class)
     })
 }
 impl ThreadWorker {
     pub fn new(
-        server: Arc<Server>,
+        config: Arc<ItsiServerConfig>,
         id: String,
-        app: Opaque<Value>,
         receiver: Arc<async_channel::Receiver<RequestJob>>,
         sender: async_channel::Sender<RequestJob>,
         scheduler_class: Option<Opaque<Value>>,
     ) -> Result<Self> {
         let mut worker = Self {
-            server,
+            config,
             id,
-            app,
             receiver,
             sender,
             thread: RwLock::new(None),
@@ -152,19 +148,17 @@ impl ThreadWorker {
 
     pub fn run(&mut self) -> Result<()> {
         let id = self.id.clone();
-        let app = self.app;
         let receiver = self.receiver.clone();
         let terminated = self.terminated.clone();
         let scheduler_class = self.scheduler_class;
-        let server = self.server.clone();
+        let config = self.config.clone();
         call_with_gvl(|_| {
             *self.thread.write() = Some(
                 create_ruby_thread(move || {
                     if let Some(scheduler_class) = scheduler_class {
                         if let Err(err) = Self::fiber_accept_loop(
-                            server,
+                            config,
                             id,
-                            app,
                             receiver,
                             scheduler_class,
                             terminated,
@@ -172,7 +166,7 @@ impl ThreadWorker {
                             error!("Error in fiber_accept_loop: {:?}", err);
                         }
                     } else {
-                        Self::accept_loop(server, id, app, receiver, terminated);
+                        Self::accept_loop(config, id, receiver, terminated);
                     }
                 })
                 .into(),
@@ -183,7 +177,6 @@ impl ThreadWorker {
     }
 
     pub fn build_scheduler_proc(
-        app: Opaque<Value>,
         leader: &Arc<Mutex<Option<RequestJob>>>,
         receiver: &Arc<async_channel::Receiver<RequestJob>>,
         terminated: &Arc<AtomicBool>,
@@ -212,8 +205,8 @@ impl ThreadWorker {
                 let mut idle_counter = 0;
                 if let Some(v) = leader_clone.lock().take() {
                     match v {
-                        RequestJob::ProcessRequest(itsi_request) => {
-                            batch.push(RequestJob::ProcessRequest(itsi_request))
+                        RequestJob::ProcessRequest(itsi_request, app) => {
+                            batch.push(RequestJob::ProcessRequest(itsi_request, app))
                         }
                         RequestJob::Shutdown => {
                             waker_sender.send(TerminateWakerSignal(true)).unwrap();
@@ -232,12 +225,12 @@ impl ThreadWorker {
                 let shutdown_requested = call_with_gvl(|_| {
                     for req in batch.drain(..) {
                         match req {
-                            RequestJob::ProcessRequest(request) => {
+                            RequestJob::ProcessRequest(request, app) => {
                                 let response = request.response.clone();
-                                if let Err(err) =
-                                    server.funcall::<_, _, Value>(*ID_SCHEDULE, (app, request))
+                                if let Err(err) = server
+                                    .funcall::<_, _, Value>(*ID_SCHEDULE, (app.as_value(), request))
                                 {
-                                    ItsiRequest::internal_error(ruby, response, err)
+                                    ItsiHttpRequest::internal_error(ruby, response, err)
                                 }
                             }
                             RequestJob::Shutdown => return true,
@@ -278,10 +271,9 @@ impl ThreadWorker {
 
     #[instrument(skip_all, fields(thread_worker=id))]
     pub fn fiber_accept_loop(
-        server: Arc<Server>,
+        server: Arc<ItsiServerConfig>,
 
         id: String,
-        app: Opaque<Value>,
         receiver: Arc<async_channel::Receiver<RequestJob>>,
         scheduler_class: Opaque<Value>,
         terminated: Arc<AtomicBool>,
@@ -291,7 +283,6 @@ impl ThreadWorker {
         let leader: Arc<Mutex<Option<RequestJob>>> = Arc::new(Mutex::new(None));
         let server_class = ruby.get_inner(&ITSI_SERVER);
         let scheduler_proc = Self::build_scheduler_proc(
-            app,
             &leader,
             &receiver,
             &terminated,
@@ -359,9 +350,8 @@ impl ThreadWorker {
 
     #[instrument(skip_all, fields(thread_worker=id))]
     pub fn accept_loop(
-        server: Arc<Server>,
+        server: Arc<ItsiServerConfig>,
         id: String,
-        app: Opaque<Value>,
         receiver: Arc<async_channel::Receiver<RequestJob>>,
         terminated: Arc<AtomicBool>,
     ) {
@@ -378,7 +368,7 @@ impl ThreadWorker {
                 };
             }
             match receiver.recv_blocking() {
-                Ok(RequestJob::ProcessRequest(request)) => {
+                Ok(RequestJob::ProcessRequest(request, app)) => {
                     if terminated.load(Ordering::Relaxed) {
                         break;
                     }

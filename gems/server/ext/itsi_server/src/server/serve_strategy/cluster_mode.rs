@@ -1,6 +1,6 @@
+use crate::ruby_types::itsi_server::ItsiServer;
 use crate::server::{
-    itsi_server::Server, lifecycle_event::LifecycleEvent, listener::Listener,
-    process_worker::ProcessWorker,
+    lifecycle_event::LifecycleEvent, listener::Listener, process_worker::ProcessWorker,
 };
 use itsi_error::{ItsiError, Result};
 use itsi_rb_helpers::{
@@ -25,7 +25,7 @@ use tokio::{
 use tracing::{debug, instrument};
 pub(crate) struct ClusterMode {
     pub listeners: parking_lot::Mutex<Vec<Listener>>,
-    pub server: Arc<Server>,
+    pub server: Arc<ItsiServer>,
     pub process_workers: parking_lot::Mutex<Vec<ProcessWorker>>,
     pub lifecycle_channel: broadcast::Sender<LifecycleEvent>,
 }
@@ -36,11 +36,11 @@ static CHILD_SIGNAL_SENDER: parking_lot::Mutex<Option<watch::Sender<()>>> =
 
 impl ClusterMode {
     pub fn new(
-        server: Arc<Server>,
+        server: Arc<ItsiServer>,
         listeners: Vec<Listener>,
         lifecycle_channel: broadcast::Sender<LifecycleEvent>,
     ) -> Self {
-        let process_workers = (0..server.workers)
+        let process_workers = (0..server.config.lock().workers)
             .map(|_| ProcessWorker {
                 worker_id: WORKER_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
                 ..Default::default()
@@ -106,8 +106,8 @@ impl ClusterMode {
                 };
                 if let Some(dropped_worker) = worker {
                     dropped_worker.request_shutdown();
-                    let force_kill_time =
-                        Instant::now() + Duration::from_secs_f64(self.server.shutdown_timeout);
+                    let force_kill_time = Instant::now()
+                        + Duration::from_secs_f64(self.server.config.lock().shutdown_timeout);
                     while dropped_worker.is_alive() && force_kill_time > Instant::now() {
                         tokio::time::sleep(Duration::from_millis(100)).await;
                     }
@@ -127,7 +127,7 @@ impl ClusterMode {
     }
 
     pub async fn shutdown(&self) -> Result<()> {
-        let shutdown_timeout = self.server.shutdown_timeout;
+        let shutdown_timeout = self.server.config.lock().shutdown_timeout;
         let workers = self.process_workers.lock().clone();
 
         workers.iter().for_each(|worker| worker.request_shutdown());
@@ -191,7 +191,7 @@ impl ClusterMode {
     #[instrument(skip(self), fields(mode = "cluster", pid=format!("{:?}", Pid::this())))]
     pub fn run(self: Arc<Self>) -> Result<()> {
         info!("Starting in Cluster mode");
-        if let Some(proc) = self.server.hooks.get("before_fork") {
+        if let Some(proc) = self.server.config.lock().hooks.get("before_fork") {
             call_with_gvl(|_| call_proc_and_log_errors(proc.clone()))
         }
         self.process_workers
@@ -222,7 +222,7 @@ impl ClusterMode {
                 }
               }
               _ = memory_check_interval.tick() => {
-                if let Some(memory_limit) = self_ref.server.worker_memory_limit {
+                if let Some(memory_limit) = self_ref.server.config.lock().worker_memory_limit {
                   let largest_worker = {
                     let workers = self_ref.process_workers.lock();
                     workers.iter().max_by(|wa, wb| wa.memory_usage().cmp(&wb.memory_usage())).cloned()
@@ -231,7 +231,7 @@ impl ClusterMode {
                     if let Some(current_mem_usage) = largest_worker.memory_usage(){
                       if current_mem_usage > memory_limit {
                         largest_worker.reboot(self_ref.clone()).await.ok();
-                        if let Some(hook) = self_ref.server.hooks.get("after_memory_threshold_reached") {
+                        if let Some(hook) = self_ref.server.config.lock().hooks.get("after_memory_threshold_reached") {
                           call_with_gvl(|_|  hook.call::<_, Value>((largest_worker.pid(),)).ok() );
                         }
                       }

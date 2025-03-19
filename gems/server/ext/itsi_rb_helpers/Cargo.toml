@@ -8,3 +8,4 @@ cfg-if = "1.0.0"
 magnus = { version = "0.7.1", features = ["rb-sys", "bytes"] }
 nix = "0.29.0"
 rb-sys = "0.9.105"
+serde = "1.0.219"

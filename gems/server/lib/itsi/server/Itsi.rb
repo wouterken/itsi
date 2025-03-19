@@ -1,5 +1,4 @@
 # frozen_string_literal: true
-env = ENV.fetch('APP_ENV') { ENV.fetch('RACK_ENV', 'development') }
 
 # This is the default Itsi configuration file, installed when you run `itsi init`
 # It contains a sane starting point for configuring your Itsi server.
@@ -7,18 +6,20 @@ env = ENV.fetch('APP_ENV') { ENV.fetch('RACK_ENV', 'development') }
 # Most of the options in this file can be overridden by command line options.
 # Check out itsi -h to learn more about the command line options available to you.
 
+env = ENV.fetch("APP_ENV") { ENV.fetch("RACK_ENV", "development") }
+
 # Number of worker processes to spawn
 # If more than 1, Itsi will be booted in Cluster mode
-workers ENV.fetch('ITSI_WORKERS') {
-  require 'etc'
-  env == 'development' ? 1 : Etc.nprocessors
+workers ENV.fetch("ITSI_WORKERS") {
+  require "etc"
+  env == "development" ? 1 : Etc.nprocessors
 }
 
 # Number of threads to spawn per worker process
 # For pure CPU bound applicationss, you'll get the best results keeping this number low
 # Setting a value of 1 is great for superficial benchmarks, but in reality
 # it's better to set this a bit higher to allow expensive requests to get overtaken and minimize head-of-line blocking
-threads ENV.fetch('ITSI_THREADS', 3)
+threads ENV.fetch("ITSI_THREADS", 3)
 
 # If your application is IO bound (e.g. performing a lot of proxied HTTP requests, or heavy queries etc)
 # you can see *substantial* benefits from enabling this option.
@@ -38,7 +39,7 @@ fiber_scheduler nil
 #   use Rack::CommonLogger
 #   run ->(env) { [200, { 'content-type' => 'text/plain' }, ['OK']] }
 # end)
-rackup_file 'config.ru'
+rackup_file "config.ru"
 
 # If you bind to https, without specifying a certificate, Itsi will use a self-signed certificate.
 # The self-signed certificate will use a CA generated for your host and stored inside `ITSI_LOCAL_CA_DIR` (Defaults to ~/.itsi)
@@ -57,10 +58,10 @@ rackup_file 'config.ru'
 # bind "unix:///tmp/itsi.sock"
 # bind "tls:///tmp/itsi.secure.sock"
 
-if env == 'development'
-  bind 'http://localhost:3000'
+if env == "development"
+  bind "http://localhost:3000"
 else
-  bind "https://0.0.0.0?domains=#{ENV['PRODUCTION_DOMAINS']}&cert=acme&acme_email=admin@itsi.fyi"
+  bind "https://0.0.0.0?domains=#{ENV["PRODUCTION_DOMAINS"]}&cert=acme&acme_email=admin@itsi.fyi"
 end
 
 # If you want to preload the application, set preload to true
@@ -80,7 +81,7 @@ preload true
 # When this limit is reached, the worker will be gracefully restarted.
 # Only one worker is restarted at a time to ensure we don't take down
 # all of them at once, if they reach the threshold simultaneously.
-worker_memory_limit 48 * 1024 * 1024
+worker_memory_limit 1024 * 1024 * 1024
 
 # You can provide an optional block of code to run, when a worker hits its memory threshold (Use this to send yourself an alert,
 # write metrics to disk etc. etc.)
@@ -97,15 +98,6 @@ after_fork {}
 # Shutdown timeout
 # Number of seconds to wait for workers to gracefully shutdown before killing them.
 shutdown_timeout 5
-
-# Set this to false for application environments that require rack.input to be a rewindable body
-# (like Rails). For rack applications that can stream inputs, you can set this to true for a more memory-efficient approach.
-stream_body false
-
-# OOB GC responses threshold
-# Specifies how frequently OOB gc should be triggered during periods where there is a gap in queued requests.
-# Setting this too low can substantially worsen performance
-oob_gc_responses_threshold 512
 
 # Set this to false for application environments that require rack.input to be a rewindable body
 # (like Rails). For rack applications that can stream inputs, you can set this to true for a more memory-efficient approach.

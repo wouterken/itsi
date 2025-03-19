@@ -1,0 +1,59 @@
+mod auth_api_key;
+mod auth_basic;
+mod auth_jwt;
+mod compression;
+mod cors;
+mod endpoint;
+mod error_response;
+mod logging;
+mod rack_app;
+mod rate_limit;
+mod static_assets;
+mod token_source;
+
+use async_trait::async_trait;
+use either::Either;
+use magnus::error::Result;
+use magnus::Value;
+use serde::Deserialize;
+use serde_magnus::deserialize;
+
+pub use auth_api_key::AuthAPIKey;
+pub use auth_basic::AuthBasic;
+pub use auth_jwt::AuthJwt;
+pub use compression::Compression;
+pub use cors::Cors;
+pub use endpoint::Endpoint;
+pub use logging::Logging;
+pub use rack_app::RackApp;
+pub use rate_limit::RateLimit;
+pub use static_assets::StaticAssets;
+
+use crate::server::itsi_service::ItsiService;
+use crate::server::types::{HttpRequest, HttpResponse};
+
+pub trait FromValue: Sized + Send + Sync + 'static {
+    fn from_value(value: Value) -> Result<Self>
+    where
+        Self: Deserialize<'static>,
+    {
+        deserialize(value)
+    }
+}
+
+#[async_trait]
+pub trait FilterLayer: Sized + Send + Sync + 'static {
+    /// The “before” hook. By default, it passes through the request.
+    async fn before(
+        &self,
+        req: HttpRequest,
+        _context: &ItsiService,
+    ) -> Result<Either<HttpRequest, HttpResponse>> {
+        Ok(Either::Left(req))
+    }
+
+    /// The “after” hook. By default, it passes through the response.
+    async fn after(&self, resp: HttpResponse) -> HttpResponse {
+        resp
+    }
+}

@@ -53,8 +53,17 @@ impl ProcessWorker {
             }
             *self.child_pid.lock() = None;
         }
-        match call_with_gvl(|_ruby| fork(cluster_template.server.hooks.get("after_fork").cloned()))
-        {
+        match call_with_gvl(|_ruby| {
+            fork(
+                cluster_template
+                    .server
+                    .config
+                    .lock()
+                    .hooks
+                    .get("after_fork")
+                    .cloned(),
+            )
+        }) {
             Some(pid) => {
                 *self.child_pid.lock() = Some(Pid::from_raw(pid));
             }
@@ -66,7 +75,7 @@ impl ProcessWorker {
                     error!("Failed to set process group ID: {}", e);
                 }
                 match SingleMode::new(
-                    cluster_template.server.clone(),
+                    cluster_template.server.config.lock().clone(),
                     cluster_template.listeners.lock().drain(..).collect(),
                     cluster_template.lifecycle_channel.clone(),
                 ) {
@@ -129,8 +138,8 @@ impl ProcessWorker {
     pub(crate) async fn graceful_shutdown(&self, cluster_template: Arc<ClusterMode>) {
         let self_clone = self.clone();
         self_clone.request_shutdown();
-        let force_kill_time =
-            Instant::now() + Duration::from_secs_f64(cluster_template.server.shutdown_timeout);
+        let force_kill_time = Instant::now()
+            + Duration::from_secs_f64(cluster_template.server.config.lock().shutdown_timeout);
         while self_clone.is_alive() && force_kill_time > Instant::now() {
             tokio::time::sleep(Duration::from_millis(100)).await;
         }

@@ -1,14 +1,14 @@
-use std::{os::raw::c_void, ptr::null_mut};
+use std::{ffi::c_int, os::raw::c_void, ptr::null_mut};
 
 use magnus::{
-    RArray, Ruby, Thread, Value,
+    ArgList, RArray, Ruby, Thread, Value,
     block::Proc,
-    rb_sys::FromRawValue,
-    value::{LazyId, ReprValue},
+    rb_sys::{AsRawId, FromRawValue, protect},
+    value::{IntoId, LazyId, ReprValue},
 };
 use rb_sys::{
-    rb_thread_call_with_gvl, rb_thread_call_without_gvl, rb_thread_create, rb_thread_schedule,
-    rb_thread_wakeup,
+    VALUE, rb_funcallv, rb_thread_call_with_gvl, rb_thread_call_without_gvl, rb_thread_create,
+    rb_thread_schedule, rb_thread_wakeup,
 };
 
 mod heap_value;
@@ -198,4 +198,28 @@ pub fn print_rb_backtrace(rb_err: Value) {
     for line in backtrace {
         eprintln!("{}", line);
     }
+}
+
+pub fn funcall_no_ret<T, M, A>(target: T, method: M, args: A) -> magnus::error::Result<()>
+where
+    T: ReprValue,
+    M: IntoId,
+    A: ArgList,
+{
+    protect(|| {
+        let handle = Ruby::get().unwrap();
+        let method = method.into_id_with(&handle);
+        let args = args.into_arg_list_with(&handle);
+        let slice = args.as_ref();
+        unsafe {
+            rb_funcallv(
+                target.as_rb_value(),
+                method.as_raw(),
+                slice.len() as c_int,
+                slice.as_ptr() as *const VALUE,
+            );
+        }
+        0
+    })?;
+    Ok(())
 }

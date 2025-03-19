@@ -5,8 +5,10 @@ module Itsi
 
       ITSI_DEFAULT_CONFIG_FILE = "Itsi.rb"
 
-      def load(options)
-        options[:config_file] ||= \
+      # Hunt for the config file, either at options[:config_file] or Itsi.rb or config/Itsi.rb
+      # If found, we'll interpret it using the OptionsDSL.
+      def load(config_file_path = "")
+        config_file_path ||= \
           if File.exist?(ITSI_DEFAULT_CONFIG_FILE)
             ITSI_DEFAULT_CONFIG_FILE
           elsif File.exist?("config/#{ITSI_DEFAULT_CONFIG_FILE}")
@@ -14,12 +16,14 @@ module Itsi
           end
 
         # Options simply pass through unless we've specified a config file
-        return options unless options[:config_file]
+        return {} unless config_file_path && File.exist?(config_file)
 
         require_relative "options_dsl"
-        OptionsDSL.evaluate(options[:config_file]).merge(options)
+        OptionsDSL.evaluate(config_file_path)
       end
 
+      # Write the default Itsi.rb file (found relative to this file at ./Itsi.rb)
+      # This is invoked when you call `itsi init` from the CLI.
       def write_default
         if File.exist?(ITSI_DEFAULT_CONFIG_FILE)
           puts "#{ITSI_DEFAULT_CONFIG_FILE} already exists."

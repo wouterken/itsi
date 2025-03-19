@@ -3,9 +3,10 @@ module Itsi
     class OptionsDSL
       attr_reader :parent, :children, :filters, :endpoint_defs, :controller_class
 
-      def self.evaluate(filename)
+      def self.evaluate(filepath)
         new do
-          instance_eval(IO.read(filename))
+          code = IO.read(filepath)
+          instance_eval(code, filepath, 1)
         end.to_options
       end
 
@@ -73,19 +74,22 @@ module Itsi
         raise "Log format must be set at the root" unless @parent.nil?
 
         case format.to_s
-        when "auto"
-        when "ansi" then ENV['ITSI_LOG_ANSI'] = "true"
-        when "json", "plain" then ENV['ITSI_LOG_PLAIN'] = "true"
+        when "auto" then nil
+        when "ansi" then ENV["ITSI_LOG_ANSI"] = "true"
+        when "json", "plain" then ENV["ITSI_LOG_PLAIN"] = "true"
         else raise "Invalid log format '#{format}'"
         end
       end
 
       def run(app)
-        raise "App must be set at the root" unless @parent.nil?
-        raise "App already set" if @options[:app]
-        raise "Cannot provide an app if rackup_file is defined" if @options[:rackup_file]
+        if @parent.nil?
+          raise "App already set" if @options[:app]
+          raise "Cannot provide an app if rackup_file is defined" if @options[:rackup_file]
 
-        @options[:app] = app
+          @options[:app] = app
+        else
+          @filters[:rack_app] = { app: -> { app } }
+        end
       end
 
       def bind(bind_str)
@@ -160,63 +164,60 @@ module Itsi
 
       # define endpoints
       def endpoint(subpath, *args)
-        raise "Endpoint must be set inside a location block" if @parent.is_nil?
+        raise "`endpoint` must be set inside a location block" if @parent.nil?
 
         @endpoint_defs << [subpath, *args]
       end
 
       def controller(klass)
-        raise "Endpoint must be set inside a location block" if @parent.is_nil?
+        raise "`controller` must be set inside a location block" if @parent.nil?
 
         @controller_class = klass
       end
 
-      # define some filters
-      def basic_auth(**args)
-        raise "Endpoint must be set inside a location block" if @parent.is_nil?
+      def auth_basic(**args)
+        raise "`auth_basic` must be set inside a location block" if @parent.nil?
 
-        @filters[:basic_auth] = args
+        @filters[:auth_basic] = args
       end
 
-      # define some filters
       def redirect(**args)
-        raise "Endpoint must be set inside a location block" if @parent.is_nil?
+        raise "`redirect` must be set inside a location block" if @parent.nil?
 
         @filters[:redirect] = args
       end
 
-      def jwt_auth(**args)
-        raise "Endpoint must be set inside a location block" if @parent.is_nil?
+      def auth_jwt(**args)
+        raise "`auth_jwt` must be set inside a location block" if @parent.nil?
 
-        @filters[:jwt_auth] = args
+        @filters[:auth_jwt] = args
       end
 
-      def api_key_auth(**args)
-        raise "Endpoint must be set inside a location block" if @parent.is_nil?
-
-        @filters[:api_key_auth] = args
+      def auth_api_key(**args)
+        raise "`auth_api_key` must be set inside a location block" if @parent.nil?
+        @filters[:auth_api_key] = args
       end
 
       def compress(**args)
-        raise "Endpoint must be set inside a location block" if @parent.is_nil?
+        raise "`compress` must be set inside a location block" if @parent.nil?
 
         @filters[:compress] = args
       end
 
       def rate_limit(name, **args)
-        raise "Endpoint must be set inside a location block" if @parent.is_nil?
+        raise "`rate_limit` must be set inside a location block" if @parent.nil?
 
         @filters[:rate_limit] = { name: name }.merge(args)
       end
 
       def cors(**args)
-        raise "Endpoint must be set inside a location block" if @parent.is_nil?
+        raise "`cors` must be set inside a location block" if @parent.nil?
 
         @filters[:cors] = args
       end
 
       def file_server(**args)
-        raise "Endpoint must be set inside a location block" if @parent.is_nil?
+        raise "`file_server` must be set inside a location block" if @parent.nil?
 
         @filters[:file_server] = args
       end
@@ -287,10 +288,7 @@ module Itsi
 
           [[:raw_regex, specs.first]]
         else
-          specs.map do |string_spec|
-            string_spec = string_spec.sub(%r{^/}, "")
-            string_spec
-          end
+          specs
         end
       end
 
@@ -309,7 +307,7 @@ module Itsi
         results = []
         parent_exps.each do |p|
           child_exps.each do |c|
-            joined = [p, c].reject(&:empty?).join("/")
+            joined = [p, c].reject(&:empty?).join("/").gsub(%r{/\*/}, "").gsub(%r{//}, "/")
             results << joined
           end
         end
@@ -343,9 +341,6 @@ module Itsi
         segments = path_str.split("/")
 
         converted = segments.map do |seg|
-          # wildcard?
-          next ".*" if seg == "*"
-
           # :param(...)?
           if seg =~ /^:([A-Za-z_]\w*)(?:\(([^)]*)\))?$/
             param_name = Regexp.last_match(1)
@@ -355,6 +350,8 @@ module Itsi
             else
               "(?<#{param_name}>[^/]+)"
             end
+          elsif seg =~ /\*/
+            seg.gsub(/\*/, ".*")
           else
             Regexp.escape(seg)
           end
@@ -367,7 +364,7 @@ module Itsi
         # gather from root -> self, overriding duplicates
         merged = merge_ancestor_filters
         # turn into array
-        merged.map { |k, v| { type: k, params: v } }
+        merged.map { |k, v| { type: k, parameters: deep_stringify_keys(v) } }
       end
 
       def effective_filters_with_endpoint(endpoint_args)
@@ -375,8 +372,13 @@ module Itsi
         # endpoint filter last
         ep_filter_params = endpoint_args.dup
         ep_filter_params << @controller_class if @controller_class
-        arr << { type: :endpoint, params: ep_filter_params }
+        arr << { type: :endpoint, parameters: deep_stringify_keys(ep_filter_params) }
         arr
+      end
+
+      def deep_stringify_keys(hash)
+        hash.transform_keys!(&:to_s)
+        hash.transform_values! { |v| v.is_a?(Hash) ? deep_stringify_keys(v) : v }
       end
 
       def merge_ancestor_filters

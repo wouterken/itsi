@@ -124,6 +124,7 @@ GEM
       activesupport (>= 6.0.0)
       railties (>= 6.0.0)
     io-console (0.8.0)
+    iodine (0.7.58)
     irb (1.15.1)
       pp (>= 0.6.0)
       rdoc (>= 4.0.0)
@@ -334,6 +335,7 @@ DEPENDENCIES
   capybara
   debug
   importmap-rails
+  iodine
   itsi-scheduler!
   itsi-server!
   jbuilder

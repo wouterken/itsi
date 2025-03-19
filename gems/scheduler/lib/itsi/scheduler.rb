@@ -73,7 +73,7 @@ module Itsi
         fiber.resume
       end
     rescue StandardError => e
-      warn "Failed to resume fiber #{fiber}: #{e.message}"
+      warn "Fiber #{fiber} terminated on exception: #{e.message}"
     end
 
     def resume_fiber_with_readiness((token, readiness))
@@ -81,7 +81,7 @@ module Itsi
         fiber.resume(readiness)
       end
     rescue StandardError => e
-      warn "Failed to resume fiber #{fiber}: #{e.message}"
+      warn "Fiber #{fiber} terminated on exception: #{e.message}"
     end
 
     def resume_blocked(fiber)

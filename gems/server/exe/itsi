@@ -25,7 +25,8 @@ DEFAULT_OPTIONS = {
   config_file: nil
 }
 
-options = DEFAULT_OPTIONS.to_a.select(&:last).to_h
+options = {}
+loader = nil
 
 # Define the option parser
 OptionParser.new do |opts|
@@ -35,20 +36,20 @@ OptionParser.new do |opts|
     options[:config_file] = config_file
   end
 
-  opts.on("-w", "--workers WORKERS", Integer, "Number of workers (default: #{options[:workers]})") do |w|
+  opts.on("-w", "--workers WORKERS", Integer, "Number of workers (default: #{DEFAULT_OPTIONS[:workers]})") do |w|
     options[:workers] = w
   end
 
-  opts.on("-t", "--threads THREADS", Integer, "Number of threads (default: #{options[:threads]})") do |t|
+  opts.on("-t", "--threads THREADS", Integer, "Number of threads (default: #{DEFAULT_OPTIONS[:threads]})") do |t|
     options[:threads] = t
   end
 
-  opts.on("-r", "--rackup_file FILE", String, "Rackup file to use (default: #{options[:rackup_file]})") do |rf|
+  opts.on("-r", "--rackup_file FILE", String, "Rackup file to use (default: #{DEFAULT_OPTIONS[:rackup_file]})") do |rf|
     options[:rackup_file] = rf
   end
 
   opts.on("--worker-memory-limit MEMORY_LIMIT", Integer,
-          "Memory limit for each worker (default: #{options[:worker_memory_limit] || "None"}). If this limit is breached the worker is gracefully restarted") do |ml|
+          "Memory limit for each worker (default: #{DEFAULT_OPTIONS[:worker_memory_limit] || "None"}). If this limit is breached the worker is gracefully restarted") do |ml|
     options[:worker_memory_limit] = ml
   end
 
@@ -74,8 +75,8 @@ OptionParser.new do |opts|
   end
 
   opts.on("-b", "--bind BIND", String,
-          "Bind address (default: #{options[:binds].join(", ")}). You can specify this flag multiple times to bind to multiple addresses.") do |bind|
-    options[:binds].pop if options[:binds].first.frozen?
+          "Bind address (default: #{DEFAULT_OPTIONS[:binds].join(", ")}). You can specify this flag multiple times to bind to multiple addresses.") do |bind|
+    options[:binds] ||= []
     options[:binds] << bind
   end
 
@@ -124,25 +125,27 @@ OptionParser.new do |opts|
     puts opts
     exit
   end
+
+  opts.on("-e", "--eval EVAL_STRING", String, "Load the evaluated expression as a Rack application") do |expression|
+    loader = -> { eval(expression) }
+  end
 end.parse!
 
 require "itsi/server/config"
+
 if ARGV.pop == "init"
   Itsi::Server::Config.write_default
   exit(0)
-  # Add initialization code here
 end
 
-options = Itsi::Server::Config.load(options)
-loader = nil
-
-if options[:app] || File.exist?(options[:rackup_file])
+if options[:app] || File.exist?(options[:rackup_file].to_s)
   loader ||= lambda do
     require "rack"
     require_relative "../lib/itsi/server/scheduler_mode" if options[:scheduler_class]
     require "itsi/scheduler" if [true, "Itsi::Scheduler"].include?(options[:scheduler_class])
     require "itsi/server"
     return options[:app] if options[:app]
+
     Array(Rack::Builder.parse_file(options[:rackup_file])).first
   end
 

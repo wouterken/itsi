@@ -7,8 +7,7 @@ require_relative "server/signal_trap"
 require_relative "server/scheduler_interface"
 require_relative "server/rack/handler/itsi"
 require_relative "server/config"
-require_relative "request"
-require_relative "stream_io"
+require_relative "http_request"
 
 # When you Run Itsi without a Rack app,
 # we start a tiny little echo server, just so you can see it in action.
@@ -69,7 +68,7 @@ module Itsi
         start(background: true, silence: silence, **opts)
       end
 
-      def start(background: false, silence: false, **opts)
+      def start(background: false, **opts)
         build(**opts).tap do |server|
           previous_handler = Signal.trap("INT", "DEFAULT")
           @running = true

@@ -4,22 +4,19 @@ module Rack
   module Handler
     module Itsi
       def self.run(app, options = {})
-        require "itsi/server"
+        host = options.fetch(
+          :host,
+          "127.0.0.1"
+        )
+        port = options.fetch(
+          :Port,
+          3001
+        )
         ::Itsi::Server.start(
           **::Itsi::Server::Config.load(
             {
               app: app,
-              binds: [
-                "http://#{
-                options.fetch(
-                  :host,
-                  "127.0.0.1"
-                )}:#{
-                options.fetch(
-                  :Port,
-                  3001
-                )}"
-              ]
+              binds: ["http://#{host}:#{port}"]
             }
           )
         )

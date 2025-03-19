@@ -25,10 +25,13 @@ module Itsi
         # 2. Set Headers
         body_streamer = streaming_body?(body) ? body : headers.delete("rack.hijack")
         headers.each do |key, value|
-          next response.add_header(key, value) unless value.is_a?(Array)
+          unless value.is_a?(Array)
+            response[key] = value
+            next
+          end
 
           value.each do |v|
-            response.add_header(key, v)
+            response[key] = v
           end
         end
 
@@ -40,7 +43,7 @@ module Itsi
         # stream this response.
 
         if body_streamer
-          body_streamer.call(StreamIO.new(response))
+          body_streamer.call(response)
 
         # If we're enumerable with more than one chunk
         # also stream, otherwise write in a single chunk
@@ -53,7 +56,7 @@ module Itsi
           # to optimize for the case where there's only one chunk.
           buffer = nil
           body.each do |part|
-            response.send_frame(buffer.to_s) if buffer
+            response << buffer.to_s if buffer
             buffer = part
           end
 
