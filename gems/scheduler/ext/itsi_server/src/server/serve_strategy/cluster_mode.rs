@@ -1,7 +1,6 @@
-use crate::ruby_types::itsi_server::ItsiServer;
-use crate::server::{
-    lifecycle_event::LifecycleEvent, listener::Listener, process_worker::ProcessWorker,
-};
+use crate::ruby_types::itsi_server::itsi_server_config::ItsiServerConfig;
+use crate::server::signal::SIGNAL_HANDLER_CHANNEL;
+use crate::server::{lifecycle_event::LifecycleEvent, process_worker::ProcessWorker};
 use itsi_error::{ItsiError, Result};
 use itsi_rb_helpers::{
     call_proc_and_log_errors, call_with_gvl, call_without_gvl, create_ruby_thread,
@@ -24,8 +23,7 @@ use tokio::{
 };
 use tracing::{debug, instrument};
 pub(crate) struct ClusterMode {
-    pub listeners: parking_lot::Mutex<Vec<Listener>>,
-    pub server: Arc<ItsiServer>,
+    pub server_config: Arc<ItsiServerConfig>,
     pub process_workers: parking_lot::Mutex<Vec<ProcessWorker>>,
     pub lifecycle_channel: broadcast::Sender<LifecycleEvent>,
 }
@@ -35,12 +33,8 @@ static CHILD_SIGNAL_SENDER: parking_lot::Mutex<Option<watch::Sender<()>>> =
     parking_lot::Mutex::new(None);
 
 impl ClusterMode {
-    pub fn new(
-        server: Arc<ItsiServer>,
-        listeners: Vec<Listener>,
-        lifecycle_channel: broadcast::Sender<LifecycleEvent>,
-    ) -> Self {
-        let process_workers = (0..server.config.lock().workers)
+    pub fn new(server_config: Arc<ItsiServerConfig>) -> Self {
+        let process_workers = (0..server_config.server_params.read().workers)
             .map(|_| ProcessWorker {
                 worker_id: WORKER_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
                 ..Default::default()
@@ -48,10 +42,9 @@ impl ClusterMode {
             .collect();
 
         Self {
-            listeners: parking_lot::Mutex::new(listeners),
-            server,
+            server_config,
             process_workers: parking_lot::Mutex::new(process_workers),
-            lifecycle_channel,
+            lifecycle_channel: SIGNAL_HANDLER_CHANNEL.0.clone(),
         }
     }
 
@@ -78,6 +71,7 @@ impl ClusterMode {
                 Ok(())
             }
             LifecycleEvent::Restart => {
+                self.server_config.clone().reload()?;
                 for worker in self.process_workers.lock().iter() {
                     worker.reboot(self.clone()).await?;
                 }
@@ -107,7 +101,9 @@ impl ClusterMode {
                 if let Some(dropped_worker) = worker {
                     dropped_worker.request_shutdown();
                     let force_kill_time = Instant::now()
-                        + Duration::from_secs_f64(self.server.config.lock().shutdown_timeout);
+                        + Duration::from_secs_f64(
+                            self.server_config.server_params.read().shutdown_timeout,
+                        );
                     while dropped_worker.is_alive() && force_kill_time > Instant::now() {
                         tokio::time::sleep(Duration::from_millis(100)).await;
                     }
@@ -127,7 +123,7 @@ impl ClusterMode {
     }
 
     pub async fn shutdown(&self) -> Result<()> {
-        let shutdown_timeout = self.server.config.lock().shutdown_timeout;
+        let shutdown_timeout = self.server_config.server_params.read().shutdown_timeout;
         let workers = self.process_workers.lock().clone();
 
         workers.iter().for_each(|worker| worker.request_shutdown());
@@ -191,7 +187,13 @@ impl ClusterMode {
     #[instrument(skip(self), fields(mode = "cluster", pid=format!("{:?}", Pid::this())))]
     pub fn run(self: Arc<Self>) -> Result<()> {
         info!("Starting in Cluster mode");
-        if let Some(proc) = self.server.config.lock().hooks.get("before_fork") {
+        if let Some(proc) = self
+            .server_config
+            .server_params
+            .read()
+            .hooks
+            .get("before_fork")
+        {
             call_with_gvl(|_| call_proc_and_log_errors(proc.clone()))
         }
         self.process_workers
@@ -215,14 +217,15 @@ impl ClusterMode {
               _ = receiver.changed() => {
                 let mut workers = self_ref.process_workers.lock();
                 workers.retain(|worker| {
-                  worker.boot_if_dead(Arc::clone(&self_ref))
+                  worker.boot_if_dead(self_ref.clone())
                 });
                 if workers.is_empty() {
                     warn!("No workers running. Send SIGTTIN to increase worker count");
                 }
               }
               _ = memory_check_interval.tick() => {
-                if let Some(memory_limit) = self_ref.server.config.lock().worker_memory_limit {
+                let worker_memory_limit = self_ref.server_config.server_params.read().worker_memory_limit;
+                if let Some(memory_limit) = worker_memory_limit {
                   let largest_worker = {
                     let workers = self_ref.process_workers.lock();
                     workers.iter().max_by(|wa, wb| wa.memory_usage().cmp(&wb.memory_usage())).cloned()
@@ -231,7 +234,7 @@ impl ClusterMode {
                     if let Some(current_mem_usage) = largest_worker.memory_usage(){
                       if current_mem_usage > memory_limit {
                         largest_worker.reboot(self_ref.clone()).await.ok();
-                        if let Some(hook) = self_ref.server.config.lock().hooks.get("after_memory_threshold_reached") {
+                        if let Some(hook) = self_ref.server_config.server_params.read().hooks.get("after_memory_threshold_reached") {
                           call_with_gvl(|_|  hook.call::<_, Value>((largest_worker.pid(),)).ok() );
                         }
                       }

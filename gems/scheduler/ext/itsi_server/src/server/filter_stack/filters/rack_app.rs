@@ -40,10 +40,12 @@ static ID_ACCESSOR: LazyId = LazyId::new("[]");
 static ID_CALL: LazyId = LazyId::new("call");
 
 impl RackApp {
-    pub fn from_value(value: Value) -> magnus::error::Result<Self> {
+    pub fn from_value(value: HeapVal) -> magnus::error::Result<Self> {
         let ruby = Ruby::get().unwrap();
-        let app: Value = if value.is_kind_of(ruby.class_hash()) {
-            value.funcall(*ID_ACCESSOR, (Symbol::new("app"),))?
+        let app: HeapVal = if value.is_kind_of(ruby.class_hash()) {
+            value
+                .funcall::<_, _, Value>(*ID_ACCESSOR, (Symbol::new("app"),))?
+                .into()
         } else {
             value
         };

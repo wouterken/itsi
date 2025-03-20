@@ -1,104 +1,79 @@
 use crate::{
-    ruby_types::ITSI_CONFIG,
+    ruby_types::ITSI_SERVER_CONFIG,
     server::{
         bind::Bind,
         filter_stack::FilterStack,
         listener::Listener,
         serve_strategy::{cluster_mode::ClusterMode, single_mode::SingleMode, ServeStrategy},
-        signal::SIGNAL_HANDLER_CHANNEL,
     },
 };
-use itsi_rb_helpers::{HeapVal, HeapValue};
+use derive_more::Debug;
+use itsi_rb_helpers::HeapValue;
 use magnus::{
     block::Proc,
     error::Result,
-    scan_args::{get_kwargs, scan_args, Args, KwArgs, ScanArgsKw, ScanArgsOpt, ScanArgsRequired},
     value::{LazyId, ReprValue},
-    ArgList, RArray, RHash, Ruby, Symbol, Value,
+    RArray, RHash, Ruby, Value,
 };
 use parking_lot::{Mutex, RwLock};
-use std::{cmp::max, collections::HashMap, sync::Arc};
-use tracing::{info, instrument};
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    sync::{Arc, OnceLock},
+};
 
 static DEFAULT_BIND: &str = "http://localhost:3000";
-static ID_LOAD: LazyId = LazyId::new("load");
-use derive_more::Debug;
+static ID_BUILD_CONFIG: LazyId = LazyId::new("build_config");
+static ID_RELOAD_EXEC: LazyId = LazyId::new("reload_exec");
 
-use super::ItsiServer;
-
-fn extract_args<Req, Opt, Splat>(
-    scan_args: &Args<(), (), (), (), RHash, ()>,
-    primaries: &[&str],
-    rest: &[&str],
-) -> Result<KwArgs<Req, Opt, Splat>>
-where
-    Req: ScanArgsRequired,
-    Opt: ScanArgsOpt,
-    Splat: ScanArgsKw,
-{
-    let symbols: Vec<Symbol> = primaries
-        .iter()
-        .chain(rest.iter())
-        .map(|&name| Symbol::new(name))
-        .collect();
-
-    let hash = scan_args
-        .keywords
-        .funcall::<_, _, RHash>("slice", symbols.into_arg_list_with(&Ruby::get().unwrap()))
-        .unwrap();
-
-    get_kwargs(hash, primaries, rest)
+#[derive(Debug, Clone)]
+pub struct ItsiServerConfig {
+    pub cli_params: HeapValue<RHash>,
+    pub itsifile_path: Option<PathBuf>,
+    #[debug(skip)]
+    pub server_params: Arc<RwLock<Arc<ServerParams>>>,
 }
 
 #[derive(Debug)]
-pub struct ItsiServerConfig {
-    #[allow(unused)]
+pub struct ServerParams {
+    /// Cluster params
     pub workers: u8,
-    #[allow(unused)]
-    pub threads: u8,
-    #[allow(unused)]
-    pub shutdown_timeout: f64,
-    pub script_name: String,
-    pub(crate) binds: Mutex<Vec<Bind>>,
-    #[debug(skip)]
-    pub hooks: HashMap<String, HeapValue<Proc>>,
-    pub scheduler_class: Option<String>,
-    pub stream_body: Option<bool>,
     pub worker_memory_limit: Option<u64>,
-    #[debug(skip)]
-    pub(crate) strategy: RwLock<Option<ServeStrategy>>,
     pub silence: bool,
-    pub oob_gc_responses_threshold: Option<u64>,
-    pub filter_stack: FilterStack,
-    pub config_file_path: Option<String>,
-    pub(crate) cli_args: RubyServerArgs,
-}
+    pub shutdown_timeout: f64,
+    pub hooks: HashMap<String, HeapValue<Proc>>,
+    pub preload: bool,
 
-#[derive(Debug, Clone)]
-pub(crate) struct RubyServerArgs {
-    pub app: HeapVal,
-    pub workers: Option<u8>,
-    pub threads: Option<u8>,
-    pub shutdown_timeout: Option<f64>,
-    pub script_name: Option<String>,
-    pub binds: Option<Vec<String>>,
-    pub stream_body: Option<bool>,
-    pub hooks: Option<HeapValue<RHash>>,
+    /// Worker params
+    pub threads: u8,
+    pub script_name: String,
+    pub streamable_body: bool,
     pub scheduler_class: Option<String>,
-    pub worker_memory_limit: Option<u64>,
     pub oob_gc_responses_threshold: Option<u64>,
-    pub silence: Option<bool>,
-    pub routes: Option<HeapVal>,
-    pub config_file_path: Option<String>,
+    pub middleware_loader: HeapValue<Proc>,
+    pub middleware: OnceLock<FilterStack>,
+    pub binds: Vec<Bind>,
+    #[debug(skip)]
+    pub(crate) listeners: Mutex<Vec<Listener>>,
+    listener_info: HashMap<i32, String>,
 }
 
-impl ItsiServerConfig {
-    pub fn new(args: &[Value]) -> Result<Self> {
-        let server_args =
-            Self::rb_args_from_hash(scan_args::<(), (), (), (), RHash, ()>(args)?.keywords)?;
-        let cli_args = server_args.clone();
-        let hooks = server_args
-            .hooks
+impl ServerParams {
+    pub fn preload_ruby(self: &Arc<Self>) -> Result<()> {
+        Ok(())
+    }
+
+    fn from_rb_hash(
+        rb_param_hash: RHash,
+        initial_listener_info: Option<HashMap<u32, String>>,
+    ) -> Result<ServerParams> {
+        let workers: u8 = rb_param_hash.fetch("workers")?;
+        let worker_memory_limit: Option<u64> = rb_param_hash.fetch("worker_memory_limit")?;
+        let silence: bool = rb_param_hash.fetch("silence")?;
+        let shutdown_timeout: f64 = rb_param_hash.fetch("shutdown_timeout")?;
+
+        let hooks: Option<RHash> = rb_param_hash.fetch("hooks")?;
+        let hooks = hooks
             .map(|rhash| -> Result<HashMap<String, HeapValue<Proc>>> {
                 let mut hook_map: HashMap<String, HeapValue<Proc>> = HashMap::new();
                 for pair in rhash.enumeratorize::<_, ()>("each", ()) {
@@ -114,188 +89,158 @@ impl ItsiServerConfig {
             })
             .transpose()?
             .unwrap_or_default();
+        let preload: bool = rb_param_hash.fetch("preload")?;
+        let threads: u8 = rb_param_hash.fetch("threads")?;
+        let script_name: String = rb_param_hash.fetch("script_name")?;
+        let streamable_body: bool = rb_param_hash.fetch("streamable_body")?;
+        let scheduler_class: Option<String> = rb_param_hash.fetch("scheduler_class")?;
+        let oob_gc_responses_threshold: Option<u64> =
+            rb_param_hash.fetch("oob_gc_responses_threshold")?;
+        let middleware_loader: Proc = rb_param_hash.fetch("middleware_loader")?;
 
-        Ok(ItsiServerConfig {
-            workers: max(server_args.workers.unwrap_or(1), 1),
-            threads: max(server_args.threads.unwrap_or(1), 1),
-            shutdown_timeout: server_args.shutdown_timeout.unwrap_or(5.0),
-            script_name: server_args.script_name.unwrap_or("".to_string()),
-            binds: Mutex::new(
-                server_args
-                    .binds
-                    .unwrap_or_else(|| vec![DEFAULT_BIND.to_string()])
-                    .into_iter()
-                    .map(|s| s.parse())
-                    .collect::<itsi_error::Result<Vec<Bind>>>()?,
-            ),
-            stream_body: server_args.stream_body,
-            hooks,
-            scheduler_class: server_args.scheduler_class,
-            worker_memory_limit: server_args.worker_memory_limit,
-            strategy: RwLock::new(None),
-            oob_gc_responses_threshold: server_args.oob_gc_responses_threshold,
-            silence: server_args.silence.is_some_and(|s| s),
-            filter_stack: FilterStack::new(server_args.routes, server_args.app)?,
-            config_file_path: server_args.config_file_path,
-            cli_args,
-        })
-    }
+        let binds: Option<Vec<String>> = rb_param_hash.fetch("binds")?;
+        let binds = binds
+            .unwrap_or_else(|| vec![DEFAULT_BIND.to_string()])
+            .into_iter()
+            .map(|s| s.parse())
+            .collect::<itsi_error::Result<Vec<Bind>>>()?;
 
-    /// Here we reload application configuration from the Itsi.rb config file
-    /// and merge these with the arguments given on the command line (these always take precedence).
-    /// This allows us to reload the entire Itsi configuration while the process is running
-    pub fn load_itsi_file(self: &Arc<Self>) -> Result<Self> {
-        let itsi_file_hash = Ruby::get()
-            .unwrap()
-            .get_inner(&ITSI_CONFIG)
-            .funcall::<_, _, RHash>(*ID_LOAD, (self.config_file_path.clone(),))?;
-        let server_args = Self::rb_args_from_hash(itsi_file_hash);
-        Ok(Self::merge_build(self.cli_args.clone(), server_args))
-    }
-
-    /// This is where we trigger code loading of all Ruby dependencies.
-    /// This is only meaningful if preload is disabled which is a requirement for hot-reloading.
-    /// If preloading is enabled, a restart is required to apply changes.
-    pub fn reload_dependencies(self: Arc<Self>) -> Result<Arc<Self>> {
-        todo!();
-        Ok(self)
-    }
-
-    #[instrument(name = "Bind", skip_all, fields(binds=format!("{:?}", self.binds.lock())))]
-    pub(crate) fn build_listeners(&self) -> Result<Vec<Listener>> {
-        let listeners = self
-            .binds
-            .lock()
+        let listeners = binds
             .iter()
             .cloned()
             .map(Listener::try_from)
             .collect::<std::result::Result<Vec<Listener>, _>>()?
             .into_iter()
             .collect::<Vec<_>>();
-        info!("Bound {:?} listeners", listeners.len());
-        Ok(listeners)
+
+        let listener_info = listeners
+            .iter()
+            .map(|listener| {
+                listener.handover().map_err(|e| {
+                    magnus::Error::new(magnus::exception::runtime_error(), e.to_string())
+                })
+            })
+            .collect::<Result<HashMap<i32, String>>>()?;
+
+        Ok(ServerParams {
+            workers,
+            worker_memory_limit,
+            silence,
+            shutdown_timeout,
+            hooks,
+            preload,
+            threads,
+            script_name,
+            streamable_body,
+            scheduler_class,
+            oob_gc_responses_threshold,
+            binds,
+            listener_info,
+            listeners: Mutex::new(listeners),
+            middleware_loader: middleware_loader.into(),
+            middleware: OnceLock::new(),
+        })
     }
+}
 
-    pub(crate) fn build_strategy(self: Arc<Self>, server: &ItsiServer) -> Result<()> {
-        let listeners = self.build_listeners()?;
-        let server_config_clone = self.clone();
-
-        let strategy = if server_config_clone.workers == 1 {
-            ServeStrategy::Single(Arc::new(SingleMode::new(
-                self,
-                listeners,
-                SIGNAL_HANDLER_CHANNEL.0.clone(),
-            )?))
+impl ItsiServerConfig {
+    pub fn new(
+        ruby: &Ruby,
+        cli_params: RHash,
+        itsifile_path: Option<PathBuf>,
+        reexec_params: Option<String>,
+    ) -> Result<Self> {
+        let (cli_params, listener_info) = if let Some(reexec_params) = reexec_params {
+            Self::parse_reexec_params(ruby, cli_params, reexec_params)?
         } else {
-            ServeStrategy::Cluster(Arc::new(ClusterMode::new(
-                server.clone().into(),
-                listeners,
-                SIGNAL_HANDLER_CHANNEL.0.clone(),
-            )))
+            (cli_params, None)
         };
-
-        *server_config_clone.strategy.write() = Some(strategy);
-        Ok(())
-    }
-
-    pub(crate) fn rb_args_from_hash(keywords: RHash) -> Result<RubyServerArgs> {
-        let args = Args {
-            keywords,
-            required: (),
-            optional: (),
-            splat: (),
-            trailing: (),
-            block: (),
-        };
-        type Args1 = KwArgs<
-            (Value,),
-            (
-                // Workers
-                Option<u8>,
-                // Threads
-                Option<u8>,
-                // Shutdown Timeout
-                Option<f64>,
-                // Script Name
-                Option<String>,
-                // Binds
-                Option<Vec<String>>,
-                // Stream Body
-                Option<bool>,
-            ),
-            (),
-        >;
-
-        type Args2 = KwArgs<
-            (),
-            (
-                // Hooks
-                Option<RHash>,
-                // Scheduler Class
-                Option<String>,
-                // Worker Memory Limit
-                Option<u64>,
-                // Out-of-band GC Responses Threshold
-                Option<u64>,
-                // Silence
-                Option<bool>,
-                // Filters
-                Option<Value>,
-                // Config File Path
-                Option<String>,
-            ),
-            (),
-        >;
-
-        let args1: Args1 = extract_args(
-            &args,
-            &["app"],
-            &[
-                "workers",
-                "threads",
-                "shutdown_timeout",
-                "script_name",
-                "binds",
-                "stream_body",
-            ],
-        )?;
-
-        let args2: Args2 = extract_args(
-            &args,
-            &[],
-            &[
-                "hooks",
-                "scheduler_class",
-                "worker_memory_limit",
-                "oob_gc_responses_threshold",
-                "silence",
-                "routes",
-                "config_file_path",
-            ],
-        )?;
-
-        Ok(RubyServerArgs {
-            app: args1.required.0.into(),
-            workers: args1.optional.0,
-            threads: args1.optional.1,
-            shutdown_timeout: args1.optional.2,
-            script_name: args1.optional.3,
-            binds: args1.optional.4,
-            stream_body: args1.optional.5,
-            hooks: args2.optional.0.map(|hv| hv.into()),
-            scheduler_class: args2.optional.1,
-            worker_memory_limit: args2.optional.2,
-            oob_gc_responses_threshold: args2.optional.3,
-            silence: args2.optional.4,
-            routes: args2.optional.5.map(|hv| hv.into()),
-            config_file_path: args2.optional.6,
+        let server_params =
+            Self::combine_params(ruby, cli_params, itsifile_path.as_ref(), listener_info)?;
+        Ok(ItsiServerConfig {
+            cli_params: cli_params.into(),
+            server_params: Arc::new(RwLock::new(server_params.clone())),
+            itsifile_path,
         })
     }
 
-    fn merge_build(
-        cli_args: RubyServerArgs,
-        server_args: std::result::Result<RubyServerArgs, magnus::Error>,
-    ) -> ItsiServerConfig {
-        todo!()
+    pub(crate) fn build_strategy(self: Arc<Self>) -> Result<ServeStrategy> {
+        if self.server_params.read().workers > 1 {
+            Ok(ServeStrategy::Cluster(Arc::new(ClusterMode::new(
+                self.clone(),
+            ))))
+        } else {
+            Ok(ServeStrategy::Single(Arc::new(SingleMode::new(
+                self.clone(),
+            )?)))
+        }
+    }
+
+    pub fn reload(self: Arc<Self>) -> Result<()> {
+        let ruby = Ruby::get().unwrap();
+        let server_params = Self::combine_params(
+            &ruby,
+            self.cli_params.clone().into_inner(),
+            self.itsifile_path.as_ref(),
+            None,
+        )?;
+
+        let requires_exec = if self.server_params.read().preload && !server_params.preload {
+            // If we've disabled `preload`, we need to fully clear sever memory using an exec
+            true
+        } else if (self.server_params.read().workers == 1 && server_params.workers > 1)
+            || (self.server_params.read().workers > 1 && server_params.workers == 1)
+        {
+            // If we've switched from single to cluster mode  `workers`, or vice-versa
+            // we need to fully clear sever memory using an exec to cleanly switch strategies
+            true
+        } else {
+            false
+        };
+
+        if requires_exec {
+            Self::reload_exec(&ruby, self.clone())?;
+        }
+        *self.server_params.write() = server_params.clone();
+        Ok(())
+    }
+
+    fn combine_params(
+        ruby: &Ruby,
+        cli_params: RHash,
+        itsifile_path: Option<&PathBuf>,
+        initial_listener_info: Option<HashMap<u32, String>>,
+    ) -> Result<Arc<ServerParams>> {
+        let rb_param_hash: RHash = ruby
+            .get_inner_ref(&ITSI_SERVER_CONFIG)
+            .funcall(*ID_BUILD_CONFIG, (cli_params, itsifile_path.cloned()))?;
+
+        Ok(Arc::new(ServerParams::from_rb_hash(
+            rb_param_hash,
+            initial_listener_info,
+        )?))
+    }
+
+    fn reload_exec(ruby: &Ruby, rb_self: Arc<Self>) -> Result<()> {
+        ruby.get_inner_ref(&ITSI_SERVER_CONFIG)
+            .funcall::<_, _, Value>(
+                *ID_RELOAD_EXEC,
+                (
+                    rb_self.cli_params.clone(),
+                    rb_self.server_params.read().listener_info.clone(),
+                ),
+            )?;
+        Ok(())
+    }
+
+    fn parse_reexec_params(
+        ruby: &Ruby,
+        cli_params: RHash,
+        reexec_params: String,
+    ) -> Result<(RHash, Option<HashMap<u32, String>>)> {
+        let result: (RHash, Option<HashMap<u32, String>>) = ruby
+            .get_inner_ref(&ITSI_SERVER_CONFIG)
+            .funcall(*ID_RELOAD_EXEC, (cli_params.clone(), reexec_params))?;
+        Ok(result)
     }
 }

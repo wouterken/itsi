@@ -56,9 +56,9 @@ impl ProcessWorker {
         match call_with_gvl(|_ruby| {
             fork(
                 cluster_template
-                    .server
-                    .config
-                    .lock()
+                    .server_config
+                    .server_params
+                    .read()
                     .hooks
                     .get("after_fork")
                     .cloned(),
@@ -74,11 +74,7 @@ impl ProcessWorker {
                 ) {
                     error!("Failed to set process group ID: {}", e);
                 }
-                match SingleMode::new(
-                    cluster_template.server.config.lock().clone(),
-                    cluster_template.listeners.lock().drain(..).collect(),
-                    cluster_template.lifecycle_channel.clone(),
-                ) {
+                match SingleMode::new(cluster_template.server_config.clone()) {
                     Ok(single_mode) => {
                         Arc::new(single_mode).run().ok();
                     }
@@ -139,7 +135,13 @@ impl ProcessWorker {
         let self_clone = self.clone();
         self_clone.request_shutdown();
         let force_kill_time = Instant::now()
-            + Duration::from_secs_f64(cluster_template.server.config.lock().shutdown_timeout);
+            + Duration::from_secs_f64(
+                cluster_template
+                    .server_config
+                    .server_params
+                    .read()
+                    .shutdown_timeout,
+            );
         while self_clone.is_alive() && force_kill_time > Instant::now() {
             tokio::time::sleep(Duration::from_millis(100)).await;
         }

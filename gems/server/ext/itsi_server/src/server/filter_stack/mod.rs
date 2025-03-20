@@ -4,6 +4,7 @@ pub use filter::Filter;
 pub use filters::{
     AuthAPIKey, AuthBasic, AuthJwt, Compression, Cors, Logging, RateLimit, StaticAssets, *,
 };
+use itsi_rb_helpers::HeapVal;
 use magnus::{
     error::Result,
     value::{LazyId, ReprValue},
@@ -29,11 +30,11 @@ static ID_TYPE: LazyId = LazyId::new("type");
 static ID_PARAMETERS: LazyId = LazyId::new("parameters");
 
 impl FilterStack {
-    pub fn new(routes_raw: Option<Value>, default_app: Value) -> Result<Self> {
+    pub fn new(routes_raw: Option<HeapVal>, default_app: HeapVal) -> Result<Self> {
         if let Some(routes_raw) = routes_raw {
             let mut stacks = HashMap::new();
             let mut routes = vec![];
-            for (index, route) in RArray::from_value(routes_raw)
+            for (index, route) in RArray::from_value(*routes_raw)
                 .ok_or(magnus::Error::new(
                     magnus::exception::exception(),
                     format!("Routes must be an array. Got {:?}", routes_raw),
@@ -63,7 +64,7 @@ impl FilterStack {
                     .into_iter()
                     .map(FilterStack::parse_filter)
                     .collect::<Result<Vec<_>>>()?;
-                filter_stack.push(Filter::RackApp(RackApp::from_value(default_app)?));
+                filter_stack.push(Filter::RackApp(RackApp::from_value(default_app.clone())?));
                 routes.push(route_raw);
                 stacks.insert(index, filter_stack);
             }
@@ -127,8 +128,8 @@ impl FilterStack {
             "compression" => Filter::Compression(Compression::from_value(parameters)?),
             "logging" => Filter::Logging(Logging::from_value(parameters)?),
             "endpoint" => Filter::Endpoint(Endpoint::from_value(parameters)?),
-            "rack_app" => Filter::RackApp(RackApp::from_value(parameters)?),
-            "run" => Filter::RackApp(RackApp::from_value(parameters)?),
+            "rack_app" => Filter::RackApp(RackApp::from_value(parameters.into())?),
+            "run" => Filter::RackApp(RackApp::from_value(parameters.into())?),
             _ => {
                 return Err(magnus::Error::new(
                     magnus::exception::exception(),

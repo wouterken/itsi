@@ -1,11 +1,12 @@
 use crate::{
-    ruby_types::itsi_server::{itsi_server_config::ItsiServerConfig, ItsiServer},
+    ruby_types::itsi_server::itsi_server_config::ItsiServerConfig,
     server::{
         io_stream::IoStream,
         itsi_service::{IstiServiceInner, ItsiService},
         lifecycle_event::LifecycleEvent,
-        listener::{Listener, ListenerInfo},
+        listener::ListenerInfo,
         request_job::RequestJob,
+        signal::SIGNAL_HANDLER_CHANNEL,
         thread_worker::{build_thread_workers, ThreadWorker},
     },
 };
@@ -17,7 +18,6 @@ use itsi_error::{ItsiError, Result};
 use itsi_rb_helpers::print_rb_backtrace;
 use itsi_tracing::{debug, error, info};
 use nix::unistd::Pid;
-use parking_lot::Mutex;
 use std::{
     num::NonZeroU8,
     pin::Pin,
@@ -36,9 +36,8 @@ use tracing::instrument;
 
 pub struct SingleMode {
     pub executor: Builder<TokioExecutor>,
-    pub config: Arc<ItsiServerConfig>,
+    pub server_config: Arc<ItsiServerConfig>,
     pub sender: async_channel::Sender<RequestJob>,
-    pub(crate) listeners: Mutex<Vec<Listener>>,
     pub(crate) thread_workers: Arc<Vec<ThreadWorker>>,
     pub(crate) lifecycle_channel: broadcast::Sender<LifecycleEvent>,
 }
@@ -51,18 +50,14 @@ pub enum RunningPhase {
 
 impl SingleMode {
     #[instrument(parent=None, skip_all, fields(pid=format!("{:?}", Pid::this())))]
-    pub(crate) fn new(
-        config: Arc<ItsiServerConfig>,
-        listeners: Vec<Listener>,
-        lifecycle_channel: broadcast::Sender<LifecycleEvent>,
-    ) -> Result<Self> {
-        let config = config.load()?;
+    pub fn new(server_config: Arc<ItsiServerConfig>) -> Result<Self> {
+        let server_params = server_config.server_params.read().clone();
+        server_params.preload_ruby()?;
 
         let (thread_workers, sender) = build_thread_workers(
-            config.clone(),
+            server_params.clone(),
             Pid::this(),
-            NonZeroU8::try_from(config.threads).unwrap(),
-            config.scheduler_class.clone(),
+            NonZeroU8::try_from(server_params.threads).unwrap(),
         )
         .inspect_err(|e| {
             if let Some(err_val) = e.value() {
@@ -72,11 +67,10 @@ impl SingleMode {
 
         Ok(Self {
             executor: Builder::new(TokioExecutor::new()),
-            listeners: Mutex::new(listeners),
-            config,
+            server_config,
             sender,
             thread_workers,
-            lifecycle_channel,
+            lifecycle_channel: SIGNAL_HANDLER_CHANNEL.0.clone(),
         })
     }
 
@@ -103,7 +97,7 @@ impl SingleMode {
 
         runtime.block_on(async {
               let tokio_listeners = self
-                  .listeners.lock()
+                  .server_config.server_params.write().listeners.lock()
                   .drain(..)
                   .map(|list| {
                     Arc::new(list.into_tokio_listener())
@@ -187,7 +181,7 @@ impl SingleMode {
         let service = ItsiService {
             inner: Arc::new(IstiServiceInner {
                 sender: self.sender.clone(),
-                config: self.config.clone(),
+                server_params: self.server_config.server_params.read().clone(),
                 listener,
                 addr: addr.to_string(),
                 shutdown_channel: shutdown_channel.clone(),
@@ -245,7 +239,8 @@ impl SingleMode {
             tokio::time::sleep(Duration::from_millis(25)).await;
 
             //3. Wait for all threads to finish.
-            let deadline = Instant::now() + Duration::from_secs_f64(self.config.shutdown_timeout);
+            let deadline = Instant::now()
+                + Duration::from_secs_f64(self.server_config.server_params.read().shutdown_timeout);
             while Instant::now() < deadline {
                 let alive_threads = self
                     .thread_workers

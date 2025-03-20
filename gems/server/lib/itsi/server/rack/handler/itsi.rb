@@ -4,21 +4,14 @@ module Rack
   module Handler
     module Itsi
       def self.run(app, options = {})
-        host = options.fetch(
-          :host,
-          "127.0.0.1"
-        )
-        port = options.fetch(
-          :Port,
-          3001
-        )
-        ::Itsi::Server.start(
-          **::Itsi::Server::Config.load(
-            {
-              app: app,
-              binds: ["http://#{host}:#{port}"]
-            }
-          )
+        host = options.fetch(:host, "127.0.0.1")
+        port = options.fetch(:Port, 3001)
+        Itsi::Server.start(
+          {
+            app: app,
+            binds: ["http://#{host}:#{port}"]
+          },
+          Itsi::Server::Config.config_file_path
         )
       end
     end

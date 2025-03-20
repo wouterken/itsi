@@ -7,6 +7,7 @@ use itsi_error::{ItsiError, Result};
 use itsi_tracing::info;
 use socket2::{Domain, Protocol, Socket, Type};
 use std::net::{IpAddr, SocketAddr, TcpListener};
+use std::os::fd::AsRawFd;
 use std::sync::Arc;
 use std::{os::unix::net::UnixListener, path::PathBuf};
 use tokio::net::TcpListener as TokioTcpListener;
@@ -261,6 +262,40 @@ impl Listener {
             ),
         }
     }
+
+    /// Handover information when using exec to hand over the listener to a replacement process.
+    pub fn handover(&self) -> Result<(i32, String)> {
+        match self {
+            Listener::Tcp(listener) => {
+                let addr = listener.local_addr()?;
+                Ok((
+                    listener.as_raw_fd(),
+                    format!("tcp://{}", addr.ip().to_canonical()),
+                ))
+            }
+            Listener::TcpTls((listener, _)) => {
+                let addr = listener.local_addr()?;
+                Ok((
+                    listener.as_raw_fd(),
+                    format!("tcp://{}", addr.ip().to_canonical()),
+                ))
+            }
+            Listener::Unix(listener) => {
+                let addr = listener.local_addr()?;
+                Ok((
+                    listener.as_raw_fd(),
+                    format!("unix://{}", addr.as_pathname().unwrap().to_str().unwrap()),
+                ))
+            }
+            Listener::UnixTls((listener, _)) => {
+                let addr = listener.local_addr()?;
+                Ok((
+                    listener.as_raw_fd(),
+                    format!("unix://{}", addr.as_pathname().unwrap().to_str().unwrap()),
+                ))
+            }
+        }
+    }
 }
 
 impl TryFrom<Bind> for Listener {
@@ -297,6 +332,7 @@ fn connect_tcp_socket(addr: IpAddr, port: u16) -> Result<TcpListener> {
     socket.set_nonblocking(true).ok();
     socket.set_nodelay(true).ok();
     socket.set_recv_buffer_size(262_144).ok();
+    socket.set_cloexec(false)?;
     info!("Binding to {:?}", socket_address);
     socket.bind(&socket_address.into())?;
     socket.listen(1024)?;
@@ -313,6 +349,7 @@ fn connect_unix_socket(path: &PathBuf) -> Result<UnixListener> {
     info!("Binding to {:?}", path);
     socket.bind(&socket_address)?;
     socket.listen(1024)?;
+    socket.set_cloexec(false)?;
 
     Ok(socket.into())
 }

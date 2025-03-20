@@ -11,6 +11,10 @@ pub static ITSI_SERVER: Lazy<RClass> = Lazy::new(|ruby| {
         .define_class("Server", ruby.class_object())
         .unwrap()
 });
+
+pub static ITSI_SERVER_CONFIG: Lazy<RModule> =
+    Lazy::new(|ruby| ruby.get_inner(&ITSI_SERVER).const_get("Config").unwrap());
+
 pub static ITSI_REQUEST: Lazy<RClass> = Lazy::new(|ruby| {
     ruby.get_inner(&ITSI_MODULE)
         .define_class("HttpRequest", ruby.class_object())

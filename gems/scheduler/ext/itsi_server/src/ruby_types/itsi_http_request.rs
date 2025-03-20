@@ -153,7 +153,7 @@ impl ItsiHttpRequest {
         context: &ItsiService,
     ) -> (ItsiHttpRequest, mpsc::Receiver<ByteFrame>) {
         let (parts, body) = request.into_parts();
-        let body = if context.config.stream_body.is_some_and(|f| f) {
+        let body = if context.server_params.streamable_body {
             ItsiBody::Stream(ItsiBodyProxy::new(body))
         } else {
             let mut body_bytes = BigBytes::new();
@@ -183,12 +183,12 @@ impl ItsiHttpRequest {
             .parts
             .uri
             .path()
-            .strip_prefix(&self.context.config.script_name)
+            .strip_prefix(&self.context.server_params.script_name)
             .unwrap_or(self.parts.uri.path()))
     }
 
     pub(crate) fn script_name(&self) -> MagnusResult<&str> {
-        Ok(&self.context.config.script_name)
+        Ok(&self.context.server_params.script_name)
     }
 
     pub(crate) fn query_string(&self) -> MagnusResult<&str> {

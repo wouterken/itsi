@@ -2,9 +2,9 @@ use crate::server::signal::{clear_signal_handlers, reset_signal_handlers, send_s
 use itsi_rb_helpers::call_without_gvl;
 use itsi_server_config::ItsiServerConfig;
 use itsi_tracing::{error, run_silently};
-use magnus::{error::Result, Value};
+use magnus::{error::Result, RHash, Ruby};
 use parking_lot::Mutex;
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 use tracing::info;
 pub mod itsi_server_config;
 
@@ -15,9 +15,19 @@ pub struct ItsiServer {
 }
 
 impl ItsiServer {
-    pub fn new(args: &[Value]) -> Result<Self> {
+    pub fn new(
+        ruby: &Ruby,
+        cli_params: RHash,
+        itsifile_path: Option<PathBuf>,
+        reexec_params: Option<String>,
+    ) -> Result<Self> {
         Ok(Self {
-            config: Arc::new(Mutex::new(Arc::new(ItsiServerConfig::new(args)?))),
+            config: Arc::new(Mutex::new(Arc::new(ItsiServerConfig::new(
+                ruby,
+                cli_params,
+                itsifile_path,
+                reexec_params,
+            )?))),
         })
     }
 
@@ -27,38 +37,25 @@ impl ItsiServer {
     }
 
     pub fn start(&self) -> Result<()> {
-        Arc::new(self.clone()).load_config()?;
-        if self.config.lock().silence {
+        if self.config.lock().server_params.read().silence {
             run_silently(|| self.build_and_run_strategy())
         } else {
             self.build_and_run_strategy()
         }
     }
 
-    /// Loads the configuration specified in the Itsi file if it exists.
-    /// This will be merged with any overrides specified as CLI args.
-    pub fn load_config(self: &Arc<Self>) -> Result<()> {
-        let mut config_lock = self.config.lock();
-        let updated_config = config_lock.load_itsi_file()?;
-        *config_lock = Arc::new(updated_config);
-        Ok(())
-    }
-
     fn build_and_run_strategy(&self) -> Result<()> {
         reset_signal_handlers();
-        let config = self.config.lock().clone();
-        let config_clone = config.clone();
         let server_clone = self.clone();
+        let strategy = server_clone.config.lock().clone().build_strategy()?;
         call_without_gvl(move || -> Result<()> {
-            config.build_strategy(&server_clone)?;
-            if let Err(e) = config_clone.strategy.read().as_ref().unwrap().run() {
+            if let Err(e) = strategy.clone().run() {
                 error!("Error running server: {}", e);
-                config_clone.strategy.read().as_ref().unwrap().stop()?;
+                strategy.stop()?;
             }
             Ok(())
         })?;
         clear_signal_handlers();
-        self.config.lock().strategy.write().take();
         info!("Server stopped");
         Ok(())
     }

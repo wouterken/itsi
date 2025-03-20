@@ -23,13 +23,12 @@ use tokio::{runtime::Builder as RuntimeBuilder, sync::watch};
 use tracing::instrument;
 
 use crate::ruby_types::{
-    itsi_http_request::ItsiHttpRequest, itsi_server::itsi_server_config::ItsiServerConfig,
-    ITSI_SERVER,
+    itsi_http_request::ItsiHttpRequest, itsi_server::itsi_server_config::ServerParams, ITSI_SERVER,
 };
 
 use super::request_job::RequestJob;
 pub struct ThreadWorker {
-    pub config: Arc<ItsiServerConfig>,
+    pub params: Arc<ServerParams>,
     pub id: String,
     pub receiver: Arc<async_channel::Receiver<RequestJob>>,
     pub sender: async_channel::Sender<RequestJob>,
@@ -52,24 +51,23 @@ static CLASS_FIBER: Lazy<RClass> = Lazy::new(|ruby| {
 
 pub struct TerminateWakerSignal(bool);
 
-#[instrument(name = "Boot", parent=None, skip(config, threads, pid, scheduler_class))]
+#[instrument(name = "Boot", parent=None, skip(params, threads, pid))]
 pub fn build_thread_workers(
-    config: Arc<ItsiServerConfig>,
+    params: Arc<ServerParams>,
     pid: Pid,
     threads: NonZeroU8,
-    scheduler_class: Option<String>,
 ) -> Result<(Arc<Vec<ThreadWorker>>, async_channel::Sender<RequestJob>)> {
     let (sender, receiver) = async_channel::bounded((threads.get() * 30) as usize);
     let receiver_ref = Arc::new(receiver);
     let sender_ref = sender;
-    let scheduler_class = load_scheduler_class(scheduler_class)?;
+    let scheduler_class = load_scheduler_class(params.scheduler_class.clone())?;
     Ok((
         Arc::new(
             (1..=u8::from(threads))
                 .map(|id| {
                     info!(pid = pid.as_raw(), id, "Thread");
                     ThreadWorker::new(
-                        config.clone(),
+                        params.clone(),
                         format!("{:?}#{:?}", pid, id),
                         receiver_ref.clone(),
                         sender_ref.clone(),
@@ -80,10 +78,6 @@ pub fn build_thread_workers(
         ),
         sender_ref,
     ))
-}
-
-pub fn scale_threads(new_count: u8) {
-    todo!();
 }
 
 pub fn load_scheduler_class(scheduler_class: Option<String>) -> Result<Option<Opaque<Value>>> {
@@ -101,14 +95,14 @@ pub fn load_scheduler_class(scheduler_class: Option<String>) -> Result<Option<Op
 }
 impl ThreadWorker {
     pub fn new(
-        config: Arc<ItsiServerConfig>,
+        params: Arc<ServerParams>,
         id: String,
         receiver: Arc<async_channel::Receiver<RequestJob>>,
         sender: async_channel::Sender<RequestJob>,
         scheduler_class: Option<Opaque<Value>>,
     ) -> Result<Self> {
         let mut worker = Self {
-            config,
+            params,
             id,
             receiver,
             sender,
@@ -154,13 +148,13 @@ impl ThreadWorker {
         let receiver = self.receiver.clone();
         let terminated = self.terminated.clone();
         let scheduler_class = self.scheduler_class;
-        let config = self.config.clone();
+        let params = self.params.clone();
         call_with_gvl(|_| {
             *self.thread.write() = Some(
                 create_ruby_thread(move || {
                     if let Some(scheduler_class) = scheduler_class {
                         if let Err(err) = Self::fiber_accept_loop(
-                            config,
+                            params,
                             id,
                             receiver,
                             scheduler_class,
@@ -169,7 +163,7 @@ impl ThreadWorker {
                             error!("Error in fiber_accept_loop: {:?}", err);
                         }
                     } else {
-                        Self::accept_loop(config, id, receiver, terminated);
+                        Self::accept_loop(params, id, receiver, terminated);
                     }
                 })
                 .into(),
@@ -274,7 +268,7 @@ impl ThreadWorker {
 
     #[instrument(skip_all, fields(thread_worker=id))]
     pub fn fiber_accept_loop(
-        server: Arc<ItsiServerConfig>,
+        params: Arc<ServerParams>,
 
         id: String,
         receiver: Arc<async_channel::Receiver<RequestJob>>,
@@ -290,7 +284,7 @@ impl ThreadWorker {
             &receiver,
             &terminated,
             &waker_sender,
-            server.oob_gc_responses_threshold,
+            params.oob_gc_responses_threshold,
         );
         let (scheduler, scheduler_fiber) = server_class.funcall::<_, _, (Value, Value)>(
             "start_scheduler_loop",
@@ -353,7 +347,7 @@ impl ThreadWorker {
 
     #[instrument(skip_all, fields(thread_worker=id))]
     pub fn accept_loop(
-        server: Arc<ItsiServerConfig>,
+        params: Arc<ServerParams>,
         id: String,
         receiver: Arc<async_channel::Receiver<RequestJob>>,
         terminated: Arc<AtomicBool>,
@@ -363,7 +357,7 @@ impl ThreadWorker {
         let mut idle_counter = 0;
         call_without_gvl(|| loop {
             if receiver.is_empty() {
-                if let Some(oob_gc_threshold) = server.oob_gc_responses_threshold {
+                if let Some(oob_gc_threshold) = params.oob_gc_responses_threshold {
                     idle_counter = (idle_counter + 1) % oob_gc_threshold;
                     if idle_counter == 0 {
                         ruby.gc_start();

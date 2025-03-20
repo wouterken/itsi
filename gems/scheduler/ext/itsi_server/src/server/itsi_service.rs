@@ -3,7 +3,7 @@ use super::request_job::RequestJob;
 use super::serve_strategy::single_mode::RunningPhase;
 use super::types::HttpRequest;
 use super::{filter_stack::FilterLayer, types::HttpResponse};
-use crate::ruby_types::itsi_server::itsi_server_config::ItsiServerConfig;
+use crate::ruby_types::itsi_server::itsi_server_config::ServerParams;
 use either::Either;
 use hyper::service::Service;
 use itsi_error::ItsiError;
@@ -25,7 +25,7 @@ impl Deref for ItsiService {
 
 pub struct IstiServiceInner {
     pub sender: async_channel::Sender<RequestJob>,
-    pub config: Arc<ItsiServerConfig>,
+    pub server_params: Arc<ServerParams>,
     pub listener: Arc<ListenerInfo>,
     pub addr: String,
     pub shutdown_channel: watch::Receiver<RunningPhase>,
@@ -38,12 +38,12 @@ impl Service<HttpRequest> for ItsiService {
 
     // This is called once per incoming Request.
     fn call(&self, req: HttpRequest) -> Self::Future {
-        let config_clone = self.config.clone();
+        let params = self.server_params.clone();
         let context = self.clone();
         Box::pin(async move {
             let mut req = req;
             let mut resp: Option<HttpResponse> = None;
-            let stack = config_clone.filter_stack.stack_for(&req);
+            let stack = params.middleware.get().unwrap().stack_for(&req);
             for elm in stack.iter() {
                 match elm.before(req, &context).await {
                     Ok(Either::Left(r)) => req = r,
