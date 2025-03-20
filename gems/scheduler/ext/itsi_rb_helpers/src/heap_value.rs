@@ -32,6 +32,15 @@ where
     }
 }
 
+impl<T> HeapValue<T>
+where
+    T: ReprValue,
+{
+    pub fn cloned(&self) -> T {
+        *self.0
+    }
+}
+
 impl<T> Deref for HeapValue<T>
 where
     T: ReprValue,

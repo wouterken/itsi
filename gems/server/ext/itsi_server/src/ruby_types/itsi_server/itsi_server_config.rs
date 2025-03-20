@@ -8,7 +8,7 @@ use crate::{
     },
 };
 use derive_more::Debug;
-use itsi_rb_helpers::HeapValue;
+use itsi_rb_helpers::{call_with_gvl, HeapVal, HeapValue};
 use magnus::{
     block::Proc,
     error::Result,
@@ -21,6 +21,7 @@ use std::{
     path::PathBuf,
     sync::{Arc, OnceLock},
 };
+use tracing::info;
 
 static DEFAULT_BIND: &str = "http://localhost:3000";
 static ID_BUILD_CONFIG: LazyId = LazyId::new("build_config");
@@ -28,7 +29,7 @@ static ID_RELOAD_EXEC: LazyId = LazyId::new("reload_exec");
 
 #[derive(Debug, Clone)]
 pub struct ItsiServerConfig {
-    pub cli_params: HeapValue<RHash>,
+    pub cli_params: Arc<HeapValue<RHash>>,
     pub itsifile_path: Option<PathBuf>,
     #[debug(skip)]
     pub server_params: Arc<RwLock<Arc<ServerParams>>>,
@@ -51,6 +52,7 @@ pub struct ServerParams {
     pub scheduler_class: Option<String>,
     pub oob_gc_responses_threshold: Option<u64>,
     pub middleware_loader: HeapValue<Proc>,
+    pub default_app: HeapVal,
     pub middleware: OnceLock<FilterStack>,
     pub binds: Vec<Bind>,
     #[debug(skip)]
@@ -60,12 +62,27 @@ pub struct ServerParams {
 
 impl ServerParams {
     pub fn preload_ruby(self: &Arc<Self>) -> Result<()> {
+        call_with_gvl(|_| -> Result<()> {
+            let middleware = FilterStack::new(
+                self.middleware_loader
+                    .call::<_, Option<Value>>(())?
+                    .map(|mw| mw.into()),
+                self.default_app.clone(),
+            )?;
+            self.middleware.set(middleware).map_err(|_| {
+                magnus::Error::new(
+                    magnus::exception::runtime_error(),
+                    "Failed to set middleware",
+                )
+            })?;
+            Ok(())
+        })?;
         Ok(())
     }
 
     fn from_rb_hash(
         rb_param_hash: RHash,
-        initial_listener_info: Option<HashMap<u32, String>>,
+        _initial_listener_info: Option<HashMap<u32, String>>,
     ) -> Result<ServerParams> {
         let workers: u8 = rb_param_hash.fetch("workers")?;
         let worker_memory_limit: Option<u64> = rb_param_hash.fetch("worker_memory_limit")?;
@@ -97,6 +114,7 @@ impl ServerParams {
         let oob_gc_responses_threshold: Option<u64> =
             rb_param_hash.fetch("oob_gc_responses_threshold")?;
         let middleware_loader: Proc = rb_param_hash.fetch("middleware_loader")?;
+        let default_app: Value = rb_param_hash.fetch("default_app")?;
 
         let binds: Option<Vec<String>> = rb_param_hash.fetch("binds")?;
         let binds = binds
@@ -138,6 +156,7 @@ impl ServerParams {
             listener_info,
             listeners: Mutex::new(listeners),
             middleware_loader: middleware_loader.into(),
+            default_app: default_app.into(),
             middleware: OnceLock::new(),
         })
     }
@@ -158,7 +177,7 @@ impl ItsiServerConfig {
         let server_params =
             Self::combine_params(ruby, cli_params, itsifile_path.as_ref(), listener_info)?;
         Ok(ItsiServerConfig {
-            cli_params: cli_params.into(),
+            cli_params: Arc::new(cli_params.into()),
             server_params: Arc::new(RwLock::new(server_params.clone())),
             itsifile_path,
         })
@@ -176,20 +195,23 @@ impl ItsiServerConfig {
         }
     }
 
-    pub fn reload(self: Arc<Self>) -> Result<()> {
+    pub fn reload(self: Arc<Self>, cluster_worker: bool) -> Result<()> {
         let ruby = Ruby::get().unwrap();
-        let server_params = Self::combine_params(
-            &ruby,
-            self.cli_params.clone().into_inner(),
-            self.itsifile_path.as_ref(),
-            None,
-        )?;
+        let server_params = call_with_gvl(|_| {
+            Self::combine_params(
+                &ruby,
+                self.cli_params.cloned(),
+                self.itsifile_path.as_ref(),
+                None,
+            )
+        })?;
 
+        let is_single_mode = self.server_params.read().workers == 1;
         let requires_exec = if self.server_params.read().preload && !server_params.preload {
             // If we've disabled `preload`, we need to fully clear sever memory using an exec
             true
-        } else if (self.server_params.read().workers == 1 && server_params.workers > 1)
-            || (self.server_params.read().workers > 1 && server_params.workers == 1)
+        } else if (is_single_mode && server_params.workers > 1)
+            || (!is_single_mode && server_params.workers == 1)
         {
             // If we've switched from single to cluster mode  `workers`, or vice-versa
             // we need to fully clear sever memory using an exec to cleanly switch strategies
@@ -198,9 +220,11 @@ impl ItsiServerConfig {
             false
         };
 
-        if requires_exec {
+        if requires_exec && (cluster_worker || is_single_mode) {
+            info!("Reexec");
             Self::reload_exec(&ruby, self.clone())?;
         }
+        info!("Live update");
         *self.server_params.write() = server_params.clone();
         Ok(())
     }
@@ -222,14 +246,17 @@ impl ItsiServerConfig {
     }
 
     fn reload_exec(ruby: &Ruby, rb_self: Arc<Self>) -> Result<()> {
-        ruby.get_inner_ref(&ITSI_SERVER_CONFIG)
-            .funcall::<_, _, Value>(
-                *ID_RELOAD_EXEC,
-                (
-                    rb_self.cli_params.clone(),
-                    rb_self.server_params.read().listener_info.clone(),
-                ),
-            )?;
+        call_with_gvl(|_| -> Result<()> {
+            ruby.get_inner_ref(&ITSI_SERVER_CONFIG)
+                .funcall::<_, _, Value>(
+                    *ID_RELOAD_EXEC,
+                    (
+                        rb_self.cli_params.cloned(),
+                        rb_self.server_params.read().listener_info.clone(),
+                    ),
+                )?;
+            Ok(())
+        })?;
         Ok(())
     }
 
@@ -240,7 +267,7 @@ impl ItsiServerConfig {
     ) -> Result<(RHash, Option<HashMap<u32, String>>)> {
         let result: (RHash, Option<HashMap<u32, String>>) = ruby
             .get_inner_ref(&ITSI_SERVER_CONFIG)
-            .funcall(*ID_RELOAD_EXEC, (cli_params.clone(), reexec_params))?;
+            .funcall(*ID_RELOAD_EXEC, (cli_params, reexec_params))?;
         Ok(result)
     }
 }

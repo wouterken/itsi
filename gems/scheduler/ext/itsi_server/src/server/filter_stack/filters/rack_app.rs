@@ -10,49 +10,21 @@ use async_trait::async_trait;
 use derive_more::Debug;
 use either::Either;
 use itsi_rb_helpers::HeapVal;
-use magnus::{
-    error::{self, Result},
-    value::{LazyId, ReprValue},
-    Ruby, Symbol, Value,
-};
-use std::sync::{Arc, OnceLock};
+use magnus::{block::Proc, error::Result, value::ReprValue, Symbol, Value};
+use std::sync::Arc;
 use tracing::info;
 
 #[derive(Debug)]
 pub struct RackApp {
-    app: OnceLock<Arc<HeapVal>>,
-    app_loader: HeapVal,
-}
-impl RackApp {
-    pub(crate) fn preload(&self) -> error::Result<()> {
-        let app = HeapVal::from(self.app_loader.funcall::<_, _, Value>(*ID_CALL, ())?);
-        self.app.set(Arc::new(app)).map_err(|e| {
-            magnus::Error::new(
-                magnus::exception::exception(),
-                format!("Failed to preload app {:?}", e),
-            )
-        })?;
-        Ok(())
-    }
+    app: Arc<HeapVal>,
 }
 
-static ID_ACCESSOR: LazyId = LazyId::new("[]");
-static ID_CALL: LazyId = LazyId::new("call");
-
 impl RackApp {
-    pub fn from_value(value: HeapVal) -> magnus::error::Result<Self> {
-        let ruby = Ruby::get().unwrap();
-        let app: HeapVal = if value.is_kind_of(ruby.class_hash()) {
-            value
-                .funcall::<_, _, Value>(*ID_ACCESSOR, (Symbol::new("app"),))?
-                .into()
-        } else {
-            value
-        };
-        info!("Creating RackApp filter with app: {:?}", app);
+    pub fn from_value(params: HeapVal) -> magnus::error::Result<Self> {
+        let loader = params.funcall::<_, _, Proc>(Symbol::new("[]"), ("rackup_loader",))?;
+        let app = loader.call::<_, Value>(())?;
         Ok(RackApp {
-            app_loader: app.into(),
-            app: OnceLock::new(),
+            app: Arc::new(app.into()),
         })
     }
 }
@@ -64,8 +36,7 @@ impl FilterLayer for RackApp {
         req: HttpRequest,
         context: &ItsiService,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
-        let app = self.app.get().unwrap().clone();
-        ItsiHttpRequest::process_request(app, req, context)
+        ItsiHttpRequest::process_request(self.app.clone(), req, context)
             .await
             .map_err(|e| e.into())
             .map(Either::Right)

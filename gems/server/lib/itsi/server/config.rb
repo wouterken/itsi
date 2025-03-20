@@ -2,7 +2,9 @@ module Itsi
   class Server
     module Config
       require_relative "config/dsl"
+      require_relative "default_app/default_app"
       require "etc"
+      require "debug"
 
       ITSI_DEFAULT_CONFIG_FILE = "Itsi.rb"
 
@@ -13,7 +15,7 @@ module Itsi
       def self.build_config(args, config_file_path)
         itsifile_config = File.exist?(config_file_path.to_s) ? DSL.evaluate(config_file_path) : {}
         args.transform_keys!(&:to_sym)
-        {
+        srv_config = {
           workers: args.fetch(:workers) { itsifile_config.fetch(:workers, Etc.nprocessors) },
           worker_memory_limit: args.fetch(:worker_memory_limit) { itsifile_config.fetch(:worker_memory_limit, nil) },
           silence: args.fetch(:silence) { itsifile_config.fetch(:silence, false) },
@@ -27,8 +29,12 @@ module Itsi
           oob_gc_responses_threshold: args.fetch(:oob_gc_responses_threshold) do
             itsifile_config.fetch(:oob_gc_responses_threshold, nil)
           end,
-          binds: args.fetch(:binds) { itsifile_config.fetch(:binds, ["http://0.0.0.0:3000"]) }
-        }
+          binds: args.fetch(:binds) { itsifile_config.fetch(:binds, ["http://0.0.0.0:3000"]) },
+          middleware_loader: itsifile_config.fetch(:middleware_loader, ->{}),
+          default_app: { "rackup_loader" => itsifile_config.fetch(:rackup_loader, DEFAULT_APP) }
+        }.transform_keys(&:to_s)
+        puts #{srv_config}
+        srv_config
       end
 
       # Reloads the entire process
@@ -58,7 +64,7 @@ module Itsi
         # Options simply pass through unless we've specified a config file
         return unless File.exist?(config_file_path)
 
-        config_file
+        config_file_path
       end
 
       # Write a default config file, if one doesn't exist.

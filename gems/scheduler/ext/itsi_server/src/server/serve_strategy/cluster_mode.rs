@@ -71,7 +71,7 @@ impl ClusterMode {
                 Ok(())
             }
             LifecycleEvent::Restart => {
-                self.server_config.clone().reload()?;
+                self.server_config.clone().reload(true)?;
                 for worker in self.process_workers.lock().iter() {
                     worker.reboot(self.clone()).await?;
                 }

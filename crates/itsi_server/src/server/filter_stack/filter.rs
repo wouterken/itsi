@@ -21,14 +21,6 @@ pub enum Filter {
     Logging(Logging),
     RackApp(RackApp),
 }
-impl Filter {
-    pub(crate) fn preload(&self) -> Result<()> {
-        if let Filter::RackApp(filter) = self {
-            filter.preload()?;
-        }
-        Ok(())
-    }
-}
 
 #[async_trait]
 impl FilterLayer for Filter {

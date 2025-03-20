@@ -40,6 +40,7 @@ impl ItsiServer {
         if self.config.lock().server_params.read().silence {
             run_silently(|| self.build_and_run_strategy())
         } else {
+            info!("Itsi - Rolling into action. 💨 ⚪ ");
             self.build_and_run_strategy()
         }
     }
@@ -47,8 +48,8 @@ impl ItsiServer {
     fn build_and_run_strategy(&self) -> Result<()> {
         reset_signal_handlers();
         let server_clone = self.clone();
-        let strategy = server_clone.config.lock().clone().build_strategy()?;
         call_without_gvl(move || -> Result<()> {
+            let strategy = server_clone.config.lock().clone().build_strategy()?;
             if let Err(e) = strategy.clone().run() {
                 error!("Error running server: {}", e);
                 strategy.stop()?;

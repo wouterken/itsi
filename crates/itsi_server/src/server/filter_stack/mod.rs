@@ -129,7 +129,6 @@ impl FilterStack {
             "logging" => Filter::Logging(Logging::from_value(parameters)?),
             "endpoint" => Filter::Endpoint(Endpoint::from_value(parameters)?),
             "rack_app" => Filter::RackApp(RackApp::from_value(parameters.into())?),
-            "run" => Filter::RackApp(RackApp::from_value(parameters.into())?),
             _ => {
                 return Err(magnus::Error::new(
                     magnus::exception::exception(),
@@ -142,17 +141,5 @@ impl FilterStack {
 
     fn default_stack(&self) -> &Vec<Filter> {
         &self.default_stack
-    }
-
-    pub(crate) fn preload(&self) -> Result<()> {
-        for stack in self.stacks.values() {
-            for filter in stack.iter() {
-                filter.preload()?;
-            }
-        }
-        for filter in self.default_stack.iter() {
-            filter.preload()?;
-        }
-        Ok(())
     }
 }

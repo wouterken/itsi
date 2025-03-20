@@ -3,47 +3,49 @@
 
 require "itsi/server"
 require "etc"
+require "optparse"
 
+options = {}
 OptionParser.new do |opts|
   opts.banner = "Usage: itsi [options]"
 
   opts.on("-C", "--config CONFIG_FILE", String, "Itsi Configuration file to use (default: Itsi.rb)") do |config_file|
-    cli_params[:config_file] = config_file
+    options[:config_file] = config_file
   end
 
   opts.on("-w", "--workers WORKERS", Integer, "Number of workers (default: #{Etc.nprocessors})") do |w|
-    cli_params[:workers] = w
+    options[:workers] = w
   end
 
   opts.on("-t", "--threads THREADS", Integer, "Number of threads (default: 1)") do |t|
-    cli_params[:threads] = t
+    options[:threads] = t
   end
 
   opts.on("-r", "--rackup_file FILE", String, "Rackup file to use (default: config.ru)") do |rf|
-    cli_params[:rackup_file] = rf
+    options[:rackup_file] = rf
   end
 
   opts.on("--worker-memory-limit MEMORY_LIMIT", Integer,
           "Memory limit for each worker (default: None). If this limit is breached the worker is gracefully restarted") do |ml|
-    cli_params[:worker_memory_limit] = ml
+    options[:worker_memory_limit] = ml
   end
 
   opts.on("-f", "--fiber_scheduler [CLASS_NAME]", [String],
           "Scheduler class to use (default: nil). Provide blank or true to use Itsi::Scheduler, or a classname to use an alternative scheduler") do |scheduler_class|
     if scheduler_class.nil? || scheduler_class == "true"
-      cli_params[:scheduler_class] = "Itsi::Scheduler"
+      options[:scheduler_class] = "Itsi::Scheduler"
     elsif scheduler_class == "false"
-      cli_params.delete(:scheduler_class)
+      options.delete(:scheduler_class)
     else
-      cli_params[:scheduler_class] = scheduler_class
+      options[:scheduler_class] = scheduler_class
     end
   end
 
   opts.on("--preload [true, false, :bundle_group_name]", String, " Toggle preloading the application") do |preload|
     if preload == "true"
-      cli_params[:preload] = true
+      options[:preload] = true
     elsif preload == "false"
-      cli_params[:preload] = false
+      options[:preload] = false
     else
       # Not supported yet
     end
@@ -51,49 +53,49 @@ OptionParser.new do |opts|
 
   opts.on("-b", "--bind BIND", String,
           "Bind address (default: http://0.0.0.0:3000). You can specify this flag multiple times to bind to multiple addresses.") do |bind|
-    cli_params[:binds] ||= []
-    cli_params[:binds] << bind
+    options[:binds] ||= []
+    options[:binds] << bind
   end
 
   opts.on("-c", "--cert_path CERT_PATH", String,
           "Path to the SSL certificate file (must follow a --bind option). You can specify this flag multiple times.") do |cp|
-    raise OptionParser::InvalidOption, "--cert_path must follow a --bind" if cli_params[:binds].empty?
+    raise OptionParser::InvalidOption, "--cert_path must follow a --bind" if options[:binds].empty?
 
     require "uri"
 
     # Modify the last bind entry to add/update the cert query parameter
-    uri = URI.parse("http://#{cli_params[:binds].last}") # Ensure valid URI parsing
+    uri = URI.parse("http://#{options[:binds].last}") # Ensure valid URI parsing
     params = URI.decode_www_form(uri.query.to_s).to_h
     params["cert"] = cp
     query_string = params.map { |k, v| "#{k}=#{v}" }.join("&")
-    cli_params[:binds][-1] = "#{uri.host}?#{query_string}"
+    options[:binds][-1] = "#{uri.host}?#{query_string}"
   end
 
   opts.on("-k", "--key_path KEY_PATH", String,
           "Path to the SSL key file (must follow a --bind option). You can specify this flag multiple times.") do |kp|
-    raise OptionParser::InvalidOption, "--key_path must follow a --bind" if cli_params[:binds].empty?
+    raise OptionParser::InvalidOption, "--key_path must follow a --bind" if options[:binds].empty?
 
     require "uri"
 
     # Modify the last bind entry to add/update the key query parameter
-    uri = URI.parse("http://#{cli_params[:binds].last}") # Ensure valid URI parsing
+    uri = URI.parse("http://#{options[:binds].last}") # Ensure valid URI parsing
     params = URI.decode_www_form(uri.query.to_s).to_h
     params["key"] = kp
     query_string = params.map { |k, v| "#{k}=#{v}" }.join("&")
-    cli_params[:binds][-1] = "#{uri.host}?#{query_string}"
+    options[:binds][-1] = "#{uri.host}?#{query_string}"
   end
 
   opts.on("--shutdown_timeout SHUTDOWN_TIMEOUT", String,
           "Graceful timeout period before forcing workers to shutdown") do |shutdown_timeout|
-    cli_params[:shutdown_timeout] = shutdown_timeout
+    options[:shutdown_timeout] = shutdown_timeout
   end
 
   opts.on("--script_name SCRIPT_NAME", String, "Script name to inject into Rack ENV") do |script_name|
-    cli_params[:script_name] = script_name
+    options[:script_name] = script_name
   end
 
   opts.on("--stream-body", TrueClass, "Stream body frames (default: false for best compatibility)") do |stream_body|
-    cli_params[:stream_body] = stream_body
+    options[:stream_body] = stream_body
   end
 
   opts.on("-h", "--help", "Show this help message") do
@@ -102,7 +104,7 @@ OptionParser.new do |opts|
   end
 
   opts.on("--reexec PARAMS", String, "Reexec the server with the given parameters") do |params|
-    cli_params[:reexec] = params
+    options[:reexec] = params
   end
 end.parse!
 
@@ -111,4 +113,4 @@ if ARGV.pop == "init"
   exit(0)
 end
 
-Itsi::Server.start(opts, Itsi::Server::Config.config_file_path, opts[:reexec])
+Itsi::Server.start(options, Itsi::Server::Config.config_file_path, options[:reexec])

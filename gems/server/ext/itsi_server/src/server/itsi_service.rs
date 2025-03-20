@@ -9,6 +9,7 @@ use hyper::service::Service;
 use itsi_error::ItsiError;
 use std::{future::Future, ops::Deref, pin::Pin, sync::Arc};
 use tokio::sync::watch::{self};
+use tracing::info;
 
 #[derive(Clone)]
 pub struct ItsiService {

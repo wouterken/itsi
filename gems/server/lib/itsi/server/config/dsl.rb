@@ -1,7 +1,7 @@
 module Itsi
   class Server
     module Config
-      module DSL
+      class DSL
         attr_reader :parent, :children, :filters, :endpoint_defs, :controller_class
 
         def self.evaluate(filepath)
@@ -18,20 +18,16 @@ module Itsi
           @endpoint_defs    = [] # Each is [subpath, *endpoint_args]
           @controller_class = nil
           @options          = {}
-
           # We'll store our array of route specs (strings or a single Regexp).
           @route_specs = Array(route_specs).flatten
+
 
           validate_path_specs!(@route_specs)
           instance_exec(&block)
         end
 
         def to_options
-          @options.merge(
-            {
-              routes: flatten_routes
-            }
-          )
+          @options
         end
 
         def workers(workers)
@@ -44,19 +40,6 @@ module Itsi
           raise "Threads must be set at the root" unless @parent.nil?
 
           @options[:threads] = [threads.to_i, 1].max
-        end
-
-        def rackup_file(rackup_file)
-          raise "Rackup file must be set at the root" unless @parent.nil?
-          raise "rackup_file already set" if @options[:rackup_file]
-          raise "Cannot provide a rackup_file if app is defined" if @options[:app]
-
-          if rackup_file.is_a?(File) && rackup_file.exist?
-            @options[:rackup_file] = file_path
-          else
-            file_path = rackup_file
-            @options[:rackup_file] = file_path if File.exist?(file_path)
-          end
         end
 
         def oob_gc_responses_threshold(threshold)
@@ -82,14 +65,30 @@ module Itsi
           end
         end
 
-        def run(app)
-          if @parent.nil?
-            raise "App already set" if @options[:app]
-            raise "Cannot provide an app if rackup_file is defined" if @options[:rackup_file]
+        def run(rack_app)
 
-            @options[:app] = app
+          if @options[:rackup_loader]
+            raise "Rack App has already been set. You can use only one of `run` and `rackup_file` per location"
+          end
+
+          if @parent.nil?
+            @options[:rackup_loader] = -> { rack_app }
           else
-            @filters[:rack_app] = { app: -> { app } }
+            @filters[:rack_app] = { rackup_loader: -> { rack_app } }
+          end
+        end
+
+        def rackup_file(rackup_file)
+          if @options[:rackup_loader]
+            raise "Rack App has already been set. You can use only one of `run` and `rackup_file` per location"
+          end
+
+          raise "Rackup file #{rackup_file} doesn't exist" unless File.exist?(file_path)
+
+          if @parent.nil?
+            @options[:rackup_loader] = -> { Rack::Builder.parse_file(file_path).first }
+          else
+            @filters[:rack_app] = { rackup_loader: -> { Rack::Builder.parse_file(file_path).first }}
           end
         end
 
@@ -158,9 +157,18 @@ module Itsi
         end
 
         def location(*route_specs, &block)
-          route_specs = route_specs.flatten
-          child = OptionsDSL.new(self, route_specs, &block)
-          @children << child
+          if @parent.nil?
+            @options[:middleware_loader] = -> do
+              route_specs = route_specs.flatten
+              child = DSL.new(self, route_specs, &block)
+              @children << child
+              flatten_routes
+            end
+          else
+            route_specs = route_specs.flatten
+            child = DSL.new(self, route_specs, &block)
+            @children << child
+          end
         end
 
         # define endpoints

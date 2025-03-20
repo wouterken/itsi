@@ -1,14 +1,19 @@
+workers 1
 location '/*' do
-  location '/api' do
+  location '/api*' do
     auth_api_key 'valid_keys' => %w[api], 'token_source' => { 'query' => 'APIKey' }, error_response: {
       code: 401,
       default: 'plaintext',
       plaintext: 'What are you doing here Hombre?',
-      json: { message: 'Unauthorized', array: [1,2,3,4] }
+      json: { message: 'Unauthorized', array: [1, 2, 3, 4] }
     }
+    run lambda { |env|
+      [200, {}, 'Hello?']
+    }
+
   end
 end
 
 run lambda { |env|
-  [200, {}, "Test"]
+  [200, {}, 'Hello World. I\'m the best']
 }
