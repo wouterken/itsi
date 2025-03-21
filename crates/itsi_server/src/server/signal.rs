@@ -33,6 +33,9 @@ fn receive_signal(signum: i32, _: sighandler_t) {
         libc::SIGUSR1 => {
             SIGNAL_HANDLER_CHANNEL.0.send(LifecycleEvent::Restart).ok();
         }
+        libc::SIGUSR2 => {
+            SIGNAL_HANDLER_CHANNEL.0.send(LifecycleEvent::Reload).ok();
+        }
         libc::SIGTTIN => {
             SIGNAL_HANDLER_CHANNEL
                 .0

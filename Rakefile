@@ -34,6 +34,7 @@ GEMS.each do |gem|
 
     SHARED_TASKS.each do |task|
       task task do
+        Rake::Task[:sync_crates].invoke
         sh "cd #{gem[:dir]} && rake #{task}"
       end
     end

@@ -22,3 +22,6 @@ pub enum ItsiError {
     #[error("Pass")]
     Pass(),
 }
+
+unsafe impl Send for ItsiError {}
+unsafe impl Sync for ItsiError {}

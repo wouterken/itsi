@@ -1,12 +1,17 @@
+#frozen_string_literal: true
+
 module Itsi
   class Server
     module Config
       require_relative "config/dsl"
       require_relative "default_app/default_app"
-      require "etc"
       require "debug"
 
       ITSI_DEFAULT_CONFIG_FILE = "Itsi.rb"
+
+      def self.save_argv!
+        @argv = ARGV[0...ARGV.index("--listeners")]
+      end
 
       # The configuration used when launching the Itsi server are evaluated in the following precedence:
       # 1. CLI Args.
@@ -15,13 +20,33 @@ module Itsi
       def self.build_config(args, config_file_path)
         itsifile_config = File.exist?(config_file_path.to_s) ? DSL.evaluate(config_file_path) : {}
         args.transform_keys!(&:to_sym)
+        itsifile_config.transform_keys!(&:to_sym)
+
+        # We'll preload while we load config, if enabled.
+        #
+        middleware_loader = itsifile_config.fetch(:middleware_loader, ->{})
+        default_app_loader = itsifile_config.fetch(:app_loader, DEFAULT_APP)
+        preload = args.fetch(:preload) { itsifile_config.fetch(:preload, false) }
+
+        case preload
+        # If we preload everything, then we'll load middleware and default rack app ahead of time
+        when true
+          preloaded_middleware = middleware_loader.call
+          preloaded_app = default_app_loader.call
+          middleware_loader = ->{ preloaded_middleware }
+          default_app_loader = ->{ preloaded_app }
+        # If we're just preloading a specific gem group, we'll do that here too
+        when Symbol
+          Bundler.require(preload)
+        end
+
         srv_config = {
           workers: args.fetch(:workers) { itsifile_config.fetch(:workers, Etc.nprocessors) },
           worker_memory_limit: args.fetch(:worker_memory_limit) { itsifile_config.fetch(:worker_memory_limit, nil) },
           silence: args.fetch(:silence) { itsifile_config.fetch(:silence, false) },
           shutdown_timeout: args.fetch(:shutdown_timeout) { itsifile_config.fetch(:shutdown_timeout, 5) },
           hooks: itsifile_config.fetch(:hooks, nil),
-          preload: args.fetch(:preload) { itsifile_config.fetch(:preload, false) },
+          preload: !!preload,
           threads: args.fetch(:threads) { itsifile_config.fetch(:threads, 1) },
           script_name: args.fetch(:script_name) { itsifile_config.fetch(:script_name, "") },
           streamable_body: args.fetch(:streamable_body) { itsifile_config.fetch(:streamable_body, false) },
@@ -30,26 +55,22 @@ module Itsi
             itsifile_config.fetch(:oob_gc_responses_threshold, nil)
           end,
           binds: args.fetch(:binds) { itsifile_config.fetch(:binds, ["http://0.0.0.0:3000"]) },
-          middleware_loader: itsifile_config.fetch(:middleware_loader, ->{}),
-          default_app: { "rackup_loader" => itsifile_config.fetch(:rackup_loader, DEFAULT_APP) }
+          middleware_loader: middleware_loader,
+          default_app_loader: default_app_loader,
+          listeners: args.fetch(:listeners) { nil }
         }.transform_keys(&:to_s)
-        puts #{srv_config}
+
         srv_config
       end
 
       # Reloads the entire process
       # using exec, passing in any active file descriptors
       # and previous invocation arguments
-      def self.reload_exec(cli_args, listener_info)
-        require "json"
-        fork_params = { cli_args: cli_args, listener_info: listener_info }.to_json
-
+      def self.reload_exec(listener_info)
         if ENV["BUNDLE_BIN_PATH"]
-          # Launched via "bundle exec", so reapply bundler in your exec call.
-          exec "bundle", "exec", $PROGRAM_NAME, "--reexec", fork_params
+          exec "bundle", "exec", $PROGRAM_NAME, *@argv, "--listeners", listener_info
         else
-          # Launched directly.
-          exec $PROGRAM_NAME, "--reexec", fork_params
+          exec $PROGRAM_NAME, *@argv, "--listeners", listener_info
         end
       end
 
@@ -62,9 +83,18 @@ module Itsi
             "config/#{ITSI_DEFAULT_CONFIG_FILE}"
           end
         # Options simply pass through unless we've specified a config file
-        return unless File.exist?(config_file_path)
+        return unless File.exist?(config_file_path.to_s)
 
         config_file_path
+      end
+
+
+      def self.pid_file_path
+        if Dir.exist?("tmp")
+          File.join("tmp", "itsi.pid")
+        else
+          ".itsi.pid"
+        end
       end
 
       # Write a default config file, if one doesn't exist.

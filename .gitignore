@@ -16,3 +16,4 @@ target/
 .rustls_acme_cache/
 .terraform*
 terraform.tfstate*
+.itsi.pid

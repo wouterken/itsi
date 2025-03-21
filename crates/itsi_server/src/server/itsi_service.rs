@@ -1,15 +1,15 @@
 use super::listener::ListenerInfo;
+use super::middleware_stack::MiddlewareLayer;
 use super::request_job::RequestJob;
 use super::serve_strategy::single_mode::RunningPhase;
 use super::types::HttpRequest;
-use super::{filter_stack::FilterLayer, types::HttpResponse};
+use super::types::HttpResponse;
 use crate::ruby_types::itsi_server::itsi_server_config::ServerParams;
 use either::Either;
 use hyper::service::Service;
 use itsi_error::ItsiError;
 use std::{future::Future, ops::Deref, pin::Pin, sync::Arc};
 use tokio::sync::watch::{self};
-use tracing::info;
 
 #[derive(Clone)]
 pub struct ItsiService {
@@ -45,11 +45,13 @@ impl Service<HttpRequest> for ItsiService {
             let mut req = req;
             let mut resp: Option<HttpResponse> = None;
             let stack = params.middleware.get().unwrap().stack_for(&req);
-            for elm in stack.iter() {
+            let mut depth = 0;
+            for (index, elm) in stack.iter().enumerate() {
                 match elm.before(req, &context).await {
                     Ok(Either::Left(r)) => req = r,
                     Ok(Either::Right(r)) => {
                         resp = Some(r);
+                        depth = index;
                         break;
                     }
                     Err(e) => return Err(e.into()),
@@ -65,7 +67,7 @@ impl Service<HttpRequest> for ItsiService {
                 }
             };
 
-            for elm in stack.iter() {
+            for elm in stack.iter().rev().skip(stack.len() - depth) {
                 resp = elm.after(resp).await;
             }
 

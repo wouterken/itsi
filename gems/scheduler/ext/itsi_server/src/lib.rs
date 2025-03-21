@@ -24,7 +24,7 @@ fn init(ruby: &Ruby) -> Result<()> {
     itsi.define_singleton_method("log_error", function!(log_error, 1))?;
 
     let server = ruby.get_inner(&ITSI_SERVER);
-    server.define_singleton_method("new", function!(ItsiServer::new, 3))?;
+    server.define_singleton_method("new", function!(ItsiServer::new, 2))?;
     server.define_singleton_method("reset_signal_handlers", function!(reset_signal_handlers, 0))?;
     server.define_method("start", method!(ItsiServer::start, 0))?;
     server.define_method("stop", method!(ItsiServer::stop, 0))?;

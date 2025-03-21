@@ -71,9 +71,45 @@ impl ClusterMode {
                 Ok(())
             }
             LifecycleEvent::Restart => {
-                self.server_config.clone().reload(true)?;
-                for worker in self.process_workers.lock().iter() {
-                    worker.reboot(self.clone()).await?;
+                self.server_config.dup_fds()?;
+                self.shutdown().await.ok();
+                self.server_config.reload_exec()?;
+                Ok(())
+            }
+            LifecycleEvent::Reload => {
+                let should_reexec = self.server_config.clone().reload(true)?;
+                if should_reexec {
+                    self.server_config.dup_fds()?;
+                    self.shutdown().await.ok();
+                    self.server_config.reload_exec()?;
+                }
+                let mut workers_to_load = self.server_config.server_params.read().workers;
+                let mut next_workers = Vec::new();
+                for worker in self.process_workers.lock().drain(..) {
+                    if workers_to_load == 0 {
+                        worker.graceful_shutdown(self.clone()).await
+                    } else {
+                        workers_to_load -= 1;
+                        worker.reboot(self.clone()).await?;
+                        next_workers.push(worker);
+                    }
+                }
+                self.process_workers.lock().extend(next_workers);
+                while workers_to_load > 0 {
+                    let mut workers = self.process_workers.lock();
+                    let worker = ProcessWorker {
+                        worker_id: WORKER_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+                        ..Default::default()
+                    };
+                    let worker_clone = worker.clone();
+                    let self_clone = self.clone();
+                    create_ruby_thread(move || {
+                        call_without_gvl(move || {
+                            worker_clone.boot(self_clone).ok();
+                        })
+                    });
+                    workers.push(worker);
+                    workers_to_load -= 1
                 }
                 Ok(())
             }

@@ -31,13 +31,21 @@ pub struct Bind {
     pub tls_config: Option<ItsiTlsAcceptor>,
 }
 
+impl Bind {
+    pub fn listener_address_string(&self) -> String {
+        match &self.address {
+            BindAddress::Ip(ip) => format!("tcp://{}:{}", ip.to_canonical(), self.port.unwrap()),
+            BindAddress::UnixSocket(path) => {
+                format!("unix://{}", path.as_path().to_str().unwrap())
+            }
+        }
+    }
+}
+
 impl std::fmt::Debug for Bind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.address {
             BindAddress::Ip(ip) => match self.protocol {
-                BindProtocol::Unix | BindProtocol::Unixs => {
-                    write!(f, "{}://{}", self.protocol, ip)
-                }
                 BindProtocol::Https if self.port == Some(443) => {
                     write!(f, "{}://{}", self.protocol, ip)
                 }

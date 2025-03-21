@@ -2,10 +2,12 @@
 # frozen_string_literal: true
 
 require "itsi/server"
-require "etc"
 require "optparse"
 
+Itsi::Server::Config.save_argv!
+
 options = {}
+
 OptionParser.new do |opts|
   opts.banner = "Usage: itsi [options]"
 
@@ -106,11 +108,20 @@ OptionParser.new do |opts|
   opts.on("--reexec PARAMS", String, "Reexec the server with the given parameters") do |params|
     options[:reexec] = params
   end
+
+  opts.on("--listeners LISTENERS", String, "Listeners for reexec") do |listeners|
+    options[:listeners] = listeners
+  end
 end.parse!
 
-if ARGV.pop == "init"
+case (command = ARGV.pop)
+when "init"
   Itsi::Server::Config.write_default
   exit(0)
+when "reload", "down", "up", "add_worker", "remove_worker", "status"
+  Itsi::Server.send(command)
+when nil, "start", "serve"
+  Itsi::Server.start(options)
+else
+  puts "Invalid command #{command}"
 end
-
-Itsi::Server.start(options, Itsi::Server::Config.config_file_path, options[:reexec])

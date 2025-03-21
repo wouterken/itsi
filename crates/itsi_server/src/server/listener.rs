@@ -7,7 +7,7 @@ use itsi_error::{ItsiError, Result};
 use itsi_tracing::info;
 use socket2::{Domain, Protocol, Socket, Type};
 use std::net::{IpAddr, SocketAddr, TcpListener};
-use std::os::fd::AsRawFd;
+use std::os::fd::{AsRawFd, FromRawFd, RawFd};
 use std::sync::Arc;
 use std::{os::unix::net::UnixListener, path::PathBuf};
 use tokio::net::TcpListener as TokioTcpListener;
@@ -264,37 +264,55 @@ impl Listener {
     }
 
     /// Handover information when using exec to hand over the listener to a replacement process.
-    pub fn handover(&self) -> Result<(i32, String)> {
+    pub fn handover(&self) -> Result<(String, i32)> {
         match self {
             Listener::Tcp(listener) => {
                 let addr = listener.local_addr()?;
                 Ok((
+                    format!("tcp://{}:{}", addr.ip().to_canonical(), addr.port()),
                     listener.as_raw_fd(),
-                    format!("tcp://{}", addr.ip().to_canonical()),
                 ))
             }
             Listener::TcpTls((listener, _)) => {
                 let addr = listener.local_addr()?;
                 Ok((
+                    format!("tcp://{}:{}", addr.ip().to_canonical(), addr.port()),
                     listener.as_raw_fd(),
-                    format!("tcp://{}", addr.ip().to_canonical()),
                 ))
             }
             Listener::Unix(listener) => {
                 let addr = listener.local_addr()?;
                 Ok((
-                    listener.as_raw_fd(),
                     format!("unix://{}", addr.as_pathname().unwrap().to_str().unwrap()),
+                    listener.as_raw_fd(),
                 ))
             }
             Listener::UnixTls((listener, _)) => {
                 let addr = listener.local_addr()?;
                 Ok((
-                    listener.as_raw_fd(),
                     format!("unix://{}", addr.as_pathname().unwrap().to_str().unwrap()),
+                    listener.as_raw_fd(),
                 ))
             }
         }
+    }
+
+    pub fn inherit_fd(bind: Bind, fd: RawFd) -> Result<Self> {
+        let bound = match bind.address {
+            BindAddress::Ip(_) => match bind.protocol {
+                BindProtocol::Http => Listener::Tcp(revive_tcp_socket(fd)?),
+                BindProtocol::Https => {
+                    let tcp_listener = revive_tcp_socket(fd)?;
+                    Listener::TcpTls((tcp_listener, bind.tls_config.unwrap()))
+                }
+                _ => unreachable!(),
+            },
+            BindAddress::UnixSocket(_) => match bind.tls_config {
+                Some(tls_config) => Listener::UnixTls((revive_unix_socket(fd)?, tls_config)),
+                None => Listener::Unix(revive_unix_socket(fd)?),
+            },
+        };
+        Ok(bound)
     }
 }
 
@@ -320,6 +338,27 @@ impl TryFrom<Bind> for Listener {
     }
 }
 
+fn revive_tcp_socket(fd: RawFd) -> Result<TcpListener> {
+    let socket = unsafe { Socket::from_raw_fd(fd) };
+    socket.set_reuse_port(true).ok();
+    socket.set_reuse_address(true).ok();
+    socket.set_nonblocking(true).ok();
+    socket.set_nodelay(true).ok();
+    socket.set_recv_buffer_size(262_144).ok();
+    socket.set_cloexec(true)?;
+    socket.listen(1024)?;
+    Ok(socket.into())
+}
+
+fn revive_unix_socket(fd: RawFd) -> Result<UnixListener> {
+    let socket = unsafe { Socket::from_raw_fd(fd) };
+    socket.set_nonblocking(true).ok();
+    socket.listen(1024)?;
+    socket.set_cloexec(true)?;
+
+    Ok(socket.into())
+}
+
 fn connect_tcp_socket(addr: IpAddr, port: u16) -> Result<TcpListener> {
     let domain = match addr {
         IpAddr::V4(_) => Domain::IPV4,
@@ -332,7 +371,6 @@ fn connect_tcp_socket(addr: IpAddr, port: u16) -> Result<TcpListener> {
     socket.set_nonblocking(true).ok();
     socket.set_nodelay(true).ok();
     socket.set_recv_buffer_size(262_144).ok();
-    socket.set_cloexec(false)?;
     info!("Binding to {:?}", socket_address);
     socket.bind(&socket_address.into())?;
     socket.listen(1024)?;
@@ -349,7 +387,6 @@ fn connect_unix_socket(path: &PathBuf) -> Result<UnixListener> {
     info!("Binding to {:?}", path);
     socket.bind(&socket_address)?;
     socket.listen(1024)?;
-    socket.set_cloexec(false)?;
 
     Ok(socket.into())
 }

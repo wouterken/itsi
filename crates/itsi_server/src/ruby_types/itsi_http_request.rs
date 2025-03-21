@@ -3,21 +3,27 @@ use futures::StreamExt;
 use http::{request::Parts, Response, StatusCode, Version};
 use http_body_util::{combinators::BoxBody, BodyExt, Empty};
 use itsi_error::from::CLIENT_CONNECTION_CLOSED;
-use itsi_rb_helpers::{funcall_no_ret, print_rb_backtrace, HeapVal};
+use itsi_rb_helpers::{print_rb_backtrace, HeapValue};
 use itsi_tracing::{debug, error};
 use magnus::{
+    block::Proc,
     error::{ErrorType, Result as MagnusResult},
-    Error,
+    Error, Float, IntoValue, RHash,
 };
 use magnus::{
     value::{LazyId, ReprValue},
-    RClass, Ruby, Value,
+    Ruby, Value,
 };
+use rb_sys::Qnil;
+use serde_magnus::{deserialize, serialize};
 use std::{fmt, io::Write, sync::Arc, time::Instant};
 use tokio::sync::mpsc::{self};
 
 use super::{
-    itsi_body_proxy::{big_bytes::BigBytes, ItsiBody, ItsiBodyProxy},
+    itsi_body_proxy::{
+        big_bytes::{BigBytes, BigBytesReadResult},
+        ItsiBody, ItsiBodyProxy,
+    },
     itsi_http_response::ItsiHttpResponse,
 };
 use crate::server::{
@@ -26,7 +32,6 @@ use crate::server::{
     request_job::RequestJob,
     types::{HttpRequest, HttpResponse},
 };
-static ID_CALL: LazyId = LazyId::new("call");
 static ID_MESSAGE: LazyId = LazyId::new("message");
 
 #[derive(Debug)]
@@ -88,14 +93,9 @@ impl ItsiHttpRequest {
         self.content_type_str() == "text/html"
     }
 
-    pub fn process(
-        self,
-        ruby: &Ruby,
-        server: RClass,
-        app: Arc<HeapVal>,
-    ) -> magnus::error::Result<()> {
+    pub fn process(self, ruby: &Ruby, app: Arc<HeapValue<Proc>>) -> magnus::error::Result<()> {
         let response = self.response.clone();
-        let result = funcall_no_ret(server, *ID_CALL, (app.as_value(), self));
+        let result = app.call::<_, Value>((self,));
         if let Err(err) = result {
             Self::internal_error(ruby, response, err);
         }
@@ -119,7 +119,7 @@ impl ItsiHttpRequest {
     }
 
     pub(crate) async fn process_request(
-        app: Arc<HeapVal>,
+        app: Arc<HeapValue<Proc>>,
         hyper_request: HttpRequest,
         context: &ItsiService,
     ) -> itsi_error::Result<HttpResponse> {

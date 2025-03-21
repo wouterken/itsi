@@ -36,7 +36,6 @@ Gem::Specification.new do |spec|
 
   # Uncomment to register a new dependency of your gem
   # spec.add_dependency "example-gem", "~> 1.0"
-  spec.add_dependency "etc"
   spec.add_dependency "rack", ">= 1.6"
   spec.add_dependency "rb_sys", "~> 0.9.91"
   # For more information and examples about making a new gem, check out our

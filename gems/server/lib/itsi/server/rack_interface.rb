@@ -8,6 +8,15 @@ module Itsi
         respond request, app.call(request.to_rack_env)
       end
 
+      def self.for(app)
+        if app.kind_of?(String)
+          app = Rack::Builder.parse_file(app).first
+        end
+        ->(request){
+          Server.respond(request, app.call(request.to_rack_env))
+        }
+      end
+
       # Itsi responses are asynchronous and can be streamed.
       # Response chunks are sent using response.send_frame
       # and the response is finished using response.close_write.

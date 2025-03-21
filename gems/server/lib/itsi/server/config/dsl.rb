@@ -2,27 +2,31 @@ module Itsi
   class Server
     module Config
       class DSL
-        attr_reader :parent, :children, :filters, :endpoint_defs, :controller_class
+        attr_reader :parent, :children, :middleware, :endpoint_defs, :controller_class, :routes, :methods, :protocols, :hosts, :extensions
 
-        def self.evaluate(filepath)
+        def self.evaluate(filepath=Itsi::Server::Config.config_file_path)
           new do
             code = IO.read(filepath)
             instance_eval(code, filepath, 1)
           end.to_options
         end
 
-        def initialize(parent = nil, route_specs = [], &block)
+        def initialize(parent = nil, routes: [], methods:[], protocols:[], hosts:[], extensions:[], controller: self,  &block)
           @parent           = parent
           @children         = []
-          @filters          = {}
-          @endpoint_defs    = [] # Each is [subpath, *endpoint_args]
+          @middleware       = {}
           @controller_class = nil
           @options          = {}
+          @controller       = controller
           # We'll store our array of route specs (strings or a single Regexp).
-          @route_specs = Array(route_specs).flatten
+          @routes = Array(routes).flatten
+          @methods = methods.map{|s| s.kind_of?(Regexp) ? s : s.to_s}
+          @protocols = protocols.map{|s| s.kind_of?(Regexp) ? s : s.to_s}
+          @hosts = hosts.map{|s| s.kind_of?(Regexp) ? s : s.to_s}
+          @extensions = extensions.map{|s| s.kind_of?(Regexp) ? s : s.to_s}
 
 
-          validate_path_specs!(@route_specs)
+          validate_path_specs!(@routes)
           instance_exec(&block)
         end
 
@@ -65,30 +69,75 @@ module Itsi
           end
         end
 
-        def run(rack_app)
+        def get(route, app_proc=nil, &blk)
+          endpoint(route, :get, app_proc, &blk)
+        end
 
-          if @options[:rackup_loader]
-            raise "Rack App has already been set. You can use only one of `run` and `rackup_file` per location"
+        def post(route, app_proc=nil, &blk)
+          endpoint(route, :post, app_proc, &blk)
+        end
+
+        def put(route, app_proc=nil, &blk)
+          endpoint(route, :put, app_proc, &blk)
+        end
+
+        def delete(route, app_proc=nil, &blk)
+          endpoint(route, :delete, app_proc, &blk)
+        end
+
+        def patch(route, app_proc=nil, &blk)
+          endpoint(route, :patch, app_proc, &blk)
+        end
+
+        def options(route, app_proc=nil, &blk)
+          endpoint(route, :options, app_proc, &blk)
+        end
+
+        def endpoint(route, method, app_proc=nil, &blk)
+          raise "`endpoint` must be set inside a location block" if @parent.nil?
+
+          if blk && app_proc
+            raise "You can't use both a block and an explicit handler in the same endpoint"
+          end
+          if app_proc.nil? && blk.nil?
+            raise "You must provide either a block or an explicit handler for the endpoint"
+          end
+
+
+          if app_proc.kind_of?(Symbol)
+            app_proc = @controller.method(app_proc).to_proc
+          end
+
+          app_proc ||= blk
+
+          location(route, methods: [method]) do
+            @middleware[:app] = { app_proc: app_proc }
+          end
+        end
+
+        def run(app)
+          if @options[:app_loader]
+            raise "App has already been set. You can use only one of `run` and `rackup_file` per location"
           end
 
           if @parent.nil?
-            @options[:rackup_loader] = -> { rack_app }
+            @options[:app_loader] = -> { { "app_proc" => Itsi::Server::RackInterface.for(app) } }
           else
-            @filters[:rack_app] = { rackup_loader: -> { rack_app } }
+            @middleware[:app] = { app_proc: Itsi::Server::RackInterface.for(app) }
           end
         end
 
         def rackup_file(rackup_file)
-          if @options[:rackup_loader]
-            raise "Rack App has already been set. You can use only one of `run` and `rackup_file` per location"
+          if @options[:app_loader]
+            raise "App has already been set. You can use only one of `run` and `rackup_file` per location"
           end
 
           raise "Rackup file #{rackup_file} doesn't exist" unless File.exist?(file_path)
 
           if @parent.nil?
-            @options[:rackup_loader] = -> { Rack::Builder.parse_file(file_path).first }
+            @options[:app_loader] = -> { { "app_proc" => Itsi::Server::RackInterface.for(rackup_file) } }
           else
-            @filters[:rack_app] = { rackup_loader: -> { Rack::Builder.parse_file(file_path).first }}
+            @middleware[:app] = { app_proc: Itsi::Server::RackInterface.for(rackup_file) }
           end
         end
 
@@ -156,107 +205,101 @@ module Itsi
           @options[:stream_body] = !!stream_body
         end
 
-        def location(*route_specs, &block)
+        def location(*routes, methods: [], protocols: [], hosts: [], extensions: [],  &block)
           if @parent.nil?
             @options[:middleware_loader] = -> do
-              route_specs = route_specs.flatten
-              child = DSL.new(self, route_specs, &block)
+              routes = routes.flatten
+              child = DSL.new(self, routes: routes, methods: methods, protocols: protocols, hosts: hosts, extensions: extensions, controller: @controller, &block)
               @children << child
               flatten_routes
             end
           else
-            route_specs = route_specs.flatten
-            child = DSL.new(self, route_specs, &block)
+            routes = routes.flatten
+            child = DSL.new(self, routes: routes,
+              methods: methods | @parent.methods,
+              protocols: protocols | @parent.protocols,
+              hosts: hosts | @parent.hosts,
+              extensions: extensions | @parent.extensions,
+              controller: @controller,
+              &block)
             @children << child
           end
         end
 
-        # define endpoints
-        def endpoint(subpath, *args)
-          raise "`endpoint` must be set inside a location block" if @parent.nil?
-
-          @endpoint_defs << [subpath, *args]
-        end
-
-        def controller(klass)
+        def controller(controller)
           raise "`controller` must be set inside a location block" if @parent.nil?
 
-          @controller_class = klass
+          @controller = controller
         end
 
         def auth_basic(**args)
           raise "`auth_basic` must be set inside a location block" if @parent.nil?
 
-          @filters[:auth_basic] = args
+          @middleware[:auth_basic] = args
         end
 
         def redirect(**args)
           raise "`redirect` must be set inside a location block" if @parent.nil?
 
-          @filters[:redirect] = args
+          @middleware[:redirect] = args
         end
 
         def auth_jwt(**args)
           raise "`auth_jwt` must be set inside a location block" if @parent.nil?
 
-          @filters[:auth_jwt] = args
+          @middleware[:auth_jwt] = args
         end
 
         def auth_api_key(**args)
           raise "`auth_api_key` must be set inside a location block" if @parent.nil?
 
-          @filters[:auth_api_key] = args
+          @middleware[:auth_api_key] = args
         end
 
         def compress(**args)
           raise "`compress` must be set inside a location block" if @parent.nil?
 
-          @filters[:compress] = args
+          @middleware[:compress] = args
         end
 
         def rate_limit(name, **args)
           raise "`rate_limit` must be set inside a location block" if @parent.nil?
 
-          @filters[:rate_limit] = { name: name }.merge(args)
+          @middleware[:rate_limit] = { name: name }.merge(args)
         end
 
         def cors(**args)
           raise "`cors` must be set inside a location block" if @parent.nil?
 
-          @filters[:cors] = args
+          @middleware[:cors] = args
         end
 
         def file_server(**args)
           raise "`file_server` must be set inside a location block" if @parent.nil?
 
-          @filters[:file_server] = args
+          @middleware[:file_server] = args
         end
 
         def flatten_routes
           child_routes = @children.flat_map(&:flatten_routes)
           base_expansions = combined_paths_from_parent
-          endpoint_routes = @endpoint_defs.map do |(endpoint_subpath, *endpoint_args)|
-            ep_expansions = expand_single_subpath(endpoint_subpath)
-            final_regex_str = or_pattern_for(cartesian_combine(base_expansions, ep_expansions))
 
-            {
-              route: Regexp.new("^#{final_regex_str}$"),
-              filters: effective_filters_with_endpoint(endpoint_args)
-            }
-          end
 
-          location_route = unless @route_specs.empty?
+          location_route = unless @routes.empty?
                              pattern_str = or_pattern_for(base_expansions) # the expansions themselves
                              {
                                route: Regexp.new("^#{pattern_str}$"),
-                               filters: effective_filters
+                               methods: @methods.any? ? @methods : nil,
+                               protocols: @protocols.any? ? @protocols : nil,
+                               hosts: @hosts.any? ? @hosts : nil,
+                               extensions: @extensions.any? ? @extensions : nil,
+                               middleware: effective_middleware
                              }
                            end
 
           result = []
           result.concat(child_routes)
-          result.concat(endpoint_routes)
-          result << location_route if location_route
+          result << deep_stringify_keys(location_route) if location_route
           result
         end
 
@@ -267,22 +310,23 @@ module Itsi
           raise ArgumentError, "Cannot have multiple raw Regex route specs in a single location."
         end
 
+
         # Called by flatten_routes to get expansions from the parent's expansions combined with mine
         def combined_paths_from_parent
           if parent
             pex = parent.combined_paths_from_parent_for_children
-            cartesian_combine(pex, expansions_for(@route_specs))
+            cartesian_combine(pex, expansions_for(@routes))
           else
-            expansions_for(@route_specs)
+            expansions_for(@routes)
           end
         end
 
         def combined_paths_from_parent_for_children
           if parent
             pex = parent.combined_paths_from_parent_for_children
-            cartesian_combine(pex, expansions_for(@route_specs))
+            cartesian_combine(pex, expansions_for(@routes))
           else
-            expansions_for(@route_specs)
+            expansions_for(@routes)
           end
         end
 
@@ -370,28 +414,25 @@ module Itsi
           converted.join("/")
         end
 
-        def effective_filters
-          # gather from root -> self, overriding duplicates
-          merged = merge_ancestor_filters
-          # turn into array
-          merged.map { |k, v| { type: k, parameters: deep_stringify_keys(v) } }
+        def effective_middleware
+          merged = merge_ancestor_middleware
+          merged.map { |k, v| { type: k.to_s, parameters: v } }
         end
 
-        def effective_filters_with_endpoint(endpoint_args)
-          arr = effective_filters
-          # endpoint filter last
-          ep_filter_params = endpoint_args.dup
-          ep_filter_params << @controller_class if @controller_class
-          arr << { type: :endpoint, parameters: deep_stringify_keys(ep_filter_params) }
-          arr
+
+        def deep_stringify_keys(obj)
+          case obj
+          when Hash
+            obj.transform_keys!(&:to_s)
+            obj.transform_values! { |v| deep_stringify_keys(v) }
+          when Array
+            obj.map { |v| deep_stringify_keys(v) }
+          else
+            obj
+          end
         end
 
-        def deep_stringify_keys(hash)
-          hash.transform_keys!(&:to_s)
-          hash.transform_values! { |v| v.is_a?(Hash) ? deep_stringify_keys(v) : v }
-        end
-
-        def merge_ancestor_filters
+        def merge_ancestor_middleware
           chain = []
           node = self
           while node
@@ -402,7 +443,7 @@ module Itsi
 
           merged = {}
           chain.each do |n|
-            n.filters.each do |k, v|
+            n.middleware.each do |k, v|
               merged[k] = v
             end
           end

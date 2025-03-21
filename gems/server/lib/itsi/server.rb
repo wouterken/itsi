@@ -19,25 +19,66 @@ module Itsi
         !!@running
       end
 
-      def start_in_background_thread(*args)
-        start(*args, background: true)
+      def start_in_background_thread(cli_params, itsi_file=Itsi::Server::Config.config_file_path)
+        start(cli_params, itsi_file, background: true)
       end
 
-      def start(*args, background: false)
-        new(*args).tap do |server|
-          previous_handler = Signal.trap("INT", "DEFAULT")
+      def start(cli_params, itsi_file=Itsi::Server::Config.config_file_path, background: false)
+        new(cli_params, itsi_file).tap do |server|
+          previous_handler = Signal.trap(:INT, :DEFAULT)
           @running = true
-          if background
-            Thread.new do
-              server.start
-              @running = false
-              Signal.trap("INT", previous_handler)
-            end
-          else
+          run = -> do
+            write_pid
             server.start
             @running = false
-            Signal.trap("INT", previous_handler)
+            Signal.trap(:INT, previous_handler)
           end
+          background ? Thread.new(&run) : run[]
+        end
+      end
+
+      def write_pid
+        File.write(Itsi::Server::Config.pid_file_path, Process.pid)
+      end
+
+      def get_pid
+        pid = File.read(Itsi::Server::Config.pid_file_path).to_i
+        if Process.kill(0, pid)
+          pid
+        else
+          nil
+        end
+      end
+
+      def reload
+        if pid = get_pid
+          Process.kill(:USR1, pid)
+        end
+      end
+
+      def down
+        puts :down
+      end
+
+      def up
+        puts :up
+      end
+
+      def add_worker
+        if pid = get_pid
+          Process.kill(:TTIN, pid)
+        end
+      end
+
+      def remove_worker
+        if pid = get_pid
+          Process.kill(:TTOU, pid)
+        end
+      end
+
+      def status
+        if pid = get_pid
+          # Write to master socket and get results
         end
       end
     end

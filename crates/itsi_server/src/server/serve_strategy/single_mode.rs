@@ -231,11 +231,25 @@ impl SingleMode {
         }
     }
 
-    pub fn restart(&self) -> Result<()> {
-        self.server_config.clone().reload(false)?;
+    /// Attempts to reload the config "live"
+    /// Not that when running in single mode this will not unload
+    /// old code. If you need a clean restart, use the `restart` (SIGUSR2) method instead
+    pub fn reload(&self) -> Result<()> {
+        let should_reexec = self.server_config.clone().reload(false)?;
+        if should_reexec {
+            self.server_config.dup_fds()?;
+            self.server_config.reload_exec()?;
+        }
         self.restart_requested.store(true, Ordering::SeqCst);
         self.stop()?;
         self.server_config.server_params.read().preload_ruby()?;
+        Ok(())
+    }
+
+    /// Restart the server while keeping connections open.
+    pub fn restart(&self) -> Result<()> {
+        self.server_config.dup_fds()?;
+        self.server_config.reload_exec()?;
         Ok(())
     }
 
@@ -249,6 +263,9 @@ impl SingleMode {
         match lifecycle_event {
             LifecycleEvent::Restart => {
                 self.restart()?;
+            }
+            LifecycleEvent::Reload => {
+                self.reload()?;
             }
             LifecycleEvent::Shutdown => {
                 //1. Stop accepting new connections.

@@ -353,7 +353,6 @@ impl ThreadWorker {
         terminated: Arc<AtomicBool>,
     ) {
         let ruby = Ruby::get().unwrap();
-        let server_class = ruby.get_inner(&ITSI_SERVER);
         let mut idle_counter = 0;
         call_without_gvl(|| loop {
             if receiver.is_empty() {
@@ -370,7 +369,7 @@ impl ThreadWorker {
                         break;
                     }
                     call_with_gvl(|_ruby| {
-                        request.process(&ruby, server_class, app).ok();
+                        request.process(&ruby, app).ok();
                     })
                 }
                 Ok(RequestJob::Shutdown) => {
