@@ -11,7 +11,6 @@ use hyper::service::Service;
 use itsi_error::ItsiError;
 use parking_lot::RwLock;
 use regex::Regex;
-use std::any::Any;
 use std::collections::HashMap;
 use std::{future::Future, ops::Deref, pin::Pin, sync::Arc};
 use tokio::sync::watch::{self};

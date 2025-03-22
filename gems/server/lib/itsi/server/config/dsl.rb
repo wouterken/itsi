@@ -118,10 +118,12 @@ module Itsi
             raise "App has already been set. You can use only one of `run` and `rackup_file` per location"
           end
 
+          app = Itsi::Server::RackInterface.for(app)
+
           if @parent.nil?
-            @options[:app_loader] = -> { { "app_proc" => Itsi::Server::RackInterface.for(app) } }
+            @options[:app_loader] = -> { { "app_proc" => ->(request){ Server.respond request, app.call(request.to_rack_env) } } }
           else
-            @middleware[:app] = { app_proc: Itsi::Server::RackInterface.for(app) }
+            @middleware[:app] = { app_proc: ->(request){ Server.respond request, app.call(request.to_rack_env) } }
           end
         end
 
@@ -132,10 +134,11 @@ module Itsi
 
           raise "Rackup file #{rackup_file} doesn't exist" unless File.exist?(rackup_file)
 
+          app = Itsi::Server::RackInterface.for(app)
           if @parent.nil?
-            @options[:app_loader] = -> { { "app_proc" => Itsi::Server::RackInterface.for(rackup_file) } }
+            @options[:app_loader] = -> { { "app_proc" => ->(request){ Server.respond request, app.call(request.to_rack_env) } } }
           else
-            @middleware[:app] = { app_proc: Itsi::Server::RackInterface.for(rackup_file) }
+            @middleware[:app] = { app_proc: ->(request){ Server.respond request, app.call(request.to_rack_env) } }
           end
         end
 

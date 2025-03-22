@@ -59,7 +59,7 @@ pub trait MiddlewareLayer: Sized + Send + Sync + 'static {
     }
 
     /// The “after” hook. By default, it passes through the response.
-    async fn after(&self, resp: HttpResponse, context: &mut RequestContext) -> HttpResponse {
+    async fn after(&self, resp: HttpResponse, _context: &mut RequestContext) -> HttpResponse {
         resp
     }
 }

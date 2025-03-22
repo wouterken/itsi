@@ -65,7 +65,7 @@ impl SingleMode {
     }
 
     pub fn build_runtime(&self) -> Runtime {
-        let mut builder: RuntimeBuilder = RuntimeBuilder::new_current_thread();
+        let mut builder: RuntimeBuilder = RuntimeBuilder::new_multi_thread();
         builder
             .thread_name("itsi-server-accept-loop")
             .thread_stack_size(3 * 1024 * 1024)

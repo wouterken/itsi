@@ -1,4 +1,7 @@
-use std::{collections::HashMap, convert::Infallible, time::Duration};
+use std::{
+    collections::HashMap, convert::Infallible, error::Error, net::SocketAddr, sync::Arc,
+    time::Duration,
+};
 
 use crate::server::{
     itsi_service::RequestContext,
@@ -15,7 +18,8 @@ use http_body_util::{combinators::BoxBody, BodyExt, StreamBody};
 use hyper::body::Frame;
 use magnus::error::Result;
 use rand::seq::IndexedRandom;
-use reqwest::{Body, Client};
+use reqwest::{dns::Resolve, Body, Client};
+use rustls::{ClientConfig, RootCertStore};
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -44,6 +48,40 @@ impl ProxiedHeader {
     }
 }
 
+pub struct Resolver {
+    records: HashMap<String, Vec<SocketAddr>>,
+}
+
+impl Resolver {
+    /// Create a new Resolver with a pre-defined mapping.
+    pub fn new(records: HashMap<String, Vec<SocketAddr>>) -> Self {
+        Resolver { records }
+    }
+}
+
+impl Resolve for Resolver {
+    fn resolve(&self, name: reqwest::dns::Name) -> reqwest::dns::Resolving {
+        // Convert the provided Name to a String for lookup.
+        let hostname = name.as_str().to_owned();
+        // Clone the stored addresses for this hostname, if any.
+        let addresses = self.records.get(&hostname).cloned();
+        // Create an async block to return the addresses as an iterator.
+        let fut = async move {
+            if let Some(addrs) = addresses {
+                // Return the addresses as an iterator.
+                Ok(Box::new(addrs.into_iter()) as Box<dyn Iterator<Item = SocketAddr> + Send>)
+            } else {
+                // Return an error if the hostname isn't found.
+                Err(Box::<dyn Error + Send + Sync>::from(format!(
+                    "Hostname {} not found in custom resolver",
+                    hostname
+                )))
+            }
+        };
+        Box::pin(fut)
+    }
+}
+
 #[async_trait]
 impl MiddlewareLayer for Proxy {
     async fn before(
@@ -64,6 +102,7 @@ impl MiddlewareLayer for Proxy {
             .timeout(Duration::from_secs(self.timeout))
             .danger_accept_invalid_certs(!self.verify_ssl)
             .danger_accept_invalid_hostnames(!self.verify_ssl)
+            .dns_resolver(Arc::new(Resolver::new(HashMap::new())))
             .tls_sni(self.tls_sni)
             .build()
             .map_err(|e| {

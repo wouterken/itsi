@@ -1,5 +1,5 @@
 use crate::server::{
-    itsi_service::{ItsiService, RequestContext},
+    itsi_service::RequestContext,
     types::{HttpRequest, HttpResponse, RequestExt},
 };
 

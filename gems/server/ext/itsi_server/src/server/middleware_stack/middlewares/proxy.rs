@@ -1,4 +1,7 @@
-use std::{collections::HashMap, convert::Infallible, time::Duration};
+use std::{
+    collections::HashMap, convert::Infallible, error::Error, net::SocketAddr, sync::Arc,
+    time::Duration,
+};
 
 use crate::server::{
     itsi_service::RequestContext,
@@ -8,22 +11,17 @@ use crate::server::{
 use super::{string_rewrite::StringRewrite, FromValue, MiddlewareLayer};
 
 use async_trait::async_trait;
-use bytes::Bytes;
 use either::Either;
 use futures::TryStreamExt;
 use http::Response;
-use http_body_util::{combinators::BoxBody, BodyExt, Empty, StreamBody};
+use http_body_util::{combinators::BoxBody, BodyExt, StreamBody};
 use hyper::body::Frame;
 use magnus::error::Result;
 use rand::seq::IndexedRandom;
-use reqwest::{Body, Client};
+use reqwest::{dns::Resolve, Body, Client};
+use rustls::{ClientConfig, RootCertStore};
 use serde::Deserialize;
-use tracing::info;
 
-/// A simple API key filter.
-/// The API key can be given inside the header or a query string
-/// Keys are validated against a list of allowed key values (Changing these requires a restart)
-///
 #[derive(Debug, Clone, Deserialize)]
 pub struct Proxy {
     pub to: Vec<StringRewrite>,
@@ -45,8 +43,42 @@ impl ProxiedHeader {
     pub fn to_string(&self, req: &HttpRequest, context: &RequestContext) -> String {
         match self {
             ProxiedHeader::String(value) => value.clone(),
-            ProxiedHeader::StringRewrite(rewrite) => rewrite.rewrite(&req, context),
+            ProxiedHeader::StringRewrite(rewrite) => rewrite.rewrite(req, context),
         }
+    }
+}
+
+pub struct Resolver {
+    records: HashMap<String, Vec<SocketAddr>>,
+}
+
+impl Resolver {
+    /// Create a new Resolver with a pre-defined mapping.
+    pub fn new(records: HashMap<String, Vec<SocketAddr>>) -> Self {
+        Resolver { records }
+    }
+}
+
+impl Resolve for Resolver {
+    fn resolve(&self, name: reqwest::dns::Name) -> reqwest::dns::Resolving {
+        // Convert the provided Name to a String for lookup.
+        let hostname = name.as_str().to_owned();
+        // Clone the stored addresses for this hostname, if any.
+        let addresses = self.records.get(&hostname).cloned();
+        // Create an async block to return the addresses as an iterator.
+        let fut = async move {
+            if let Some(addrs) = addresses {
+                // Return the addresses as an iterator.
+                Ok(Box::new(addrs.into_iter()) as Box<dyn Iterator<Item = SocketAddr> + Send>)
+            } else {
+                // Return an error if the hostname isn't found.
+                Err(Box::<dyn Error + Send + Sync>::from(format!(
+                    "Hostname {} not found in custom resolver",
+                    hostname
+                )))
+            }
+        };
+        Box::pin(fut)
     }
 }
 
@@ -70,6 +102,7 @@ impl MiddlewareLayer for Proxy {
             .timeout(Duration::from_secs(self.timeout))
             .danger_accept_invalid_certs(!self.verify_ssl)
             .danger_accept_invalid_hostnames(!self.verify_ssl)
+            .dns_resolver(Arc::new(Resolver::new(HashMap::new())))
             .tls_sni(self.tls_sni)
             .build()
             .map_err(|e| {

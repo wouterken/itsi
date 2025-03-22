@@ -13,7 +13,7 @@ pub struct StringRewrite {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-enum Segment {
+pub enum Segment {
     Literal(String),
     Placeholder(String),
 }
