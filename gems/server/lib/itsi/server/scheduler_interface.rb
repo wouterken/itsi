@@ -13,7 +13,7 @@ module Itsi
       # each request is wrapped in a Fiber.
       def schedule(app, request)
         Fiber.schedule do
-          call(app, request)
+          app.call(request)
         end
       end
     end

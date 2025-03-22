@@ -202,8 +202,8 @@ impl ThreadWorker {
                 let mut idle_counter = 0;
                 if let Some(v) = leader_clone.lock().take() {
                     match v {
-                        RequestJob::ProcessRequest(itsi_request, app) => {
-                            batch.push(RequestJob::ProcessRequest(itsi_request, app))
+                        RequestJob::ProcessRequest(itsi_request, app_proc) => {
+                            batch.push(RequestJob::ProcessRequest(itsi_request, app_proc))
                         }
                         RequestJob::Shutdown => {
                             waker_sender.send(TerminateWakerSignal(true)).unwrap();
@@ -222,11 +222,12 @@ impl ThreadWorker {
                 let shutdown_requested = call_with_gvl(|_| {
                     for req in batch.drain(..) {
                         match req {
-                            RequestJob::ProcessRequest(request, app) => {
+                            RequestJob::ProcessRequest(request, app_proc) => {
                                 let response = request.response.clone();
-                                if let Err(err) = server
-                                    .funcall::<_, _, Value>(*ID_SCHEDULE, (app.as_value(), request))
-                                {
+                                if let Err(err) = server.funcall::<_, _, Value>(
+                                    *ID_SCHEDULE,
+                                    (app_proc.as_value(), request),
+                                ) {
                                     ItsiHttpRequest::internal_error(ruby, response, err)
                                 }
                             }
@@ -364,12 +365,12 @@ impl ThreadWorker {
                 };
             }
             match receiver.recv_blocking() {
-                Ok(RequestJob::ProcessRequest(request, app)) => {
+                Ok(RequestJob::ProcessRequest(request, app_proc)) => {
                     if terminated.load(Ordering::Relaxed) {
                         break;
                     }
                     call_with_gvl(|_ruby| {
-                        request.process(&ruby, app).ok();
+                        request.process(&ruby, app_proc).ok();
                     })
                 }
                 Ok(RequestJob::Shutdown) => {

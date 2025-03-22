@@ -9,8 +9,13 @@ module Itsi
       end
 
       def self.for(app)
+        require 'rack'
         if app.kind_of?(String)
-          app = Rack::Builder.parse_file(app).first
+          dir = File.expand_path(File.dirname(app))
+          Dir.chdir(dir) do
+            loaded_app = ::Rack::Builder.parse_file(app)
+            app = loaded_app.kind_of?(Array) ? loaded_app.first : loaded_app
+          end
         end
         ->(request){
           Server.respond(request, app.call(request.to_rack_env))

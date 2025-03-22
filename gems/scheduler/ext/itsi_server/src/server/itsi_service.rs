@@ -1,4 +1,5 @@
 use super::listener::ListenerInfo;
+use super::middleware_stack::CompressionAlgorithm;
 use super::middleware_stack::MiddlewareLayer;
 use super::request_job::RequestJob;
 use super::serve_strategy::single_mode::RunningPhase;
@@ -8,6 +9,10 @@ use crate::ruby_types::itsi_server::itsi_server_config::ServerParams;
 use either::Either;
 use hyper::service::Service;
 use itsi_error::ItsiError;
+use parking_lot::RwLock;
+use regex::Regex;
+use std::any::Any;
+use std::collections::HashMap;
 use std::{future::Future, ops::Deref, pin::Pin, sync::Arc};
 use tokio::sync::watch::{self};
 
@@ -32,6 +37,58 @@ pub struct IstiServiceInner {
     pub shutdown_channel: watch::Receiver<RunningPhase>,
 }
 
+#[derive(Clone)]
+pub struct RequestContext {
+    inner: Arc<RequestContextInner>,
+}
+
+impl Deref for RequestContext {
+    type Target = Arc<RequestContextInner>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl Deref for RequestContextInner {
+    type Target = ItsiService;
+
+    fn deref(&self) -> &Self::Target {
+        &self.service
+    }
+}
+
+pub enum RequestContextItem {
+    CompressionAlgorithm(CompressionAlgorithm),
+}
+
+pub struct RequestContextInner {
+    pub service: ItsiService,
+    pub matching_pattern: Option<Arc<Regex>>,
+    pub store: RwLock<HashMap<&'static str, Arc<RequestContextItem>>>,
+}
+
+impl RequestContext {
+    fn new(service: ItsiService, matching_pattern: Option<Arc<Regex>>) -> Self {
+        RequestContext {
+            inner: Arc::new(RequestContextInner {
+                service,
+                matching_pattern,
+                store: RwLock::new(HashMap::new()),
+            }),
+        }
+    }
+
+    pub fn insert(&mut self, key: &'static str, value: RequestContextItem) {
+        self.inner.store.write().insert(key, Arc::new(value));
+    }
+
+    pub fn get(&self, key: &'static str) -> Option<Arc<RequestContextItem>> {
+        let store = self.inner.store.read();
+        store.get(key).cloned()
+    }
+}
+
 impl Service<HttpRequest> for ItsiService {
     type Response = HttpResponse;
     type Error = ItsiError;
@@ -40,14 +97,15 @@ impl Service<HttpRequest> for ItsiService {
     // This is called once per incoming Request.
     fn call(&self, req: HttpRequest) -> Self::Future {
         let params = self.server_params.clone();
-        let context = self.clone();
+        let self_clone = self.clone();
         Box::pin(async move {
             let mut req = req;
             let mut resp: Option<HttpResponse> = None;
-            let stack = params.middleware.get().unwrap().stack_for(&req);
+            let (stack, matching_pattern) = params.middleware.get().unwrap().stack_for(&req);
+            let mut context = RequestContext::new(self_clone, matching_pattern);
             let mut depth = 0;
             for (index, elm) in stack.iter().enumerate() {
-                match elm.before(req, &context).await {
+                match elm.before(req, &mut context).await {
                     Ok(Either::Left(r)) => req = r,
                     Ok(Either::Right(r)) => {
                         resp = Some(r);
@@ -68,7 +126,7 @@ impl Service<HttpRequest> for ItsiService {
             };
 
             for elm in stack.iter().rev().skip(stack.len() - depth) {
-                resp = elm.after(resp).await;
+                resp = elm.after(resp, &mut context).await;
             }
 
             Ok(resp)

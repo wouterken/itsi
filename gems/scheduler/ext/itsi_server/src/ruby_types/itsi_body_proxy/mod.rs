@@ -99,6 +99,24 @@ impl ItsiBodyProxy {
         Ok(Some(output_string))
     }
 
+    pub fn to_bytes(&self) -> MagnusResult<Vec<u8>> {
+        self.verify_open()?;
+        let mut stream = self.incoming.lock();
+        let mut buf = self.buf.lock();
+
+        while let Some(chunk) = block_on(stream.next()) {
+            let chunk = chunk.map_err(|err| {
+                magnus::Error::new(
+                    magnus::exception::exception(),
+                    format!("Error reading body {:?}", err),
+                )
+            })?;
+            buf.extend_from_slice(&chunk);
+        }
+
+        Ok(buf.clone())
+    }
+
     /// Equivalent to calling gets and yielding it, until we reach EOF
     pub fn each(ruby: &Ruby, rbself: &Self) -> MagnusResult<()> {
         let proc = ruby.block_proc()?;

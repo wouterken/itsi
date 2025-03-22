@@ -2,7 +2,7 @@ use super::MiddlewareLayer;
 use crate::{
     ruby_types::itsi_http_request::ItsiHttpRequest,
     server::{
-        itsi_service::ItsiService,
+        itsi_service::RequestContext,
         types::{HttpRequest, HttpResponse},
     },
 };
@@ -32,7 +32,7 @@ impl MiddlewareLayer for RubyApp {
     async fn before(
         &self,
         req: HttpRequest,
-        context: &ItsiService,
+        context: &mut RequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
         ItsiHttpRequest::process_request(self.app.clone(), req, context)
             .await

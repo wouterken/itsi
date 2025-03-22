@@ -46,6 +46,10 @@ module Itsi
       end
     end
 
+    def respond _body=nil, _status=200, _header=nil, status: _status, headers: _header, body: _body, hijack: false, &blk
+      response.respond(status: status, headers: headers, body: body, hijack: hijack, &blk)
+    end
+
     def build_hijack_proc
       lambda do
         self.hijacked = true

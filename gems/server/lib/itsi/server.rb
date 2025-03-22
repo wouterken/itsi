@@ -8,6 +8,7 @@ require_relative "server/scheduler_interface"
 require_relative "server/rack/handler/itsi"
 require_relative "server/config"
 require_relative "http_request"
+require_relative "http_response"
 
 module Itsi
   class Server
@@ -51,6 +52,12 @@ module Itsi
       end
 
       def reload
+        if pid = get_pid
+          Process.kill(:USR2, pid)
+        end
+      end
+
+      def restart
         if pid = get_pid
           Process.kill(:USR1, pid)
         end

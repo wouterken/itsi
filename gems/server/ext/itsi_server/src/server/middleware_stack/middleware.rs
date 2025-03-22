@@ -1,6 +1,6 @@
 use super::middlewares::*;
 use crate::server::{
-    itsi_service::ItsiService,
+    itsi_service::RequestContext,
     types::{HttpRequest, HttpResponse},
 };
 use async_trait::async_trait;
@@ -19,6 +19,8 @@ pub enum Middleware {
     StaticAssets(StaticAssets),
     Compression(Compression),
     Logging(Logging),
+    Redirect(Redirect),
+    Proxy(Proxy),
     RubyApp(RubyApp),
 }
 
@@ -27,7 +29,7 @@ impl MiddlewareLayer for Middleware {
     async fn before(
         &self,
         req: HttpRequest,
-        context: &ItsiService,
+        context: &mut RequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
         match self {
             Middleware::AuthBasic(filter) => filter.before(req, context).await,
@@ -39,22 +41,26 @@ impl MiddlewareLayer for Middleware {
             Middleware::StaticAssets(filter) => filter.before(req, context).await,
             Middleware::Compression(filter) => filter.before(req, context).await,
             Middleware::Logging(filter) => filter.before(req, context).await,
+            Middleware::Redirect(filter) => filter.before(req, context).await,
+            Middleware::Proxy(filter) => filter.before(req, context).await,
             Middleware::RubyApp(filter) => filter.before(req, context).await,
         }
     }
 
-    async fn after(&self, res: HttpResponse) -> HttpResponse {
+    async fn after(&self, res: HttpResponse, context: &mut RequestContext) -> HttpResponse {
         match self {
-            Middleware::AuthBasic(filter) => filter.after(res).await,
-            Middleware::AuthJwt(filter) => filter.after(res).await,
-            Middleware::AuthAPIKey(filter) => filter.after(res).await,
-            Middleware::Endpoint(filter) => filter.after(res).await,
-            Middleware::RateLimit(filter) => filter.after(res).await,
-            Middleware::Cors(filter) => filter.after(res).await,
-            Middleware::StaticAssets(filter) => filter.after(res).await,
-            Middleware::Compression(filter) => filter.after(res).await,
-            Middleware::Logging(filter) => filter.after(res).await,
-            Middleware::RubyApp(filter) => filter.after(res).await,
+            Middleware::AuthBasic(filter) => filter.after(res, context).await,
+            Middleware::AuthJwt(filter) => filter.after(res, context).await,
+            Middleware::AuthAPIKey(filter) => filter.after(res, context).await,
+            Middleware::Endpoint(filter) => filter.after(res, context).await,
+            Middleware::RateLimit(filter) => filter.after(res, context).await,
+            Middleware::Cors(filter) => filter.after(res, context).await,
+            Middleware::StaticAssets(filter) => filter.after(res, context).await,
+            Middleware::Compression(filter) => filter.after(res, context).await,
+            Middleware::Logging(filter) => filter.after(res, context).await,
+            Middleware::Redirect(filter) => filter.after(res, context).await,
+            Middleware::Proxy(filter) => filter.after(res, context).await,
+            Middleware::RubyApp(filter) => filter.after(res, context).await,
         }
     }
 }
@@ -62,16 +68,18 @@ impl MiddlewareLayer for Middleware {
 impl Middleware {
     fn variant_order(&self) -> usize {
         match self {
-            Middleware::Logging(_) => 0,
-            Middleware::AuthBasic(_) => 1,
-            Middleware::AuthJwt(_) => 2,
-            Middleware::AuthAPIKey(_) => 3,
-            Middleware::RateLimit(_) => 4,
-            Middleware::Cors(_) => 5,
+            Middleware::Redirect(_) => 0,
+            Middleware::Logging(_) => 1,
+            Middleware::AuthBasic(_) => 2,
+            Middleware::AuthJwt(_) => 3,
+            Middleware::AuthAPIKey(_) => 4,
+            Middleware::RateLimit(_) => 5,
             Middleware::Compression(_) => 6,
-            Middleware::StaticAssets(_) => 7,
-            Middleware::Endpoint(_) => 8,
-            Middleware::RubyApp(_) => 9,
+            Middleware::Proxy(_) => 7,
+            Middleware::Cors(_) => 8,
+            Middleware::StaticAssets(_) => 9,
+            Middleware::Endpoint(_) => 10,
+            Middleware::RubyApp(_) => 11,
         }
     }
 }

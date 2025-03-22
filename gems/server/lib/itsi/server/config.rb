@@ -25,7 +25,18 @@ module Itsi
         # We'll preload while we load config, if enabled.
         #
         middleware_loader = itsifile_config.fetch(:middleware_loader, ->{})
-        default_app_loader = itsifile_config.fetch(:app_loader, DEFAULT_APP)
+        default_app_loader = itsifile_config.fetch(:app_loader){
+          rackup_file_path = args.fetch(:rackup_file, "./config.ru")
+          if File.exist?(rackup_file_path)
+            ->{
+                { "app_proc" => Itsi::Server::RackInterface.for(rackup_file_path)
+              }
+            }
+          elsif
+            DEFAULT_APP
+          end
+
+        }
         preload = args.fetch(:preload) { itsifile_config.fetch(:preload, false) }
 
         case preload

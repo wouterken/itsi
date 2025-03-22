@@ -118,7 +118,7 @@ case (command = ARGV.pop)
 when "init"
   Itsi::Server::Config.write_default
   exit(0)
-when "reload", "down", "up", "add_worker", "remove_worker", "status"
+when "reload", "restart", "down", "up", "add_worker", "remove_worker", "status"
   Itsi::Server.send(command)
 when nil, "start", "serve"
   Itsi::Server.start(options)

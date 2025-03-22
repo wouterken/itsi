@@ -1,5 +1,5 @@
 use crate::server::{
-    itsi_service::ItsiService,
+    itsi_service::{ItsiService, RequestContext},
     types::{HttpRequest, HttpResponse, RequestExt},
 };
 
@@ -26,7 +26,7 @@ impl MiddlewareLayer for AuthAPIKey {
     async fn before(
         &self,
         req: HttpRequest,
-        _context: &ItsiService,
+        _context: &mut RequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
         let submitted_value = match &self.token_source {
             TokenSource::Header { name, prefix } => {

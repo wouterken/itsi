@@ -28,7 +28,7 @@ use super::{
 };
 use crate::server::{
     byte_frame::ByteFrame,
-    itsi_service::ItsiService,
+    itsi_service::{ItsiService, RequestContext},
     request_job::RequestJob,
     types::{HttpRequest, HttpResponse},
 };
@@ -44,7 +44,7 @@ pub struct ItsiHttpRequest {
     pub response: ItsiHttpResponse,
     pub start: Instant,
     #[debug(skip)]
-    pub context: ItsiService,
+    pub context: RequestContext,
 }
 
 impl fmt::Display for ItsiHttpRequest {
@@ -93,9 +93,9 @@ impl ItsiHttpRequest {
         self.content_type_str() == "text/html"
     }
 
-    pub fn process(self, ruby: &Ruby, app: Arc<HeapValue<Proc>>) -> magnus::error::Result<()> {
+    pub fn process(self, ruby: &Ruby, app_proc: Arc<HeapValue<Proc>>) -> magnus::error::Result<()> {
         let response = self.response.clone();
-        let result = app.call::<_, Value>((self,));
+        let result = app_proc.call::<_, Value>((self,));
         if let Err(err) = result {
             Self::internal_error(ruby, response, err);
         }
@@ -121,10 +121,10 @@ impl ItsiHttpRequest {
     pub(crate) async fn process_request(
         app: Arc<HeapValue<Proc>>,
         hyper_request: HttpRequest,
-        context: &ItsiService,
+        context: &RequestContext,
     ) -> itsi_error::Result<HttpResponse> {
         let (request, mut receiver) = ItsiHttpRequest::new(hyper_request, context).await;
-        let shutdown_channel = context.shutdown_channel.clone();
+        let shutdown_channel = context.service.shutdown_channel.clone();
         let response = request.response.clone();
         match context
             .sender
@@ -150,7 +150,7 @@ impl ItsiHttpRequest {
 
     pub(crate) async fn new(
         request: HttpRequest,
-        context: &ItsiService,
+        context: &RequestContext,
     ) -> (ItsiHttpRequest, mpsc::Receiver<ByteFrame>) {
         let (parts, body) = request.into_parts();
         let body = if context.server_params.streamable_body {

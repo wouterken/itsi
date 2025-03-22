@@ -2,29 +2,34 @@ module Itsi
   class Server
     module Config
       class DSL
-        attr_reader :parent, :children, :middleware, :endpoint_defs, :controller_class, :routes, :methods, :protocols, :hosts, :extensions
+        attr_reader :parent, :children, :middleware, :endpoint_defs, :controller_class, :routes, :methods, :protocols,
+                    :hosts, :ports, :extensions
 
-        def self.evaluate(filepath=Itsi::Server::Config.config_file_path)
+        def self.evaluate(filepath = Itsi::Server::Config.config_file_path)
           new do
             code = IO.read(filepath)
             instance_eval(code, filepath, 1)
           end.to_options
         end
 
-        def initialize(parent = nil, routes: [], methods:[], protocols:[], hosts:[], extensions:[], controller: self,  &block)
+        def initialize(parent = nil, routes: [], methods: [], protocols: [], hosts: [], ports: [], extensions: [],
+                       controller: self, &block)
           @parent           = parent
           @children         = []
           @middleware       = {}
           @controller_class = nil
-          @options          = {}
-          @controller       = controller
+          @options          = { middleware_loader: lambda {
+            @options[:middleware_loaders].each(&:call)
+            flatten_routes
+          }, middleware_loaders: [] }
+          @controller = controller
           # We'll store our array of route specs (strings or a single Regexp).
           @routes = Array(routes).flatten
-          @methods = methods.map{|s| s.kind_of?(Regexp) ? s : s.to_s}
-          @protocols = protocols.map{|s| s.kind_of?(Regexp) ? s : s.to_s}
-          @hosts = hosts.map{|s| s.kind_of?(Regexp) ? s : s.to_s}
-          @extensions = extensions.map{|s| s.kind_of?(Regexp) ? s : s.to_s}
-
+          @methods = methods.map { |s| s.is_a?(Regexp) ? s : s.to_s }
+          @protocols = protocols.map { |s| s.is_a?(Regexp) ? s : s.to_s }
+          @hosts = hosts.map { |s| s.is_a?(Regexp) ? s : s.to_s }
+          @ports = ports.map { |s| s.is_a?(Regexp) ? s : s.to_s }
+          @extensions = extensions.map { |s| s.is_a?(Regexp) ? s : s.to_s }
 
           validate_path_specs!(@routes)
           instance_exec(&block)
@@ -69,44 +74,37 @@ module Itsi
           end
         end
 
-        def get(route, app_proc=nil, &blk)
+        def get(route, app_proc = nil, &blk)
           endpoint(route, :get, app_proc, &blk)
         end
 
-        def post(route, app_proc=nil, &blk)
+        def post(route, app_proc = nil, &blk)
           endpoint(route, :post, app_proc, &blk)
         end
 
-        def put(route, app_proc=nil, &blk)
+        def put(route, app_proc = nil, &blk)
           endpoint(route, :put, app_proc, &blk)
         end
 
-        def delete(route, app_proc=nil, &blk)
+        def delete(route, app_proc = nil, &blk)
           endpoint(route, :delete, app_proc, &blk)
         end
 
-        def patch(route, app_proc=nil, &blk)
+        def patch(route, app_proc = nil, &blk)
           endpoint(route, :patch, app_proc, &blk)
         end
 
-        def options(route, app_proc=nil, &blk)
+        def options(route, app_proc = nil, &blk)
           endpoint(route, :options, app_proc, &blk)
         end
 
-        def endpoint(route, method, app_proc=nil, &blk)
+        def endpoint(route, method, app_proc = nil, &blk)
           raise "`endpoint` must be set inside a location block" if @parent.nil?
 
-          if blk && app_proc
-            raise "You can't use both a block and an explicit handler in the same endpoint"
-          end
-          if app_proc.nil? && blk.nil?
-            raise "You must provide either a block or an explicit handler for the endpoint"
-          end
+          raise "You can't use both a block and an explicit handler in the same endpoint" if blk && app_proc
+          raise "You must provide either a block or an explicit handler for the endpoint" if app_proc.nil? && blk.nil?
 
-
-          if app_proc.kind_of?(Symbol)
-            app_proc = @controller.method(app_proc).to_proc
-          end
+          app_proc = @controller.method(app_proc).to_proc if app_proc.is_a?(Symbol)
 
           app_proc ||= blk
 
@@ -132,13 +130,18 @@ module Itsi
             raise "App has already been set. You can use only one of `run` and `rackup_file` per location"
           end
 
-          raise "Rackup file #{rackup_file} doesn't exist" unless File.exist?(file_path)
+          raise "Rackup file #{rackup_file} doesn't exist" unless File.exist?(rackup_file)
 
           if @parent.nil?
             @options[:app_loader] = -> { { "app_proc" => Itsi::Server::RackInterface.for(rackup_file) } }
           else
             @middleware[:app] = { app_proc: Itsi::Server::RackInterface.for(rackup_file) }
           end
+        end
+
+        def include(path)
+          code = IO.read("#{path}.rb")
+          instance_eval(code, "#{path}.rb", 1)
         end
 
         def bind(bind_str)
@@ -205,23 +208,34 @@ module Itsi
           @options[:stream_body] = !!stream_body
         end
 
-        def location(*routes, methods: [], protocols: [], hosts: [], extensions: [],  &block)
+        def location(*routes, methods: [], protocols: [], hosts: [], ports: [], extensions: [], &block)
           if @parent.nil?
-            @options[:middleware_loader] = -> do
+            @options[:middleware_loaders] << lambda {
               routes = routes.flatten
-              child = DSL.new(self, routes: routes, methods: methods, protocols: protocols, hosts: hosts, extensions: extensions, controller: @controller, &block)
+              child = DSL.new(
+                self,
+                routes: Array(routes),
+                methods: Array(methods),
+                protocols: Array(protocols),
+                hosts: Array(hosts),
+                ports: Array(ports),
+                extensions: Array(extensions),
+                controller: @controller,
+                &block
+              )
               @children << child
-              flatten_routes
-            end
+            }
           else
             routes = routes.flatten
-            child = DSL.new(self, routes: routes,
-              methods: methods | @parent.methods,
-              protocols: protocols | @parent.protocols,
-              hosts: hosts | @parent.hosts,
-              extensions: extensions | @parent.extensions,
-              controller: @controller,
-              &block)
+            child = DSL.new(self,
+                            routes: routes,
+                            methods: Array(methods) | self.methods,
+                            protocols: Array(protocols) | self.protocols,
+                            hosts: Array(hosts) | self.hosts,
+                            ports: Array(ports) | self.ports,
+                            extensions: Array(extensions) | self.extensions,
+                            controller: @controller,
+                            &block)
             @children << child
           end
         end
@@ -244,6 +258,12 @@ module Itsi
           @middleware[:redirect] = args
         end
 
+        def proxy(**args)
+          raise "`proxy` must be set inside a location block" if @parent.nil?
+
+          @middleware[:proxy] = args
+        end
+
         def auth_jwt(**args)
           raise "`auth_jwt` must be set inside a location block" if @parent.nil?
 
@@ -259,7 +279,7 @@ module Itsi
         def compress(**args)
           raise "`compress` must be set inside a location block" if @parent.nil?
 
-          @middleware[:compress] = args
+          @middleware[:compression] = args
         end
 
         def rate_limit(name, **args)
@@ -284,7 +304,6 @@ module Itsi
           child_routes = @children.flat_map(&:flatten_routes)
           base_expansions = combined_paths_from_parent
 
-
           location_route = unless @routes.empty?
                              pattern_str = or_pattern_for(base_expansions) # the expansions themselves
                              {
@@ -292,6 +311,7 @@ module Itsi
                                methods: @methods.any? ? @methods : nil,
                                protocols: @protocols.any? ? @protocols : nil,
                                hosts: @hosts.any? ? @hosts : nil,
+                               ports: @ports.any? ? @ports : nil,
                                extensions: @extensions.any? ? @extensions : nil,
                                middleware: effective_middleware
                              }
@@ -309,7 +329,6 @@ module Itsi
 
           raise ArgumentError, "Cannot have multiple raw Regex route specs in a single location."
         end
-
 
         # Called by flatten_routes to get expansions from the parent's expansions combined with mine
         def combined_paths_from_parent
@@ -418,7 +437,6 @@ module Itsi
           merged = merge_ancestor_middleware
           merged.map { |k, v| { type: k.to_s, parameters: v } }
         end
-
 
         def deep_stringify_keys(obj)
           case obj

@@ -4,15 +4,15 @@ use super::types::HttpRequest;
 use itsi_rb_helpers::HeapVal;
 use magnus::{error::Result, value::ReprValue, RArray, RHash, Ruby, TryConvert, Value};
 pub use middleware::Middleware;
-pub use middlewares::{
-    AuthAPIKey, AuthBasic, AuthJwt, Compression, Cors, Logging, RateLimit, StaticAssets, *,
-};
+pub use middlewares::*;
 use regex::{Regex, RegexSet};
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
+use tracing::info;
 
 #[derive(Debug)]
 pub struct MiddlewareSet {
     pub route_set: RegexSet,
+    pub patterns: Vec<Arc<Regex>>,
     pub stacks: HashMap<usize, MiddlewareStack>,
     pub default_stack: Vec<Middleware>,
 }
@@ -22,8 +22,9 @@ pub struct MiddlewareStack {
     layers: Vec<Middleware>,
     methods: Option<Vec<StringMatch>>,
     protocols: Option<Vec<StringMatch>>,
-    domains: Option<Vec<StringMatch>>,
+    hosts: Option<Vec<StringMatch>>,
     extensions: Option<Vec<StringMatch>>,
+    ports: Option<Vec<StringMatch>>,
 }
 
 #[derive(Debug)]
@@ -72,8 +73,16 @@ impl MiddlewareStack {
             }
         }
 
-        if let (Some(domains), Some(domain)) = (&self.domains, request.uri().host()) {
-            if !domains.iter().any(|d| d.matches(domain)) {
+        if let (Some(hosts), Some(host)) = (&self.hosts, request.uri().host()) {
+            if !hosts.iter().any(|d| d.matches(host)) {
+                info!("No match between host {} and {:?}", host, hosts);
+                return false;
+            }
+        }
+
+        if let (Some(ports), Some(port)) = (&self.ports, request.uri().port()) {
+            if !ports.iter().any(|d| d.matches(port.as_str())) {
+                info!("No match between port {} and {:?}", port, ports);
                 return false;
             }
         }
@@ -135,8 +144,9 @@ impl MiddlewareSet {
                         layers,
                         methods: extract_optional_match_array(route_hash, "methods")?,
                         protocols: extract_optional_match_array(route_hash, "protocols")?,
-                        domains: extract_optional_match_array(route_hash, "domains")?,
+                        hosts: extract_optional_match_array(route_hash, "hosts")?,
                         extensions: extract_optional_match_array(route_hash, "extensions")?,
+                        ports: extract_optional_match_array(route_hash, "ports")?,
                     },
                 );
             }
@@ -147,29 +157,44 @@ impl MiddlewareSet {
                         format!("Failed to create route set: {}", e),
                     )
                 })?,
+                patterns: routes
+                    .into_iter()
+                    .map(|r| Regex::new(&r))
+                    .collect::<std::result::Result<Vec<Regex>, regex::Error>>()
+                    .map_err(|e| {
+                        magnus::Error::new(
+                            magnus::exception::exception(),
+                            format!("Failed to create route set: {}", e),
+                        )
+                    })?
+                    .into_iter()
+                    .map(Arc::new)
+                    .collect(),
                 stacks,
                 default_stack: vec![Middleware::RubyApp(RubyApp::from_value(default_app)?)],
             })
         } else {
             Ok(Self {
                 route_set: RegexSet::empty(),
+                patterns: Vec::new(),
                 stacks: HashMap::new(),
                 default_stack: vec![Middleware::RubyApp(RubyApp::from_value(default_app)?)],
             })
         }
     }
 
-    pub fn stack_for(&self, request: &HttpRequest) -> &Vec<Middleware> {
+    pub fn stack_for(&self, request: &HttpRequest) -> (&Vec<Middleware>, Option<Arc<Regex>>) {
         let binding = self.route_set.matches(request.uri().path());
         let matches = binding.iter();
         for index in matches {
+            let matching_pattern = self.patterns.get(index).cloned();
             if let Some(stack) = self.stacks.get(&index) {
                 if stack.matches(request) {
-                    return &stack.layers;
+                    return (&stack.layers, matching_pattern);
                 }
             }
         }
-        self.default_stack()
+        (self.default_stack(), None)
     }
 
     pub fn parse_middleware(middleware: Value) -> Result<Middleware> {
@@ -203,7 +228,9 @@ impl MiddlewareSet {
             "compression" => Middleware::Compression(Compression::from_value(parameters)?),
             "logging" => Middleware::Logging(Logging::from_value(parameters)?),
             "endpoint" => Middleware::Endpoint(Endpoint::from_value(parameters)?),
+            "redirect" => Middleware::Redirect(Redirect::from_value(parameters)?),
             "app" => Middleware::RubyApp(RubyApp::from_value(parameters.into())?),
+            "proxy" => Middleware::Proxy(Proxy::from_value(parameters)?),
             _ => {
                 return Err(magnus::Error::new(
                     magnus::exception::exception(),
