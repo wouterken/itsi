@@ -1,9 +1,13 @@
 use std::{
-    collections::HashMap, convert::Infallible, error::Error, net::SocketAddr, sync::Arc,
+    collections::HashMap,
+    convert::Infallible,
+    net::SocketAddr,
+    sync::{Arc, OnceLock},
     time::Duration,
 };
 
 use crate::server::{
+    bind::{Bind, BindAddress},
     itsi_service::RequestContext,
     types::{HttpRequest, HttpResponse},
 };
@@ -17,18 +21,20 @@ use http::Response;
 use http_body_util::{combinators::BoxBody, BodyExt, StreamBody};
 use hyper::body::Frame;
 use magnus::error::Result;
-use rand::seq::IndexedRandom;
-use reqwest::{dns::Resolve, Body, Client};
-use rustls::{ClientConfig, RootCertStore};
+use reqwest::{dns::Resolve, Body, Client, Url};
 use serde::Deserialize;
+use tracing::*;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Proxy {
-    pub to: Vec<StringRewrite>,
-    pub headers: HashMap<String, ProxiedHeader>,
+    pub to: StringRewrite,
+    pub backends: Vec<String>,
+    pub headers: HashMap<String, Option<ProxiedHeader>>,
     pub verify_ssl: bool,
     pub timeout: u64,
     pub tls_sni: bool,
+    #[serde(skip_deserializing)]
+    pub client: OnceLock<Client>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -48,35 +54,37 @@ impl ProxiedHeader {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Resolver {
-    records: HashMap<String, Vec<SocketAddr>>,
+    backends: Arc<Vec<SocketAddr>>,
 }
 
-impl Resolver {
-    /// Create a new Resolver with a pre-defined mapping.
-    pub fn new(records: HashMap<String, Vec<SocketAddr>>) -> Self {
-        Resolver { records }
+/// An iterator that owns an Arc to the backend list and iterates over it.
+pub struct ResolverIter {
+    backends: Arc<Vec<SocketAddr>>,
+    index: usize,
+}
+
+impl Iterator for ResolverIter {
+    type Item = SocketAddr;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index < self.backends.len() {
+            let addr = self.backends[self.index];
+            self.index += 1;
+            Some(addr)
+        } else {
+            None
+        }
     }
 }
 
 impl Resolve for Resolver {
-    fn resolve(&self, name: reqwest::dns::Name) -> reqwest::dns::Resolving {
-        // Convert the provided Name to a String for lookup.
-        let hostname = name.as_str().to_owned();
-        // Clone the stored addresses for this hostname, if any.
-        let addresses = self.records.get(&hostname).cloned();
-        // Create an async block to return the addresses as an iterator.
+    fn resolve(&self, _name: reqwest::dns::Name) -> reqwest::dns::Resolving {
+        let backends = self.backends.clone();
         let fut = async move {
-            if let Some(addrs) = addresses {
-                // Return the addresses as an iterator.
-                Ok(Box::new(addrs.into_iter()) as Box<dyn Iterator<Item = SocketAddr> + Send>)
-            } else {
-                // Return an error if the hostname isn't found.
-                Err(Box::<dyn Error + Send + Sync>::from(format!(
-                    "Hostname {} not found in custom resolver",
-                    hostname
-                )))
-            }
+            let iter = ResolverIter { backends, index: 0 };
+            Ok(Box::new(iter) as Box<dyn Iterator<Item = SocketAddr> + Send>)
         };
         Box::pin(fut)
     }
@@ -84,47 +92,99 @@ impl Resolve for Resolver {
 
 #[async_trait]
 impl MiddlewareLayer for Proxy {
+    async fn initialize(&self) -> Result<()> {
+        let backends = self
+            .backends
+            .iter()
+            .filter_map(|be| {
+                let bind: Bind = be.parse().ok()?;
+                match (bind.address, bind.port) {
+                    (BindAddress::Ip(ip_addr), port) => {
+                        Some(SocketAddr::new(ip_addr, port.unwrap()))
+                    }
+                    (BindAddress::UnixSocket(_), _) => None,
+                }
+            })
+            .collect::<Vec<_>>();
+
+        self.client
+            .set(
+                Client::builder()
+                    .timeout(Duration::from_secs(self.timeout))
+                    .danger_accept_invalid_certs(!self.verify_ssl)
+                    .danger_accept_invalid_hostnames(!self.verify_ssl)
+                    .dns_resolver(Arc::new(Resolver {
+                        backends: Arc::new(backends),
+                    }))
+                    .tls_sni(self.tls_sni)
+                    .build()
+                    .map_err(|e| {
+                        magnus::Error::new(
+                            magnus::exception::runtime_error(),
+                            format!("Failed to build Reqwest client: {}", e),
+                        )
+                    })?,
+            )
+            .map_err(|_e| {
+                magnus::Error::new(
+                    magnus::exception::exception(),
+                    "Failed to save resolver backends",
+                )
+            })?;
+        Ok(())
+    }
+
     async fn before(
         &self,
         req: HttpRequest,
         context: &mut RequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
-        let destination = {
-            let mut rng = rand::rngs::ThreadRng::default();
-            self.to
-                .choose(&mut rng)
-                .expect("destination list cannot be empty")
-                .rewrite(&req, context)
-        };
+        let url = self.to.rewrite(&req, context);
+        let destination = Url::parse(&url).map_err(|e| {
+            magnus::Error::new(
+                magnus::exception::exception(),
+                format!("Failed to create route set: {}", e),
+            )
+        })?;
 
-        // Build a Reqwest client with the given timeout and SSL settings.
-        let client = Client::builder()
-            .timeout(Duration::from_secs(self.timeout))
-            .danger_accept_invalid_certs(!self.verify_ssl)
-            .danger_accept_invalid_hostnames(!self.verify_ssl)
-            .dns_resolver(Arc::new(Resolver::new(HashMap::new())))
-            .tls_sni(self.tls_sni)
-            .build()
-            .map_err(|e| {
-                magnus::Error::new(
-                    magnus::exception::runtime_error(),
-                    format!("Failed to build Reqwest client: {}", e),
-                )
-            })?;
+        let host_str = destination.host_str().unwrap_or_else(|| {
+            req.headers()
+                .get("Host")
+                .and_then(|h| h.to_str().ok())
+                .unwrap_or("")
+        });
 
-        let mut reqwest_builder = client.request(req.method().clone(), &destination);
+        let mut reqwest_builder = self
+            .client
+            .get()
+            .unwrap()
+            .request(req.method().clone(), url);
 
-        // Forward headers from the incoming request.
+        // Forward incoming headers unless they're in remove_headers or overridden.
         for (name, value) in req.headers().iter() {
-            if !self.headers.contains_key(name.as_str()) {
-                reqwest_builder = reqwest_builder.header(name, value);
+            let name_str = name.as_str();
+            if self.headers.contains_key(name_str) {
+                continue;
+            }
+            reqwest_builder = reqwest_builder.header(name, value);
+        }
+
+        // Add the host header if it's not overridden and host_str is non-empty.
+        if !self.headers.contains_key("host") && !host_str.is_empty() {
+            reqwest_builder = reqwest_builder.header("Host", host_str);
+        }
+
+        // Add overriding headers.
+        for (name, header_value) in self.headers.iter() {
+            if let Some(header_value) = header_value {
+                reqwest_builder =
+                    reqwest_builder.header(name, header_value.to_string(&req, context));
             }
         }
-        for (name, value) in self.headers.iter() {
-            reqwest_builder = reqwest_builder.header(name, value.to_string(&req, context));
-        }
+
         let reqwest_builder = reqwest_builder.body(Body::wrap_stream(req.into_data_stream()));
         let reqwest_response = reqwest_builder.send().await.map_err(|e| {
+            error!("Failed to build Reqwest response: {:?}", e);
             magnus::Error::new(
                 magnus::exception::runtime_error(),
                 format!("Reqwest request failed: {}", e),
@@ -132,10 +192,10 @@ impl MiddlewareLayer for Proxy {
         })?;
 
         let status = reqwest_response.status();
-        let mut headers = reqwest_response.headers().clone();
-
         let mut builder = Response::builder().status(status);
-        builder.headers_mut().replace(&mut headers);
+        for (hn, hv) in reqwest_response.headers() {
+            builder = builder.header(hn, hv);
+        }
         let response = builder
             .body(BoxBody::new(StreamBody::new(
                 reqwest_response
@@ -144,6 +204,7 @@ impl MiddlewareLayer for Proxy {
                     .map_err(|_| -> Infallible { unreachable!("We handle IO errors above") }),
             )))
             .map_err(|e| {
+                error!("Failed to build Hyper response: {}", e);
                 magnus::Error::new(
                     magnus::exception::runtime_error(),
                     format!("Failed to build Hyper response: {}", e),

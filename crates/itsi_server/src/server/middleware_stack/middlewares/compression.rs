@@ -3,7 +3,7 @@ use super::{
     FromValue, MiddlewareLayer,
 };
 use crate::server::{
-    itsi_service::{RequestContext, RequestContextItem},
+    itsi_service::RequestContext,
     types::{HttpRequest, HttpResponse},
 };
 use async_compression::{
@@ -171,10 +171,8 @@ impl MiddlewareLayer for Compression {
         if matches!(algo, CompressionAlgorithm::None) {
             return Ok(Either::Left(req));
         }
-        context.insert(
-            "compression_method",
-            RequestContextItem::CompressionAlgorithm(algo),
-        );
+
+        context.set_compression_method(algo);
 
         Ok(Either::Left(req))
     }
@@ -186,9 +184,8 @@ impl MiddlewareLayer for Compression {
     /// * The client supports the compression algorithm.
     async fn after(&self, resp: HttpResponse, context: &mut RequestContext) -> HttpResponse {
         let compression_method;
-        if let Some(method) = context.get("compression_method") {
-            let RequestContextItem::CompressionAlgorithm(ref md) = *method;
-            compression_method = md.clone();
+        if let Some(method) = context.compression_method.get() {
+            compression_method = method.clone();
         } else {
             return resp;
         }
@@ -296,6 +293,7 @@ impl MiddlewareLayer for Compression {
 
         update_content_encoding(&mut parts, compression_method.header_value());
         parts.headers.remove(CONTENT_LENGTH);
+
         Response::from_parts(parts, new_body)
     }
 }

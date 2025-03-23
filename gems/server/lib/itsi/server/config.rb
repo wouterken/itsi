@@ -1,4 +1,4 @@
-#frozen_string_literal: true
+# frozen_string_literal: true
 
 module Itsi
   class Server
@@ -23,20 +23,16 @@ module Itsi
         itsifile_config.transform_keys!(&:to_sym)
 
         # We'll preload while we load config, if enabled.
-        #
-        middleware_loader = itsifile_config.fetch(:middleware_loader, ->{})
-        default_app_loader = itsifile_config.fetch(:app_loader){
+        middleware_loader = itsifile_config.fetch(:middleware_loader, -> {})
+        default_app_loader = itsifile_config.fetch(:app_loader) do
           rackup_file_path = args.fetch(:rackup_file, "./config.ru")
           if File.exist?(rackup_file_path)
-            ->{
-                { "app_proc" => Itsi::Server::RackInterface.for(rackup_file_path)
-              }
+            lambda {
+              { "app_proc" => Itsi::Server::RackInterface.for(rackup_file_path) }
             }
-          elsif
-            DEFAULT_APP
+          elsif DEFAULT_APP
           end
-
-        }
+        end
         preload = args.fetch(:preload) { itsifile_config.fetch(:preload, false) }
 
         case preload
@@ -44,23 +40,27 @@ module Itsi
         when true
           preloaded_middleware = middleware_loader.call
           preloaded_app = default_app_loader.call
-          middleware_loader = ->{ preloaded_middleware }
-          default_app_loader = ->{ preloaded_app }
+          middleware_loader = -> { preloaded_middleware }
+          default_app_loader = -> { preloaded_app }
         # If we're just preloading a specific gem group, we'll do that here too
         when Symbol
           Bundler.require(preload)
         end
 
-        srv_config = {
+        {
           workers: args.fetch(:workers) { itsifile_config.fetch(:workers, Etc.nprocessors) },
           worker_memory_limit: args.fetch(:worker_memory_limit) { itsifile_config.fetch(:worker_memory_limit, nil) },
           silence: args.fetch(:silence) { itsifile_config.fetch(:silence, false) },
           shutdown_timeout: args.fetch(:shutdown_timeout) { itsifile_config.fetch(:shutdown_timeout, 5) },
           hooks: itsifile_config.fetch(:hooks, nil),
           preload: !!preload,
+          notify_watchers: itsifile_config.fetch(:notify_watchers, nil),
           threads: args.fetch(:threads) { itsifile_config.fetch(:threads, 1) },
           script_name: args.fetch(:script_name) { itsifile_config.fetch(:script_name, "") },
           streamable_body: args.fetch(:streamable_body) { itsifile_config.fetch(:streamable_body, false) },
+          multithreaded_reactor: args.fetch(:multithreaded_reactor) do
+            itsifile_config.fetch(:multithreaded_reactor, true)
+          end,
           scheduler_class: args.fetch(:scheduler_class) { itsifile_config.fetch(:scheduler_class, nil) },
           oob_gc_responses_threshold: args.fetch(:oob_gc_responses_threshold) do
             itsifile_config.fetch(:oob_gc_responses_threshold, nil)
@@ -70,8 +70,6 @@ module Itsi
           default_app_loader: default_app_loader,
           listeners: args.fetch(:listeners) { nil }
         }.transform_keys(&:to_s)
-
-        srv_config
       end
 
       # Reloads the entire process
@@ -98,7 +96,6 @@ module Itsi
 
         config_file_path
       end
-
 
       def self.pid_file_path
         if Dir.exist?("tmp")

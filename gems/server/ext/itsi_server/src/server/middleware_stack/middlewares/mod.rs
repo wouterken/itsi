@@ -49,6 +49,10 @@ pub trait FromValue: Sized + Send + Sync + 'static {
 
 #[async_trait]
 pub trait MiddlewareLayer: Sized + Send + Sync + 'static {
+    /// Called just once, to initialize the middleware state.
+    async fn initialize(&self) -> Result<()> {
+        Ok(())
+    }
     /// The “before” hook. By default, it passes through the request.
     async fn before(
         &self,

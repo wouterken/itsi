@@ -5,7 +5,22 @@ require "socket"
 
 module Itsi
   class HttpRequest
+
     attr_accessor :hijacked
+
+    EMPTY_IO = StringIO.new("").freeze
+    RACK_HEADER_MAP = StandardHeaders::ALL.map do  |header|
+      rack_form = if header == "content-type"
+         "CONTENT_TYPE"
+      elsif header == "content-length"
+        "CONTENT_LENGTH"
+      else
+        "HTTP_#{header.upcase.gsub(/-/, "_")}"
+      end
+      [header, rack_form]
+    end.to_h.tap do |hm|
+      hm.default_proc = proc { |hsh, key| "HTTP_#{key.upcase.gsub(/-/, '_')}" }
+    end
 
     def to_rack_env
       path = self.path
@@ -21,8 +36,8 @@ module Itsi
         "REMOTE_ADDR" => remote_addr,
         "SERVER_PORT" => port.to_s,
         "SERVER_NAME" => host,
-        "HTTP_HOST" => host,
         "SERVER_PROTOCOL" => version,
+        "HTTP_HOST" => host,
         "HTTP_VERSION" => version,
         "itsi.request" => self,
         "itsi.response" => response,
@@ -38,11 +53,8 @@ module Itsi
         "rack.hijack" => build_hijack_proc
       }.tap do |r|
         headers.each do |(k, v)|
-          r["HTTP_#{k.upcase.gsub(/-/, "_")}"] = v
+          r[RACK_HEADER_MAP[k]] = v
         end
-      end.tap do |r|
-        r["CONTENT_TYPE"] = r.delete("HTTP_CONTENT_TYPE")
-        r["CONTENT_LENGTH"] = r.delete("HTTP_CONTENT_LENGTH")
       end
     end
 
@@ -66,8 +78,8 @@ module Itsi
     def build_input_io
       case body
       when nil then StringIO.new("")
-      when Array then File.open(body.first, "rb")
       when String then StringIO.new(body)
+      when Array then File.open(body.first, "rb")
       else body
       end
     end

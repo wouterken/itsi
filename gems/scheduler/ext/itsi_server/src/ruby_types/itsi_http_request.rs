@@ -8,30 +8,26 @@ use itsi_tracing::{debug, error};
 use magnus::{
     block::Proc,
     error::{ErrorType, Result as MagnusResult},
-    Error, Float, IntoValue, RHash,
+    Error,
 };
 use magnus::{
     value::{LazyId, ReprValue},
     Ruby, Value,
 };
-use rb_sys::Qnil;
-use serde_magnus::{deserialize, serialize};
 use std::{fmt, io::Write, sync::Arc, time::Instant};
 use tokio::sync::mpsc::{self};
 
 use super::{
-    itsi_body_proxy::{
-        big_bytes::{BigBytes, BigBytesReadResult},
-        ItsiBody, ItsiBodyProxy,
-    },
+    itsi_body_proxy::{big_bytes::BigBytes, ItsiBody, ItsiBodyProxy},
     itsi_http_response::ItsiHttpResponse,
 };
 use crate::server::{
     byte_frame::ByteFrame,
-    itsi_service::{ItsiService, RequestContext},
+    itsi_service::RequestContext,
     request_job::RequestJob,
     types::{HttpRequest, HttpResponse},
 };
+
 static ID_MESSAGE: LazyId = LazyId::new("message");
 
 #[derive(Debug)]

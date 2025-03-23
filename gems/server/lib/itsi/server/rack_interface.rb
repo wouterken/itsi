@@ -1,13 +1,8 @@
 module Itsi
   class Server
     module RackInterface
-      # Interface to Rack applications.
-      # Here we build the env, and invoke the Rack app's call method.
-      # We then turn the Rack response into something Itsi server understands.
-      def call(app, request)
-        respond request, app.call(request.to_rack_env)
-      end
 
+      # Builds a handler proc that is compatible with Rack applications.
       def self.for(app)
         if app.is_a?(String)
           dir = File.expand_path(File.dirname(app))
@@ -16,7 +11,16 @@ module Itsi
             app = loaded_app.is_a?(Array) ? loaded_app.first : loaded_app
           end
         end
-        app
+        lambda do |request|
+          Server.respond(request, app.call(request.to_rack_env))
+        end
+      end
+
+      # Interface to Rack applications.
+      # Here we build the env, and invoke the Rack app's call method.
+      # We then turn the Rack response into something Itsi server understands.
+      def call(app, request)
+        respond request, app.call(request.to_rack_env)
       end
 
       # Itsi responses are asynchronous and can be streamed.

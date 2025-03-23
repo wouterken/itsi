@@ -8,7 +8,7 @@ use itsi_tracing::{error, run_silently};
 use magnus::{error::Result, RHash, Ruby};
 use parking_lot::Mutex;
 use std::{path::PathBuf, sync::Arc};
-use tracing::info;
+use tracing::{info, instrument};
 pub mod itsi_server_config;
 
 #[magnus::wrap(class = "Itsi::Server", free_immediately, size)]
@@ -33,6 +33,7 @@ impl ItsiServer {
         Ok(())
     }
 
+    #[instrument(skip(self))]
     pub fn start(&self) -> Result<()> {
         let result = if self.config.lock().server_params.read().silence {
             run_silently(|| self.build_and_run_strategy())

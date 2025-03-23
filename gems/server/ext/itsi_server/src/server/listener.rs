@@ -6,6 +6,7 @@ use super::tls::ItsiTlsAcceptor;
 use itsi_error::{ItsiError, Result};
 use itsi_tracing::info;
 use socket2::{Domain, Protocol, Socket, Type};
+use std::fmt::Display;
 use std::net::{IpAddr, SocketAddr, TcpListener};
 use std::os::fd::{AsRawFd, FromRawFd, RawFd};
 use std::sync::Arc;
@@ -242,9 +243,36 @@ impl std::fmt::Display for SockAddr {
         }
     }
 }
+impl Display for Listener {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Listener::Tcp(listener) | Listener::TcpTls((listener, _)) => write!(
+                f,
+                "{}",
+                listener
+                    .local_addr()
+                    .map(|addr| addr.to_string())
+                    .unwrap_or_else(|_| "".to_string())
+            ),
+
+            Listener::Unix(listener) | Listener::UnixTls((listener, _)) => write!(
+                f,
+                "{}",
+                listener
+                    .local_addr()
+                    .map(|addr| addr
+                        .as_pathname()
+                        .map(|path| path.to_str().unwrap_or("").to_owned())
+                        .unwrap_or_default())
+                    .unwrap_or_else(|_| "".to_string())
+            ),
+        }
+    }
+}
 
 impl Listener {
     pub fn into_tokio_listener(self) -> TokioListener {
+        info!("Binding to {}", self);
         match self {
             Listener::Tcp(listener) => {
                 TokioListener::Tcp(TokioTcpListener::from_std(listener).unwrap())
@@ -371,7 +399,6 @@ fn connect_tcp_socket(addr: IpAddr, port: u16) -> Result<TcpListener> {
     socket.set_nonblocking(true).ok();
     socket.set_nodelay(true).ok();
     socket.set_recv_buffer_size(262_144).ok();
-    info!("Binding to {:?}", socket_address);
     socket.bind(&socket_address.into())?;
     socket.listen(1024)?;
     Ok(socket.into())
@@ -384,7 +411,6 @@ fn connect_unix_socket(path: &PathBuf) -> Result<UnixListener> {
 
     let socket_address = socket2::SockAddr::unix(path)?;
 
-    info!("Binding to {:?}", path);
     socket.bind(&socket_address)?;
     socket.listen(1024)?;
 

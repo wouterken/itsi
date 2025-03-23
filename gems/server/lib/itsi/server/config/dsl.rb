@@ -99,8 +99,6 @@ module Itsi
         end
 
         def endpoint(route, method, app_proc = nil, &blk)
-          raise "`endpoint` must be set inside a location block" if @parent.nil?
-
           raise "You can't use both a block and an explicit handler in the same endpoint" if blk && app_proc
           raise "You must provide either a block or an explicit handler for the endpoint" if app_proc.nil? && blk.nil?
 
@@ -118,12 +116,10 @@ module Itsi
             raise "App has already been set. You can use only one of `run` and `rackup_file` per location"
           end
 
-          app = Itsi::Server::RackInterface.for(app)
-
           if @parent.nil?
-            @options[:app_loader] = -> { { "app_proc" => ->(request){ Server.respond request, app.call(request.to_rack_env) } } }
+            @options[:app_loader] = -> { { "app_proc" => Itsi::Server::RackInterface.for(app) } }
           else
-            @middleware[:app] = { app_proc: ->(request){ Server.respond request, app.call(request.to_rack_env) } }
+            @middleware[:app] = { app_proc: Itsi::Server::RackInterface.for(app) }
           end
         end
 
@@ -134,11 +130,10 @@ module Itsi
 
           raise "Rackup file #{rackup_file} doesn't exist" unless File.exist?(rackup_file)
 
-          app = Itsi::Server::RackInterface.for(app)
           if @parent.nil?
-            @options[:app_loader] = -> { { "app_proc" => ->(request){ Server.respond request, app.call(request.to_rack_env) } } }
+            @options[:app_loader] = -> { { "app_proc" => Itsi::Server::RackInterface.for(rackup_file) } }
           else
-            @middleware[:app] = { app_proc: ->(request){ Server.respond request, app.call(request.to_rack_env) } }
+            @middleware[:app] = { app_proc: Itsi::Server::RackInterface.for(rackup_file) }
           end
         end
 
@@ -181,9 +176,17 @@ module Itsi
           @options[:worker_memory_limit] = memory_limit
         end
 
-        def fiber_scheduler(klass_name)
+        def watch(path, commands)
+          raise "Watch be set at the root" unless @parent.nil?
+
+          @options[:notify_watchers] ||= []
+          @options[:notify_watchers] << [path, commands]
+        end
+
+        def fiber_scheduler(klass_name = true)
           raise "Fiber scheduler must be set at the root" unless @parent.nil?
 
+          klass_name = "Itsi::Scheduler" if klass_name == true
           @options[:scheduler_class] = klass_name if klass_name
         end
 

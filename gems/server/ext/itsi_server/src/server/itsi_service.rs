@@ -9,9 +9,8 @@ use crate::ruby_types::itsi_server::itsi_server_config::ServerParams;
 use either::Either;
 use hyper::service::Service;
 use itsi_error::ItsiError;
-use parking_lot::RwLock;
 use regex::Regex;
-use std::collections::HashMap;
+use std::sync::OnceLock;
 use std::{future::Future, ops::Deref, pin::Pin, sync::Arc};
 use tokio::sync::watch::{self};
 
@@ -57,14 +56,10 @@ impl Deref for RequestContextInner {
     }
 }
 
-pub enum RequestContextItem {
-    CompressionAlgorithm(CompressionAlgorithm),
-}
-
 pub struct RequestContextInner {
     pub service: ItsiService,
     pub matching_pattern: Option<Arc<Regex>>,
-    pub store: RwLock<HashMap<&'static str, Arc<RequestContextItem>>>,
+    pub compression_method: OnceLock<CompressionAlgorithm>,
 }
 
 impl RequestContext {
@@ -73,18 +68,13 @@ impl RequestContext {
             inner: Arc::new(RequestContextInner {
                 service,
                 matching_pattern,
-                store: RwLock::new(HashMap::new()),
+                compression_method: OnceLock::new(),
             }),
         }
     }
 
-    pub fn insert(&mut self, key: &'static str, value: RequestContextItem) {
-        self.inner.store.write().insert(key, Arc::new(value));
-    }
-
-    pub fn get(&self, key: &'static str) -> Option<Arc<RequestContextItem>> {
-        let store = self.inner.store.read();
-        store.get(key).cloned()
+    pub fn set_compression_method(&self, method: CompressionAlgorithm) {
+        self.inner.compression_method.set(method).unwrap();
     }
 }
 

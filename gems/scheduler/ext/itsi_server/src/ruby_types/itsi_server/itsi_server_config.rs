@@ -3,6 +3,7 @@ use crate::{
     server::{bind::Bind, listener::Listener, middleware_stack::MiddlewareSet},
 };
 use derive_more::Debug;
+use globset::{Glob, GlobSet, GlobSetBuilder};
 use itsi_rb_helpers::{call_with_gvl, print_rb_backtrace, HeapVal, HeapValue};
 use magnus::{
     block::Proc,
@@ -14,13 +15,19 @@ use nix::{
     fcntl::{fcntl, FcntlArg, FdFlag},
     unistd::dup,
 };
+use notify::{Config, RecommendedWatcher};
+use notify::{Event, RecursiveMode, Watcher};
 use parking_lot::{Mutex, RwLock};
+use std::path::Path;
 use std::{
     collections::HashMap,
     os::fd::RawFd,
     path::PathBuf,
-    sync::{Arc, OnceLock},
+    process::Command,
+    sync::{mpsc, Arc, OnceLock},
+    thread,
 };
+use std::{collections::HashSet, fs};
 use tracing::info;
 
 static DEFAULT_BIND: &str = "http://localhost:3000";
@@ -45,10 +52,12 @@ pub struct ServerParams {
     pub hooks: HashMap<String, HeapValue<Proc>>,
     pub preload: bool,
 
+    pub notify_watchers: Option<Vec<(String, Vec<Vec<String>>)>>,
     /// Worker params
     pub threads: u8,
     pub script_name: String,
     pub streamable_body: bool,
+    pub multithreaded_reactor: bool,
     pub scheduler_class: Option<String>,
     pub oob_gc_responses_threshold: Option<u64>,
     pub middleware_loader: HeapValue<Proc>,
@@ -62,7 +71,14 @@ pub struct ServerParams {
 
 impl ServerParams {
     pub fn preload_ruby(self: &Arc<Self>) -> Result<()> {
-        call_with_gvl(|_| -> Result<()> {
+        call_with_gvl(|ruby| -> Result<()> {
+            if self
+                .scheduler_class
+                .as_ref()
+                .is_some_and(|t| t == "Itsi::Scheduler")
+            {
+                ruby.require("itsi/scheduler")?;
+            }
             let default_app: HeapVal = self.default_app_loader.call::<_, Value>(())?.into();
             let middleware = MiddlewareSet::new(
                 self.middleware_loader
@@ -92,6 +108,7 @@ impl ServerParams {
             .unwrap_or(num_cpus::get() as u8);
         let worker_memory_limit: Option<u64> = rb_param_hash.fetch("worker_memory_limit")?;
         let silence: bool = rb_param_hash.fetch("silence")?;
+        let multithreaded_reactor: bool = rb_param_hash.fetch("multithreaded_reactor")?;
         let shutdown_timeout: f64 = rb_param_hash.fetch("shutdown_timeout")?;
 
         let hooks: Option<RHash> = rb_param_hash.fetch("hooks")?;
@@ -112,6 +129,8 @@ impl ServerParams {
             .transpose()?
             .unwrap_or_default();
         let preload: bool = rb_param_hash.fetch("preload")?;
+        let notify_watchers: Option<Vec<(String, Vec<Vec<String>>)>> =
+            rb_param_hash.fetch("notify_watchers")?;
         let threads: u8 = rb_param_hash.fetch("threads")?;
         let script_name: String = rb_param_hash.fetch("script_name")?;
         let streamable_body: bool = rb_param_hash.fetch("streamable_body")?;
@@ -175,9 +194,11 @@ impl ServerParams {
             workers,
             worker_memory_limit,
             silence,
+            multithreaded_reactor,
             shutdown_timeout,
             hooks,
             preload,
+            notify_watchers,
             threads,
             script_name,
             streamable_body,
@@ -197,6 +218,12 @@ impl ItsiServerConfig {
     pub fn new(ruby: &Ruby, cli_params: RHash, itsifile_path: Option<PathBuf>) -> Result<Self> {
         let server_params = Self::combine_params(ruby, cli_params, itsifile_path.as_ref())?;
         cli_params.delete::<_, Value>(Symbol::new("listeners"))?;
+
+        if let Some(watchers) = server_params.notify_watchers.clone() {
+            if server_params.workers == 1 {
+                watch_groups(watchers)?;
+            }
+        }
 
         Ok(ItsiServerConfig {
             cli_params: Arc::new(cli_params.into()),
@@ -293,4 +320,119 @@ impl ItsiServerConfig {
         })?;
         Ok(())
     }
+}
+
+/// Represents a set of patterns and commands.
+#[derive(Debug, Clone)]
+struct PatternGroup {
+    base_dir: PathBuf,
+    glob_set: GlobSet,
+    commands: Vec<Vec<String>>,
+}
+
+/// Extracts the base directory from a wildcard pattern by taking the portion up to the first
+/// component that contains a wildcard character.
+fn extract_and_canonicalize_base_dir(pattern: &str) -> PathBuf {
+    let path = Path::new(pattern);
+    let mut base = PathBuf::new();
+    for comp in path.components() {
+        let comp_str = comp.as_os_str().to_string_lossy();
+        if comp_str.contains('*') || comp_str.contains('?') || comp_str.contains('[') {
+            break;
+        } else {
+            base.push(comp);
+        }
+    }
+    // If no base was built, default to "."
+    let base = if base.as_os_str().is_empty() {
+        PathBuf::from(".")
+    } else {
+        base
+    };
+    // Canonicalize to get the absolute path.
+    fs::canonicalize(&base).unwrap_or(base)
+}
+
+pub fn watch_groups(pattern_groups: Vec<(String, Vec<Vec<String>>)>) -> Result<()> {
+    let mut groups: Vec<PatternGroup> = Vec::new();
+    for (pattern, commands) in pattern_groups.into_iter() {
+        let base_dir = extract_and_canonicalize_base_dir(&pattern);
+        let glob = Glob::new(&pattern).map_err(|e| {
+            magnus::Error::new(
+                magnus::exception::exception(),
+                format!("Failed to create watch glob: {}", e),
+            )
+        })?;
+        let glob_set = GlobSetBuilder::new().add(glob).build().map_err(|e| {
+            magnus::Error::new(
+                magnus::exception::exception(),
+                format!("Failed to create watch glob set: {}", e),
+            )
+        })?;
+        groups.push(PatternGroup {
+            base_dir,
+            glob_set,
+            commands,
+        });
+    }
+
+    thread::spawn(move || {
+        // To avoid duplicate watches, track the base directories that have already been watched.
+        let mut watched_dirs = HashSet::new();
+        let (tx, rx) = mpsc::channel::<notify::Result<Event>>();
+        let mut watcher: RecommendedWatcher =
+            RecommendedWatcher::new(tx, Config::default()).unwrap();
+        for group in &groups {
+            if watched_dirs.insert(group.base_dir.clone()) {
+                watcher
+                    .watch(&group.base_dir, RecursiveMode::Recursive)
+                    .unwrap();
+            }
+        }
+        for res in rx {
+            match res {
+                Ok(event) => {
+                    // For each pattern group, check if any path in the event matches.
+                    for group in &groups {
+                        // Check every path in the event.
+                        for path in event.paths.iter() {
+                            if let Ok(rel_path) = path.strip_prefix(&group.base_dir) {
+                                if group.glob_set.is_match(rel_path) {
+                                    for command in &group.commands {
+                                        if command.is_empty() {
+                                            continue;
+                                        }
+                                        let mut cmd = Command::new(&command[0]);
+                                        if command.len() > 1 {
+                                            cmd.args(&command[1..]);
+                                        }
+                                        match cmd.spawn() {
+                                            Ok(mut child) => {
+                                                if let Err(e) = child.wait() {
+                                                    eprintln!(
+                                                        "Command {:?} failed: {:?}",
+                                                        command, e
+                                                    );
+                                                }
+                                            }
+                                            Err(e) => {
+                                                eprintln!(
+                                                    "Failed to execute command {:?}: {:?}",
+                                                    command, e
+                                                );
+                                            }
+                                        }
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                Err(e) => println!("Watch error: {:?}", e),
+            }
+        }
+    });
+
+    Ok(())
 }

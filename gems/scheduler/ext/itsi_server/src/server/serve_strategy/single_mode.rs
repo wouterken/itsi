@@ -15,23 +15,26 @@ use hyper_util::{
     server::conn::auto::Builder,
 };
 use itsi_error::{ItsiError, Result};
-use itsi_rb_helpers::print_rb_backtrace;
+use itsi_rb_helpers::{call_with_gvl, print_rb_backtrace};
 use itsi_tracing::{debug, error, info};
 use nix::unistd::Pid;
+use parking_lot::RwLock;
 use std::{
+    collections::HashMap,
     num::NonZeroU8,
     pin::Pin,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
+    thread::sleep,
     time::{Duration, Instant},
 };
 use tokio::{
     runtime::{Builder as RuntimeBuilder, Runtime},
     sync::{
         broadcast,
-        watch::{self, Sender},
+        watch::{self},
     },
     task::JoinSet,
 };
@@ -42,6 +45,7 @@ pub struct SingleMode {
     pub server_config: Arc<ItsiServerConfig>,
     pub(crate) lifecycle_channel: broadcast::Sender<LifecycleEvent>,
     pub restart_requested: AtomicBool,
+    pub status: RwLock<HashMap<u8, (u64, u64)>>,
 }
 
 pub enum RunningPhase {
@@ -53,19 +57,27 @@ pub enum RunningPhase {
 impl SingleMode {
     #[instrument(parent=None, skip_all, fields(pid=format!("{:?}", Pid::this())))]
     pub fn new(server_config: Arc<ItsiServerConfig>) -> Result<Self> {
-        let server_params = server_config.server_params.read().clone();
-        server_params.preload_ruby()?;
-
+        server_config.server_params.read().preload_ruby()?;
         Ok(Self {
             executor: Builder::new(TokioExecutor::new()),
             server_config,
             lifecycle_channel: SIGNAL_HANDLER_CHANNEL.0.clone(),
             restart_requested: AtomicBool::new(false),
+            status: RwLock::new(HashMap::new()),
         })
     }
 
     pub fn build_runtime(&self) -> Runtime {
-        let mut builder: RuntimeBuilder = RuntimeBuilder::new_multi_thread();
+        let mut builder: RuntimeBuilder = if self
+            .server_config
+            .server_params
+            .read()
+            .multithreaded_reactor
+        {
+            RuntimeBuilder::new_multi_thread()
+        } else {
+            RuntimeBuilder::new_current_thread()
+        };
         builder
             .thread_name("itsi-server-accept-loop")
             .thread_stack_size(3 * 1024 * 1024)
@@ -78,6 +90,47 @@ impl SingleMode {
     pub fn stop(&self) -> Result<()> {
         self.lifecycle_channel.send(LifecycleEvent::Shutdown).ok();
         Ok(())
+    }
+
+    pub fn start_monitors(self: Arc<Self>, thread_workers: Arc<Vec<Arc<ThreadWorker>>>) {
+        let monitor_runtime = RuntimeBuilder::new_current_thread()
+            .enable_time()
+            .build()
+            .unwrap();
+        let receiver = self.clone();
+        let mut lifecycle_rx = receiver.lifecycle_channel.subscribe();
+        monitor_runtime.spawn({
+            let receiver = receiver.clone();
+            let thread_workers = thread_workers.clone();
+            async move {
+                loop {
+                    tokio::select! {
+                      _ = tokio::time::sleep(Duration::from_secs(1)) => {
+                        let mut status_lock = receiver.status.write();
+                        thread_workers.iter().for_each(|worker| {
+                            let worker_entry = status_lock.entry(worker.id);
+                            let data = (
+                                worker.request_id.load(Ordering::Relaxed),
+                                worker.current_request_start.load(Ordering::Relaxed),
+                            );
+                            worker_entry.or_insert(data);
+                        });
+                      }
+                      lifecycle_event = lifecycle_rx.recv() => {
+                          match lifecycle_event {
+                              Ok(LifecycleEvent::Restart) => {
+                                  receiver.restart().ok();
+                              }
+                              Ok(LifecycleEvent::Reload) => {
+                                  receiver.reload().ok();
+                              }
+                              _ => {}
+                          }
+                      }
+                    }
+                }
+            }
+        });
     }
 
     #[instrument(parent=None, skip(self), fields(pid=format!("{}", Pid::this())))]
@@ -96,24 +149,29 @@ impl SingleMode {
             }
         })?;
 
-        runtime.block_on(async {
-              let tokio_listeners = self
-                  .server_config.server_params.write().listeners.lock()
+        let (shutdown_sender, _) = watch::channel(RunningPhase::Running);
+        self.clone().start_monitors(thread_workers.clone());
+
+        runtime.block_on(
+          async  {
+              let server_params = self.server_config.server_params.read().clone();
+              server_params.middleware.get().unwrap().initialize_layers().await?;
+              let tokio_listeners = server_params.listeners.lock()
                   .drain(..)
                   .map(|list| {
                     Arc::new(list.into_tokio_listener())
                   })
                   .collect::<Vec<_>>();
-              let (shutdown_sender, _) = watch::channel(RunningPhase::Running);
+
+
               for listener in tokio_listeners.iter() {
                   let mut lifecycle_rx = self.lifecycle_channel.subscribe();
                   let listener_info = Arc::new(listener.listener_info());
                   let self_ref = self.clone();
                   let listener = listener.clone();
                   let shutdown_sender = shutdown_sender.clone();
-                  let thread_workers = thread_workers.clone();
                   let job_sender = job_sender.clone();
-
+                  let workers_clone = thread_workers.clone();
                   let listener_clone = listener.clone();
                   let mut shutdown_receiver = shutdown_sender.subscribe();
                   let shutdown_receiver_clone = shutdown_receiver.clone();
@@ -142,28 +200,47 @@ impl SingleMode {
                               break;
                             }
                             lifecycle_event = lifecycle_rx.recv() => match lifecycle_event{
-                              Ok(lifecycle_event) => {
-                                if let Err(e) = self_ref.handle_lifecycle_event(lifecycle_event, thread_workers.clone(), shutdown_sender.clone()).await{
-                                  match e {
-                                    ItsiError::Break() => break,
-                                    _ => error!("Error in handle_lifecycle_event {:?}", e)
-                                  }
+                              Ok(LifecycleEvent::Shutdown) => {
+                                for worker in workers_clone.iter() {
+                                  info!("Sending shutdown request to worker {}", worker.id);
+                                  job_sender.send(RequestJob::Shutdown).await.unwrap();
+                                  info!("Sent");
                                 }
-
+                                break;
                               },
                               Err(e) => error!("Error receiving lifecycle_event: {:?}", e),
+                              _ => {}
                           }
                         }
                     }
+                    info!("Awaiting acceptor tasks");
                     while let Some(_res) = acceptor_task_set.join_next().await {}
                 });
 
               }
 
+              info!("Awaiting listener tasks");
               while let Some(_res) = listener_task_set.join_next().await {}
 
-            });
-        runtime.shutdown_timeout(Duration::from_millis(100));
+              Ok::<(), ItsiError>(())
+          })?;
+
+        let deadline = Instant::now()
+            + Duration::from_secs_f64(self.server_config.server_params.read().shutdown_timeout);
+
+        runtime.shutdown_timeout(Duration::from_secs_f64(
+            self.server_config.server_params.read().shutdown_timeout,
+        ));
+
+        call_with_gvl(move |_| loop {
+            if thread_workers
+                .iter()
+                .all(|worker| !worker.poll_shutdown(deadline))
+            {
+                break;
+            }
+            sleep(Duration::from_millis(50));
+        });
 
         if self.restart_requested.load(Ordering::SeqCst) {
             self.restart_requested.store(false, Ordering::SeqCst);
@@ -250,61 +327,6 @@ impl SingleMode {
     pub fn restart(&self) -> Result<()> {
         self.server_config.dup_fds()?;
         self.server_config.reload_exec()?;
-        Ok(())
-    }
-
-    pub async fn handle_lifecycle_event(
-        &self,
-        lifecycle_event: LifecycleEvent,
-        thread_workers: Arc<Vec<ThreadWorker>>,
-        shutdown_sender: Sender<RunningPhase>,
-    ) -> Result<()> {
-        info!("Handling lifecycle event: {:?}", lifecycle_event);
-        match lifecycle_event {
-            LifecycleEvent::Restart => {
-                self.restart()?;
-            }
-            LifecycleEvent::Reload => {
-                self.reload()?;
-            }
-            LifecycleEvent::Shutdown => {
-                //1. Stop accepting new connections.
-                shutdown_sender.send(RunningPhase::ShutdownPending).ok();
-                tokio::time::sleep(Duration::from_millis(25)).await;
-
-                //2. Break out of work queues.
-                for worker in thread_workers.iter() {
-                    worker.request_shutdown().await;
-                }
-
-                tokio::time::sleep(Duration::from_millis(25)).await;
-
-                //3. Wait for all threads to finish.
-                let deadline = Instant::now()
-                    + Duration::from_secs_f64(
-                        self.server_config.server_params.read().shutdown_timeout,
-                    );
-                while Instant::now() < deadline {
-                    let alive_threads = &thread_workers
-                        .iter()
-                        .filter(|worker| worker.poll_shutdown(deadline))
-                        .count();
-                    if *alive_threads == 0 {
-                        break;
-                    }
-                    tokio::time::sleep(Duration::from_millis(200)).await;
-                }
-
-                //4. Force shutdown any stragglers
-                shutdown_sender.send(RunningPhase::Shutdown).ok();
-                thread_workers.iter().for_each(|worker| {
-                    worker.poll_shutdown(deadline);
-                });
-
-                return Err(ItsiError::Break());
-            }
-            _ => {}
-        }
         Ok(())
     }
 }

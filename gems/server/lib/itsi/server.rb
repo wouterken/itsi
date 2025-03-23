@@ -7,6 +7,7 @@ require_relative "server/signal_trap"
 require_relative "server/scheduler_interface"
 require_relative "server/rack/handler/itsi"
 require_relative "server/config"
+require_relative "standard_headers"
 require_relative "http_request"
 require_relative "http_response"
 

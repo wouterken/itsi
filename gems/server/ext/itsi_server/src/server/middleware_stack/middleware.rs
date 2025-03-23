@@ -26,6 +26,24 @@ pub enum Middleware {
 
 #[async_trait]
 impl MiddlewareLayer for Middleware {
+    /// Called just once, to initialize the middleware state.
+    async fn initialize(&self) -> Result<()> {
+        match self {
+            Middleware::AuthBasic(filter) => filter.initialize().await,
+            Middleware::AuthJwt(filter) => filter.initialize().await,
+            Middleware::AuthAPIKey(filter) => filter.initialize().await,
+            Middleware::Endpoint(filter) => filter.initialize().await,
+            Middleware::RateLimit(filter) => filter.initialize().await,
+            Middleware::Cors(filter) => filter.initialize().await,
+            Middleware::StaticAssets(filter) => filter.initialize().await,
+            Middleware::Compression(filter) => filter.initialize().await,
+            Middleware::Logging(filter) => filter.initialize().await,
+            Middleware::Redirect(filter) => filter.initialize().await,
+            Middleware::Proxy(filter) => filter.initialize().await,
+            Middleware::RubyApp(filter) => filter.initialize().await,
+        }
+    }
+
     async fn before(
         &self,
         req: HttpRequest,

@@ -1,6 +1,7 @@
 mod middleware;
 mod middlewares;
 use super::types::HttpRequest;
+use http::header::HOST;
 use itsi_rb_helpers::HeapVal;
 use magnus::{error::Result, value::ReprValue, RArray, RHash, Ruby, TryConvert, Value};
 pub use middleware::Middleware;
@@ -73,10 +74,11 @@ impl MiddlewareStack {
             }
         }
 
-        if let (Some(hosts), Some(host)) = (&self.hosts, request.uri().host()) {
-            if !hosts.iter().any(|d| d.matches(host)) {
-                info!("No match between host {} and {:?}", host, hosts);
-                return false;
+        if let (Some(hosts), Some(host)) = (&self.hosts, request.headers().get(HOST)) {
+            if let Ok(host) = host.to_str() {
+                if !hosts.iter().any(|d| d.matches(host)) {
+                    return false;
+                }
             }
         }
 
@@ -238,11 +240,24 @@ impl MiddlewareSet {
                 ))
             }
         };
+
         Ok(result)
     }
 
     fn default_stack(&self) -> &Vec<Middleware> {
         &self.default_stack
+    }
+
+    pub async fn initialize_layers(&self) -> Result<()> {
+        for middleware in &self.default_stack {
+            middleware.initialize().await?;
+        }
+        for stack in self.stacks.values() {
+            for middleware in &stack.layers {
+                middleware.initialize().await?;
+            }
+        }
+        Ok(())
     }
 }
 
