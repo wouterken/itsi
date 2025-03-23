@@ -119,6 +119,7 @@ OptionParser.new do |opts|
   end
 end.parse!
 
+
 case (command = ARGV.pop)
 when "init"
   Itsi::Server::Config.write_default

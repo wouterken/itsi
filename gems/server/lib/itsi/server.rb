@@ -50,6 +50,8 @@ module Itsi
         else
           nil
         end
+      rescue
+        nil
       end
 
       def reload
@@ -86,7 +88,7 @@ module Itsi
 
       def status
         if pid = get_pid
-          # Write to master socket and get results
+          Process.kill(:INFO, pid)
         end
       end
     end

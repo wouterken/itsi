@@ -229,7 +229,6 @@ impl MiddlewareSet {
             "static_assets" => Middleware::StaticAssets(StaticAssets::from_value(parameters)?),
             "compression" => Middleware::Compression(Compression::from_value(parameters)?),
             "logging" => Middleware::Logging(Logging::from_value(parameters)?),
-            "endpoint" => Middleware::Endpoint(Endpoint::from_value(parameters)?),
             "redirect" => Middleware::Redirect(Redirect::from_value(parameters)?),
             "app" => Middleware::RubyApp(RubyApp::from_value(parameters.into())?),
             "proxy" => Middleware::Proxy(Proxy::from_value(parameters)?),

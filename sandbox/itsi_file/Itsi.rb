@@ -1,11 +1,15 @@
-workers 1
-threads 1
+workers 40
+threads 40
+
+preload false
 
 bind 'http://0.0.0.0:3000'
 
 fiber_scheduler 'Itsi::Scheduler'
+shutdown_timeout 10
+multithreaded_reactor true
 
-watch '**.rb', [%w[bundle exec itsi restart]]
+watch '*.rb', [%w[bundle exec itsi restart]]
 
 def user_serve(request)
   response = request.response
@@ -22,6 +26,12 @@ def user_create(request)
   response << 'User created!'
   response.close
 end
+
+
+location "/basic" do
+  auth_basic realm: 'My Realm', credential_pairs: { 'user' => 'password' }
+end
+
 
 location '/proxy_as_foo_com' do
   compress algorithms: ['zstd'], min_size: 0, compress_streams: true, mime_types: ['all'], level: 'fastest'
@@ -119,3 +129,5 @@ run lambda { |env|
 #                  error_response: { code: 401, plaintext: 'Unauthorized', default: 'plaintext' }
 #   end
 # end
+#foo
+#foo

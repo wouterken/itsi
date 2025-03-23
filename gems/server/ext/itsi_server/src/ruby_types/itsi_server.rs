@@ -9,8 +9,8 @@ use magnus::{error::Result, RHash, Ruby};
 use parking_lot::Mutex;
 use std::{path::PathBuf, sync::Arc};
 use tracing::{info, instrument};
+mod file_watcher;
 pub mod itsi_server_config;
-
 #[magnus::wrap(class = "Itsi::Server", free_immediately, size)]
 #[derive(Clone)]
 pub struct ItsiServer {

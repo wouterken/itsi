@@ -272,7 +272,6 @@ impl Display for Listener {
 
 impl Listener {
     pub fn into_tokio_listener(self) -> TokioListener {
-        info!("Binding to {}", self);
         match self {
             Listener::Tcp(listener) => {
                 TokioListener::Tcp(TokioTcpListener::from_std(listener).unwrap())

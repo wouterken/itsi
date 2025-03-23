@@ -13,7 +13,6 @@ pub enum Middleware {
     AuthBasic(AuthBasic),
     AuthJwt(Box<AuthJwt>),
     AuthAPIKey(AuthAPIKey),
-    Endpoint(Endpoint),
     RateLimit(RateLimit),
     Cors(Box<Cors>),
     StaticAssets(StaticAssets),
@@ -32,7 +31,6 @@ impl MiddlewareLayer for Middleware {
             Middleware::AuthBasic(filter) => filter.initialize().await,
             Middleware::AuthJwt(filter) => filter.initialize().await,
             Middleware::AuthAPIKey(filter) => filter.initialize().await,
-            Middleware::Endpoint(filter) => filter.initialize().await,
             Middleware::RateLimit(filter) => filter.initialize().await,
             Middleware::Cors(filter) => filter.initialize().await,
             Middleware::StaticAssets(filter) => filter.initialize().await,
@@ -53,7 +51,6 @@ impl MiddlewareLayer for Middleware {
             Middleware::AuthBasic(filter) => filter.before(req, context).await,
             Middleware::AuthJwt(filter) => filter.before(req, context).await,
             Middleware::AuthAPIKey(filter) => filter.before(req, context).await,
-            Middleware::Endpoint(filter) => filter.before(req, context).await,
             Middleware::RateLimit(filter) => filter.before(req, context).await,
             Middleware::Cors(filter) => filter.before(req, context).await,
             Middleware::StaticAssets(filter) => filter.before(req, context).await,
@@ -70,7 +67,6 @@ impl MiddlewareLayer for Middleware {
             Middleware::AuthBasic(filter) => filter.after(res, context).await,
             Middleware::AuthJwt(filter) => filter.after(res, context).await,
             Middleware::AuthAPIKey(filter) => filter.after(res, context).await,
-            Middleware::Endpoint(filter) => filter.after(res, context).await,
             Middleware::RateLimit(filter) => filter.after(res, context).await,
             Middleware::Cors(filter) => filter.after(res, context).await,
             Middleware::StaticAssets(filter) => filter.after(res, context).await,
@@ -96,8 +92,7 @@ impl Middleware {
             Middleware::Proxy(_) => 7,
             Middleware::Cors(_) => 8,
             Middleware::StaticAssets(_) => 9,
-            Middleware::Endpoint(_) => 10,
-            Middleware::RubyApp(_) => 11,
+            Middleware::RubyApp(_) => 10,
         }
     }
 }

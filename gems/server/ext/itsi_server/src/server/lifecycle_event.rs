@@ -7,4 +7,6 @@ pub enum LifecycleEvent {
     IncreaseWorkers,
     DecreaseWorkers,
     ForceShutdown,
+    PrintInfo,
+    ChildTerminated,
 }

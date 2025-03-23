@@ -70,7 +70,6 @@ pub fn build_thread_workers(
         Arc::new(
             (1..=u8::from(threads))
                 .map(|id| {
-                    info!(pid = pid.as_raw(), id, "Thread");
                     ThreadWorker::new(
                         params.clone(),
                         id,
@@ -126,8 +125,6 @@ impl ThreadWorker {
 
     #[instrument(skip(self, deadline), fields(id = self.id))]
     pub fn poll_shutdown(&self, deadline: Instant) -> bool {
-        debug!("About to call with GVL");
-        debug!("Polling shutdown");
         if let Some(thread) = self.thread.read().deref() {
             if Instant::now() > deadline {
                 warn!("Worker shutdown timed out. Killing thread");
@@ -140,7 +137,6 @@ impl ThreadWorker {
             }
             debug!("Thread has shut down");
         }
-        debug!("Thread is not running");
         self.thread.write().take();
 
         false

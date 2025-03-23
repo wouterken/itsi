@@ -1,6 +1,7 @@
 pub mod bind;
 pub mod bind_protocol;
 pub mod byte_frame;
+pub mod cache_store;
 pub mod io_stream;
 pub mod itsi_service;
 pub mod lifecycle_event;

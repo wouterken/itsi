@@ -7,10 +7,7 @@ use itsi_rb_helpers::{
 };
 use itsi_tracing::{error, info, warn};
 use magnus::Value;
-use nix::{
-    libc::{self, exit},
-    unistd::Pid,
-};
+use nix::{libc::exit, unistd::Pid};
 
 use std::{
     sync::{atomic::AtomicUsize, Arc},
@@ -66,13 +63,19 @@ impl ClusterMode {
     ) -> Result<()> {
         match lifecycle_event {
             LifecycleEvent::Start => Ok(()),
+            LifecycleEvent::PrintInfo => {
+                self.print_info().await?;
+                Ok(())
+            }
             LifecycleEvent::Shutdown => {
+                self.server_config.stop_watcher()?;
                 self.shutdown().await?;
                 Ok(())
             }
             LifecycleEvent::Restart => {
                 self.server_config.dup_fds()?;
                 self.shutdown().await.ok();
+                info!("Shutdown complete. Calling reload exec");
                 self.server_config.reload_exec()?;
                 Ok(())
             }
@@ -153,7 +156,14 @@ impl ClusterMode {
                 for worker in self.process_workers.lock().iter() {
                     worker.force_kill();
                 }
+                error!("Force shutdown!");
                 unsafe { exit(0) };
+            }
+            LifecycleEvent::ChildTerminated => {
+                CHILD_SIGNAL_SENDER.lock().as_ref().inspect(|i| {
+                    i.send(()).ok();
+                });
+                Ok(())
             }
         }
     }
@@ -195,28 +205,58 @@ impl ClusterMode {
         Err(ItsiError::Break())
     }
 
-    pub fn receive_signal(signal: i32) {
-        match signal {
-            libc::SIGCHLD => {
-                CHILD_SIGNAL_SENDER.lock().as_ref().inspect(|i| {
-                    i.send(()).ok();
-                });
-            }
-            _ => {
-                // Handle other signals
+    pub async fn print_info(self: Arc<Self>) -> Result<()> {
+        println!("Itsi Cluster Info:");
+        println!("Master PID: {:?}", Pid::this());
+        if let Some(memory_limit) = self.server_config.server_params.read().worker_memory_limit {
+            println!("Worker Memory Limit: {}", memory_limit);
+        }
+
+        if self.server_config.watcher_fd.is_some() {
+            println!("File Watcher Enabled: true",);
+            if let Some(watchers) = self
+                .server_config
+                .server_params
+                .read()
+                .notify_watchers
+                .as_ref()
+            {
+                for watcher in watchers {
+                    println!(
+                        "Watching path: {} => {}",
+                        watcher.0,
+                        watcher
+                            .1
+                            .iter()
+                            .map(|path| path.join(","))
+                            .collect::<Vec<String>>()
+                            .join(" ")
+                    );
+                }
             }
         }
+        println!(
+            "Silent Mode: {}",
+            self.server_config.server_params.read().silence
+        );
+        println!(
+            "Preload: {}",
+            self.server_config.server_params.read().preload
+        );
+        let workers = self.process_workers.lock().clone();
+        for worker in workers {
+            worker.print_info()?;
+            sleep(Duration::from_millis(50)).await;
+        }
+        Ok(())
     }
 
     pub fn stop(&self) -> Result<()> {
-        unsafe { libc::signal(libc::SIGCHLD, libc::SIG_DFL) };
-
         for worker in self.process_workers.lock().iter() {
             if worker.is_alive() {
                 worker.force_kill();
             }
         }
-
         Ok(())
     }
 
@@ -239,8 +279,6 @@ impl ClusterMode {
 
         let (sender, mut receiver) = watch::channel(());
         *CHILD_SIGNAL_SENDER.lock() = Some(sender);
-
-        unsafe { libc::signal(libc::SIGCHLD, Self::receive_signal as usize) };
 
         let mut lifecycle_rx = self.lifecycle_channel.subscribe();
         let self_ref = self.clone();

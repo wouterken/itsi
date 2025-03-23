@@ -10,7 +10,7 @@ module Itsi
       ITSI_DEFAULT_CONFIG_FILE = "Itsi.rb"
 
       def self.save_argv!
-        @argv = ARGV[0...ARGV.index("--listeners")]
+        @argv ||= ARGV[0...ARGV.index("--listeners")]
       end
 
       # The configuration used when launching the Itsi server are evaluated in the following precedence:
@@ -30,7 +30,8 @@ module Itsi
             lambda {
               { "app_proc" => Itsi::Server::RackInterface.for(rackup_file_path) }
             }
-          elsif DEFAULT_APP
+          else
+            DEFAULT_APP
           end
         end
         preload = args.fetch(:preload) { itsifile_config.fetch(:preload, false) }
@@ -76,6 +77,7 @@ module Itsi
       # using exec, passing in any active file descriptors
       # and previous invocation arguments
       def self.reload_exec(listener_info)
+
         if ENV["BUNDLE_BIN_PATH"]
           exec "bundle", "exec", $PROGRAM_NAME, *@argv, "--listeners", listener_info
         else

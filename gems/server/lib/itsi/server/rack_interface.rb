@@ -4,6 +4,7 @@ module Itsi
 
       # Builds a handler proc that is compatible with Rack applications.
       def self.for(app)
+        require "rack"
         if app.is_a?(String)
           dir = File.expand_path(File.dirname(app))
           Dir.chdir(dir) do

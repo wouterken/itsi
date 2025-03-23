@@ -7,7 +7,7 @@ use nix::{
     sys::{
         signal::{
             kill,
-            Signal::{SIGKILL, SIGTERM},
+            Signal::{SIGINFO, SIGKILL, SIGTERM},
         },
         wait::{waitpid, WaitPidFlag, WaitStatus},
     },
@@ -53,6 +53,7 @@ impl ProcessWorker {
             }
             *self.child_pid.lock() = None;
         }
+
         match call_with_gvl(|_ruby| {
             fork(
                 cluster_template
@@ -188,6 +189,18 @@ impl ProcessWorker {
                 }
             }
         }
+    }
+
+    pub fn print_info(&self) -> Result<()> {
+        let child_pid = *self.child_pid.lock();
+        if let Some(pid) = child_pid {
+            println!("Worker {:?}, PID: {:?}", self.worker_id, pid);
+            if let Err(e) = kill(pid, SIGINFO) {
+                error!("Failed to send SIGINFO to process {}: {}", pid, e);
+            }
+        }
+
+        Ok(())
     }
 
     pub(crate) fn just_started(&self) -> bool {

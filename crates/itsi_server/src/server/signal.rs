@@ -30,6 +30,12 @@ fn receive_signal(signum: i32, _: sighandler_t) {
                     .ok();
             }
         }
+        libc::SIGINFO => {
+            SIGNAL_HANDLER_CHANNEL
+                .0
+                .send(LifecycleEvent::PrintInfo)
+                .ok();
+        }
         libc::SIGUSR1 => {
             SIGNAL_HANDLER_CHANNEL.0.send(LifecycleEvent::Restart).ok();
         }
@@ -48,6 +54,12 @@ fn receive_signal(signum: i32, _: sighandler_t) {
                 .send(LifecycleEvent::DecreaseWorkers)
                 .ok();
         }
+        libc::SIGCHLD => {
+            SIGNAL_HANDLER_CHANNEL
+                .0
+                .send(LifecycleEvent::ChildTerminated)
+                .ok();
+        }
         _ => {}
     }
 }
@@ -57,10 +69,12 @@ pub fn reset_signal_handlers() -> bool {
     unsafe {
         libc::signal(libc::SIGTERM, receive_signal as usize);
         libc::signal(libc::SIGINT, receive_signal as usize);
+        libc::signal(libc::SIGINFO, receive_signal as usize);
         libc::signal(libc::SIGUSR1, receive_signal as usize);
         libc::signal(libc::SIGUSR2, receive_signal as usize);
         libc::signal(libc::SIGTTIN, receive_signal as usize);
         libc::signal(libc::SIGTTOU, receive_signal as usize);
+        libc::signal(libc::SIGCHLD, receive_signal as usize);
     }
     true
 }
@@ -69,9 +83,11 @@ pub fn clear_signal_handlers() {
     unsafe {
         libc::signal(libc::SIGTERM, libc::SIG_DFL);
         libc::signal(libc::SIGINT, libc::SIG_DFL);
+        libc::signal(libc::SIGINFO, libc::SIG_DFL);
         libc::signal(libc::SIGUSR1, libc::SIG_DFL);
         libc::signal(libc::SIGUSR2, libc::SIG_DFL);
         libc::signal(libc::SIGTTIN, libc::SIG_DFL);
         libc::signal(libc::SIGTTOU, libc::SIG_DFL);
+        libc::signal(libc::SIGCHLD, libc::SIG_DFL);
     }
 }

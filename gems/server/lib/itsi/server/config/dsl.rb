@@ -2,7 +2,7 @@ module Itsi
   class Server
     module Config
       class DSL
-        attr_reader :parent, :children, :middleware, :endpoint_defs, :controller_class, :routes, :methods, :protocols,
+        attr_reader :parent, :children, :middleware, :controller_class, :routes, :methods, :protocols,
                     :hosts, :ports, :extensions
 
         def self.evaluate(filepath = Itsi::Server::Config.config_file_path)
@@ -174,6 +174,12 @@ module Itsi
           raise "Worker memory limit must be set at the root" unless @parent.nil?
 
           @options[:worker_memory_limit] = memory_limit
+        end
+
+        def multithreaded_reactor(multithreaded)
+          raise "Multithreaded reactor must be set at the root" unless @parent.nil?
+
+          @options[:multithreaded_reactor] = !!multithreaded
         end
 
         def watch(path, commands)
