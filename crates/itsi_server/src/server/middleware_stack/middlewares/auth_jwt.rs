@@ -229,16 +229,26 @@ impl MiddlewareLayer for AuthJwt {
     ) -> Result<Either<HttpRequest, HttpResponse>> {
         let token_str = match &self.token_source {
             TokenSource::Header { name, prefix } => {
-                let header = req.header(name);
-                if let Some(prefix) = prefix {
-                    header.strip_prefix(prefix).unwrap_or("").trim_ascii()
+                if let Some(header) = req.header(name) {
+                    if let Some(prefix) = prefix {
+                        Some(header.strip_prefix(prefix).unwrap_or("").trim_ascii())
+                    } else {
+                        Some(header.trim_ascii())
+                    }
                 } else {
-                    header.trim_ascii()
+                    None
                 }
             }
             TokenSource::Query(query_name) => req.query_param(query_name),
         };
 
+        if token_str.is_none() {
+            return Ok(Either::Right(
+                self.error_response.to_http_response(&req).await,
+            ));
+        }
+
+        let token_str = token_str.unwrap();
         let token_meta = Token::decode_metadata(token_str);
 
         if token_meta.is_err() {

@@ -45,9 +45,11 @@ impl MiddlewareLayer for AuthBasic {
         // Retrieve the Authorization header.
         let auth_header = req.header("Authorization");
 
-        if !auth_header.starts_with("Basic ") {
+        if !auth_header.is_some_and(|header| header.starts_with("Basic ")) {
             return Ok(Either::Right(self.basic_auth_failed_response()));
         }
+
+        let auth_header = auth_header.unwrap();
 
         let encoded_credentials = &auth_header["Basic ".len()..];
         let decoded = match general_purpose::STANDARD.decode(encoded_credentials) {

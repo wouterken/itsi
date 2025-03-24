@@ -60,6 +60,7 @@ pub struct RequestContextInner {
     pub service: ItsiService,
     pub matching_pattern: Option<Arc<Regex>>,
     pub compression_method: OnceLock<CompressionAlgorithm>,
+    pub origin: OnceLock<Option<String>>,
 }
 
 impl RequestContext {
@@ -69,12 +70,17 @@ impl RequestContext {
                 service,
                 matching_pattern,
                 compression_method: OnceLock::new(),
+                origin: OnceLock::new(),
             }),
         }
     }
 
     pub fn set_compression_method(&self, method: CompressionAlgorithm) {
         self.inner.compression_method.set(method).unwrap();
+    }
+
+    pub fn set_origin(&self, origin: Option<String>) {
+        self.inner.origin.set(origin).unwrap();
     }
 }
 

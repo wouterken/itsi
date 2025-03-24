@@ -30,16 +30,23 @@ impl MiddlewareLayer for AuthAPIKey {
     ) -> Result<Either<HttpRequest, HttpResponse>> {
         let submitted_value = match &self.token_source {
             TokenSource::Header { name, prefix } => {
-                let header = req.header(name);
-                if let Some(prefix) = prefix {
-                    header.strip_prefix(prefix).unwrap_or("").trim_ascii()
+                if let Some(header) = req.header(name) {
+                    if let Some(prefix) = prefix {
+                        Some(header.strip_prefix(prefix).unwrap_or("").trim_ascii())
+                    } else {
+                        Some(header.trim_ascii())
+                    }
                 } else {
-                    header.trim_ascii()
+                    None
                 }
             }
             TokenSource::Query(query_name) => req.query_param(query_name),
         };
-        if !self.valid_keys.iter().any(|key| key == submitted_value) {
+        if !self
+            .valid_keys
+            .iter()
+            .any(|key| submitted_value.is_some_and(|sv| sv == key))
+        {
             Ok(Either::Right(
                 self.error_response.to_http_response(&req).await,
             ))

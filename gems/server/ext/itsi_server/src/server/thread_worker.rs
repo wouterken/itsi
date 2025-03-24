@@ -2,7 +2,7 @@ use async_channel::Sender;
 use itsi_rb_helpers::{
     call_with_gvl, call_without_gvl, create_ruby_thread, kill_threads, HeapValue,
 };
-use itsi_tracing::{debug, error, info, warn};
+use itsi_tracing::{debug, error, warn};
 use magnus::{
     error::Result,
     value::{InnerValue, Lazy, LazyId, Opaque, ReprValue},
@@ -372,7 +372,9 @@ impl ThreadWorker {
                 if let Some(oob_gc_threshold) = params.oob_gc_responses_threshold {
                     idle_counter = (idle_counter + 1) % oob_gc_threshold;
                     if idle_counter == 0 {
-                        ruby.gc_start();
+                        call_with_gvl(|_ruby| {
+                            ruby.gc_start();
+                        });
                     }
                 };
             }

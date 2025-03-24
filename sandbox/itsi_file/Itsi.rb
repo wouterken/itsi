@@ -4,6 +4,8 @@ threads 1
 preload false
 
 bind 'http://0.0.0.0:3000'
+bind 'http://0.0.0.0:8000'
+
 
 fiber_scheduler 'Itsi::Scheduler'
 shutdown_timeout 10
@@ -27,6 +29,12 @@ def user_create(request)
   response.close
 end
 
+location "/cors_test" do
+  cors allowed_origins: ["http://127.0.0.1:8000"], allowed_methods: ["GET", "PATCH", "POST"], allowed_headers: ['Content-Type'], exposed_headers: ['X-Custom-Header'], allow_credentials: true
+  get "/user/:id" do |req|
+    req.respond("You've been CORSed!")
+  end
+end
 
 location "/basic" do
   auth_basic realm: 'My Realm', credential_pairs: { 'user' => 'password' }
