@@ -40,7 +40,7 @@ hyper-util = { version = "0.1.10", features = ["full"] }
 itsi_error = { path = "../itsi_error" }
 itsi_rb_helpers = { path = "../itsi_rb_helpers" }
 itsi_tracing = { path = "../itsi_tracing" }
-jwt = "0.16.0"
+jwt-simple = "0.12.12"
 magnus = { version = "0.7.1", features = ["bytes", "rb-sys"] }
 moka = { version = "0.12.10", features = ["sync"] }
 notify = { version = "8.0.0" }

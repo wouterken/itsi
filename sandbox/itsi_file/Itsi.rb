@@ -1,5 +1,5 @@
-workers 40
-threads 40
+workers 1
+threads 1
 
 preload false
 
@@ -30,6 +30,14 @@ end
 
 location "/basic" do
   auth_basic realm: 'My Realm', credential_pairs: { 'user' => 'password' }
+end
+
+location "/jwt" do
+  auth_jwt token_source: { header: { name: 'Authorization', prefix: 'Bearer ' } }, verifiers: {'hs256' => ["1V6nZzztO/F6Y3XAYXJ1I37AAXCJ/V7EVHJoVnD8lr4="]
+},  error_response: { code: 401, plaintext: 'Unauthorized', default: 'plaintext' }
+  get "/" do |req|
+    req.respond('Hello, JWT user!')
+  end
 end
 
 

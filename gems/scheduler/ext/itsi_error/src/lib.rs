@@ -23,5 +23,11 @@ pub enum ItsiError {
     Pass(),
 }
 
+impl ItsiError {
+    pub fn default(error: impl Send + Sync + 'static + std::fmt::Display) -> Self {
+        ItsiError::InvalidInput(format!("{}", error))
+    }
+}
+
 unsafe impl Send for ItsiError {}
 unsafe impl Sync for ItsiError {}

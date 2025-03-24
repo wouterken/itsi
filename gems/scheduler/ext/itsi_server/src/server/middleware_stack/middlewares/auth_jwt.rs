@@ -1,192 +1,311 @@
-use async_trait::async_trait;
-use either::Either;
-use jwt::Header;
-use jwt::{Token, VerifyWithKey};
-use magnus::error::Result;
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use std::collections::HashMap;
-use std::str;
-
+use super::error_response::ErrorResponse;
+use super::{token_source::TokenSource, FromValue, MiddlewareLayer};
 use crate::server::{
     itsi_service::RequestContext,
     types::{HttpRequest, HttpResponse, RequestExt},
 };
+use async_trait::async_trait;
+use base64::{engine::general_purpose, Engine};
+use either::Either;
+use itsi_error::ItsiError;
+use jwt_simple::{
+    claims::{self, JWTClaims, NoCustomClaims},
+    prelude::{
+        ECDSAP256PublicKeyLike, ECDSAP384PublicKeyLike, ES256PublicKey, ES384PublicKey, HS256Key,
+        HS384Key, HS512Key, MACLike, PS256PublicKey, PS384PublicKey, PS512PublicKey,
+        RS256PublicKey, RS384PublicKey, RS512PublicKey, RSAPublicKeyLike,
+    },
+    token::Token,
+};
+use magnus::error::Result;
+use serde::Deserialize;
+use std::str;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::OnceLock,
+};
 
-use super::{token_source::TokenSource, FromValue, MiddlewareLayer};
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct AuthJwt {
-    pub algorithm: String,                       // e.g., "HS256"
-    pub allowed_algorithms: Option<Vec<String>>, // not used in this example but available for future checks
-    pub secret: Option<String>,                  // for symmetric signing
-    pub public_key: Option<String>,              // for asymmetric verification
-    pub jwks_url: Option<String>,                // for dynamic key retrieval (not implemented here)
-
-    pub issuer: Option<String>,
-    pub audience: Option<Vec<String>>,
-    pub subject: Option<String>,
-    pub required_claims: Option<HashMap<String, String>>,
-    pub leeway: Option<u64>, // in seconds, not used in this example
-
-    pub token_source: Option<TokenSource>, // custom enum: Header, Cookie, Query
-    pub header_name: Option<String>,       // default "Authorization"
-    pub token_prefix: Option<String>,      // default "Bearer "
-    pub cookie_name: Option<String>,
-
-    pub error_message: Option<String>,
-    pub status_code: Option<u16>,
-    pub enable_revocation_check: Option<bool>,
-    pub custom_validator: Option<String>, // placeholder for a custom validator reference
+    pub token_source: TokenSource,
+    pub verifiers: HashMap<JwtAlgorithm, Vec<String>>,
+    #[serde(skip_deserializing)]
+    pub keys: OnceLock<HashMap<JwtAlgorithm, Vec<JwtKey>>>,
+    pub audiences: Option<HashSet<String>>,
+    pub subjects: Option<HashSet<String>>,
+    pub issuers: Option<HashSet<String>>,
+    pub leeway: Option<u64>,
+    pub error_response: ErrorResponse,
 }
 
-impl AuthJwt {
-    fn jwt_failed_response(&self) -> HttpResponse {
-        let status = self.status_code.unwrap_or(401);
-        let msg = self
-            .error_message
-            .clone()
-            .unwrap_or_else(|| "Unauthorized".to_string());
-        todo!()
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq, Hash)]
+pub enum JwtAlgorithm {
+    #[serde(rename(deserialize = "hs256"))]
+    Hs256,
+    #[serde(rename(deserialize = "hs384"))]
+    Hs384,
+    #[serde(rename(deserialize = "hs512"))]
+    Hs512,
+    #[serde(rename(deserialize = "rs256"))]
+    Rs256,
+    #[serde(rename(deserialize = "rs384"))]
+    Rs384,
+    #[serde(rename(deserialize = "rs512"))]
+    Rs512,
+    #[serde(rename(deserialize = "es256"))]
+    Es256,
+    #[serde(rename(deserialize = "es384"))]
+    Es384,
+    #[serde(rename(deserialize = "ps256"))]
+    Ps256,
+    #[serde(rename(deserialize = "ps384"))]
+    Ps384,
+    #[serde(rename(deserialize = "ps512"))]
+    Ps512,
+}
+
+impl JwtAlgorithm {
+    pub fn key_from(&self, base64: &str) -> Result<JwtKey> {
+        let bytes = general_purpose::STANDARD
+            .decode(base64)
+            .map_err(ItsiError::default)?;
+
+        match self {
+            JwtAlgorithm::Hs256 => Ok(JwtKey::Hs256(HS256Key::from_bytes(&bytes))),
+            JwtAlgorithm::Hs384 => Ok(JwtKey::Hs384(HS384Key::from_bytes(&bytes))),
+            JwtAlgorithm::Hs512 => Ok(JwtKey::Hs512(HS512Key::from_bytes(&bytes))),
+            JwtAlgorithm::Rs256 => Ok(RS256PublicKey::from_der(&bytes)
+                .or_else(|_| {
+                    RS256PublicKey::from_pem(
+                        &String::from_utf8(bytes.clone()).map_err(ItsiError::default)?,
+                    )
+                })
+                .map(JwtKey::Rs256)
+                .map_err(ItsiError::default)?),
+            JwtAlgorithm::Rs384 => Ok(RS384PublicKey::from_der(&bytes)
+                .or_else(|_| {
+                    RS384PublicKey::from_pem(
+                        &String::from_utf8(bytes.clone()).map_err(ItsiError::default)?,
+                    )
+                })
+                .map(JwtKey::Rs384)
+                .map_err(ItsiError::default)?),
+            JwtAlgorithm::Rs512 => Ok(RS512PublicKey::from_der(&bytes)
+                .or_else(|_| {
+                    RS512PublicKey::from_pem(
+                        &String::from_utf8(bytes.clone()).map_err(ItsiError::default)?,
+                    )
+                })
+                .map(JwtKey::Rs512)
+                .map_err(ItsiError::default)?),
+            JwtAlgorithm::Es256 => Ok(ES256PublicKey::from_der(&bytes)
+                .or_else(|_| {
+                    ES256PublicKey::from_pem(
+                        &String::from_utf8(bytes.clone()).map_err(ItsiError::default)?,
+                    )
+                })
+                .map(JwtKey::Es256)
+                .map_err(ItsiError::default)?),
+            JwtAlgorithm::Es384 => Ok(ES384PublicKey::from_der(&bytes)
+                .or_else(|_| {
+                    ES384PublicKey::from_pem(
+                        &String::from_utf8(bytes.clone()).map_err(ItsiError::default)?,
+                    )
+                })
+                .map(JwtKey::Es384)
+                .map_err(ItsiError::default)?),
+            JwtAlgorithm::Ps256 => Ok(PS256PublicKey::from_der(&bytes)
+                .or_else(|_| {
+                    PS256PublicKey::from_pem(
+                        &String::from_utf8(bytes.clone()).map_err(ItsiError::default)?,
+                    )
+                })
+                .map(JwtKey::Ps256)
+                .map_err(ItsiError::default)?),
+            JwtAlgorithm::Ps384 => Ok(PS384PublicKey::from_der(&bytes)
+                .or_else(|_| {
+                    PS384PublicKey::from_pem(
+                        &String::from_utf8(bytes.clone()).map_err(ItsiError::default)?,
+                    )
+                })
+                .map(JwtKey::Ps384)
+                .map_err(ItsiError::default)?),
+            JwtAlgorithm::Ps512 => Ok(PS512PublicKey::from_der(&bytes)
+                .or_else(|_| {
+                    PS512PublicKey::from_pem(
+                        &String::from_utf8(bytes.clone()).map_err(ItsiError::default)?,
+                    )
+                })
+                .map(JwtKey::Ps512)
+                .map_err(ItsiError::default)?),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum JwtKey {
+    Hs256(HS256Key),
+    Hs384(HS384Key),
+    Hs512(HS512Key),
+    Rs256(RS256PublicKey),
+    Rs384(RS384PublicKey),
+    Rs512(RS512PublicKey),
+    Es256(ES256PublicKey),
+    Es384(ES384PublicKey),
+    Ps256(PS256PublicKey),
+    Ps384(PS384PublicKey),
+    Ps512(PS512PublicKey),
+}
+
+impl TryFrom<&str> for JwtAlgorithm {
+    type Error = itsi_error::ItsiError;
+
+    fn try_from(value: &str) -> std::result::Result<Self, Self::Error> {
+        match value.to_ascii_lowercase().as_str() {
+            "hs256" => Ok(JwtAlgorithm::Hs256),
+            "hs384" => Ok(JwtAlgorithm::Hs384),
+            "hs512" => Ok(JwtAlgorithm::Hs512),
+            "rs256" => Ok(JwtAlgorithm::Rs256),
+            "rs384" => Ok(JwtAlgorithm::Rs384),
+            "rs512" => Ok(JwtAlgorithm::Rs512),
+            "es256" => Ok(JwtAlgorithm::Es256),
+            "es384" => Ok(JwtAlgorithm::Es384),
+            "ps256" => Ok(JwtAlgorithm::Ps256),
+            "ps384" => Ok(JwtAlgorithm::Ps384),
+            "ps512" => Ok(JwtAlgorithm::Ps512),
+            _ => Err(itsi_error::ItsiError::UnsupportedProtocol(
+                "Unsupported JWT Algorithm".to_string(),
+            )),
+        }
+    }
+}
+
+impl JwtKey {
+    pub fn verify(
+        &self,
+        token: &str,
+    ) -> std::result::Result<JWTClaims<claims::NoCustomClaims>, jwt_simple::Error> {
+        match self {
+            JwtKey::Hs256(key) => key.verify_token::<NoCustomClaims>(token, None),
+            JwtKey::Hs384(key) => key.verify_token::<NoCustomClaims>(token, None),
+            JwtKey::Hs512(key) => key.verify_token::<NoCustomClaims>(token, None),
+            JwtKey::Rs256(key) => key.verify_token::<NoCustomClaims>(token, None),
+            JwtKey::Rs384(key) => key.verify_token::<NoCustomClaims>(token, None),
+            JwtKey::Rs512(key) => key.verify_token::<NoCustomClaims>(token, None),
+            JwtKey::Es256(key) => key.verify_token::<NoCustomClaims>(token, None),
+            JwtKey::Es384(key) => key.verify_token::<NoCustomClaims>(token, None),
+            JwtKey::Ps256(key) => key.verify_token::<NoCustomClaims>(token, None),
+            JwtKey::Ps384(key) => key.verify_token::<NoCustomClaims>(token, None),
+            JwtKey::Ps512(key) => key.verify_token::<NoCustomClaims>(token, None),
+        }
     }
 }
 
 #[async_trait]
 impl MiddlewareLayer for AuthJwt {
+    async fn initialize(&self) -> Result<()> {
+        let keys: HashMap<JwtAlgorithm, Vec<JwtKey>> = self
+            .verifiers
+            .iter()
+            .map(|(algorithm, key_strings)| {
+                let algo = algorithm.clone();
+                let keys: Result<Vec<JwtKey>> = key_strings
+                    .iter()
+                    .map(|key_string| algorithm.key_from(key_string))
+                    .collect();
+                keys.map(|keys| (algo, keys))
+            })
+            .collect::<Result<HashMap<JwtAlgorithm, Vec<JwtKey>>>>()?;
+        self.keys
+            .set(keys)
+            .map_err(|e| ItsiError::default(format!("Failed to set keys: {:?}", e)))?;
+        Ok(())
+    }
+
     async fn before(
         &self,
         req: HttpRequest,
         _context: &mut RequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
-        // --- Token Extraction ---
         let token_str = match &self.token_source {
-            Some(TokenSource::Header { name, prefix }) => {
-                let header_name = name;
-                let header = req.header(header_name);
+            TokenSource::Header { name, prefix } => {
+                let header = req.header(name);
                 if let Some(prefix) = prefix {
-                    if header.starts_with(prefix) {
-                        header[prefix.len()..].trim().to_string()
-                    } else {
-                        header.to_string()
-                    }
+                    header.strip_prefix(prefix).unwrap_or("").trim_ascii()
                 } else {
-                    header.to_string()
+                    header.trim_ascii()
                 }
             }
-            Some(TokenSource::Query(query_name)) => req.query_param(query_name).to_owned(),
-            None => {
-                // Default: look for the Authorization header with "Bearer " prefix.
-                let header = req.header("Authorization");
-                if header.starts_with("Bearer ") {
-                    header["Bearer ".len()..].trim().to_string()
-                } else {
-                    header.to_string()
-                }
-            }
+            TokenSource::Query(query_name) => req.query_param(query_name),
         };
 
-        if token_str.is_empty() {
-            return Ok(Either::Right(self.jwt_failed_response()));
+        let token_meta = Token::decode_metadata(token_str);
+
+        if token_meta.is_err() {
+            return Ok(Either::Right(
+                self.error_response.to_http_response(&req).await,
+            ));
+        }
+        let token_meta: std::result::Result<JwtAlgorithm, ItsiError> =
+            token_meta.unwrap().algorithm().try_into();
+        if token_meta.is_err() {
+            return Ok(Either::Right(
+                self.error_response.to_http_response(&req).await,
+            ));
+        }
+        let algorithm = token_meta.unwrap();
+
+        if !self.verifiers.contains_key(&algorithm) {
+            return Ok(Either::Right(
+                self.error_response.to_http_response(&req).await,
+            ));
         }
 
-        // --- Parsing and Algorithm Check ---
-        // Parse token without verification so we can inspect its header.
-        let token = Token::<Header, Value, _>::parse_unverified(&token_str).map_err(|e| {
-            magnus::Error::new(
-                magnus::exception::exception(),
-                format!("Failed to parse JWT: {:?}", e),
-            )
-        })?;
+        let keys = self.keys.get().unwrap().get(&algorithm).unwrap();
 
-        let algorithm_match = match token.header().algorithm {
-            jwt::AlgorithmType::Hs256 => self.algorithm == "hs256",
-            jwt::AlgorithmType::Hs384 => self.algorithm == "hs384",
-            jwt::AlgorithmType::Hs512 => self.algorithm == "hs512",
-            jwt::AlgorithmType::Rs256 => self.algorithm == "rs256",
-            jwt::AlgorithmType::Rs384 => self.algorithm == "rs384",
-            jwt::AlgorithmType::Rs512 => self.algorithm == "rs512",
-            jwt::AlgorithmType::Es256 => self.algorithm == "es256",
-            jwt::AlgorithmType::Es384 => self.algorithm == "es384",
-            jwt::AlgorithmType::Es512 => self.algorithm == "es512",
-            jwt::AlgorithmType::Ps256 => self.algorithm == "ps256",
-            jwt::AlgorithmType::Ps384 => self.algorithm == "ps384",
-            jwt::AlgorithmType::Ps512 => self.algorithm == "ps512",
-            jwt::AlgorithmType::None => self.algorithm == "none",
-        };
+        let verified_claims = keys.iter().find_map(|key| key.verify(token_str).ok());
+        if verified_claims.is_none() {
+            return Ok(Either::Right(
+                self.error_response.to_http_response(&req).await,
+            ));
+        }
 
-        todo!();
-        // // Ensure the token's algorithm matches our configuration.
-        // if token.header().algorithm.to_string() != self.algorithm {
-        //     return Ok(Either::Right(self.jwt_failed_response()));
-        // }
+        let claims = verified_claims.unwrap();
 
-        // // --- Verification ---
-        // let verified_token = if let Some(ref secret) = self.secret {
-        //     // Symmetric verification.
-        //     token.verify_with_key(secret).map_err(|e| {
-        //         magnus::Error::new(
-        //             magnus::exception::exception(),
-        //             format!("JWT verification failed: {:?}", e),
-        //         )
-        //     })?
-        // } else if let Some(ref public_key) = self.public_key {
-        //     // Asymmetric verification.
-        //     token.verify_with_key(public_key).map_err(|e| {
-        //         magnus::Error::new(
-        //             magnus::exception::exception(),
-        //             format!("JWT verification failed: {:?}", e),
-        //         )
-        //     })?
-        // } else {
-        //     return Ok(Either::Right(self.jwt_failed_response()));
-        // };
+        if let Some(expected_audiences) = &self.audiences {
+            // The aud claim may be a string or an array.
+            if let Some(audiences) = &claims.audiences {
+                if !audiences.contains(expected_audiences) {
+                    return Ok(Either::Right(
+                        self.error_response.to_http_response(&req).await,
+                    ));
+                }
+            }
+        }
 
-        // let claims = verified_token.claims();
+        if let Some(expected_subjects) = &self.subjects {
+            // The aud claim may be a string or an array.
+            if let Some(subject) = &claims.subject {
+                if !expected_subjects.contains(subject) {
+                    return Ok(Either::Right(
+                        self.error_response.to_http_response(&req).await,
+                    ));
+                }
+            }
+        }
 
-        // // --- Claims Validation ---
-        // if let Some(expected_issuer) = &self.issuer {
-        //     if claims.get("iss").and_then(|v| v.as_str()) != Some(expected_issuer) {
-        //         return Ok(Either::Right(self.jwt_failed_response()));
-        //     }
-        // }
+        if let Some(expected_issuers) = &self.issuers {
+            // The aud claim may be a string or an array.
+            if let Some(issuer) = &claims.issuer {
+                if !expected_issuers.contains(issuer) {
+                    return Ok(Either::Right(
+                        self.error_response.to_http_response(&req).await,
+                    ));
+                }
+            }
+        }
 
-        // if let Some(expected_audience) = &self.audience {
-        //     // The aud claim may be a string or an array.
-        //     if let Some(aud) = claims.get("aud").and_then(|v| v.as_str()) {
-        //         if !expected_audience.contains(&aud.to_string()) {
-        //             return Ok(Either::Right(self.jwt_failed_response()));
-        //         }
-        //     } else if let Some(aud_array) = claims.get("aud").and_then(|v| v.as_array()) {
-        //         let aud_strs: Vec<String> = aud_array
-        //             .iter()
-        //             .filter_map(|v| v.as_str().map(|s| s.to_string()))
-        //             .collect();
-        //         if expected_audience.iter().all(|a| !aud_strs.contains(a)) {
-        //             return Ok(Either::Right(self.jwt_failed_response()));
-        //         }
-        //     } else {
-        //         return Ok(Either::Right(self.jwt_failed_response()));
-        //     }
-        // }
-
-        // if let Some(expected_subject) = &self.subject {
-        //     if claims.get("sub").and_then(|v| v.as_str()) != Some(expected_subject) {
-        //         return Ok(Either::Right(self.jwt_failed_response()));
-        //     }
-        // }
-
-        // if let Some(required_claims) = &self.required_claims {
-        //     for (key, value) in required_claims {
-        //         if claims.get(key).and_then(|v| v.as_str()) != Some(value) {
-        //             return Ok(Either::Right(self.jwt_failed_response()));
-        //         }
-        //     }
-        // }
-
-        // // Optionally, implement revocation checks or call a custom validator here.
-
-        // // Token verified and claims validated.
-        // Ok(Either::Left(req))
+        Ok(Either::Left(req))
     }
 }
 
