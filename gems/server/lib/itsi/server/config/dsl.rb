@@ -3,25 +3,37 @@ module Itsi
     module Config
       class DSL
         attr_reader :parent, :children, :middleware, :controller_class, :routes, :methods, :protocols,
-                    :hosts, :ports, :extensions
+                    :hosts, :ports, :extensions, :content_types, :accepts, :options
 
-        def self.evaluate(filepath = Itsi::Server::Config.config_file_path)
+        def self.evaluate(config = Itsi::Server::Config.config_file_path)
           new do
-            code = IO.read(filepath)
-            instance_eval(code, filepath, 1)
-          end.to_options
+            if config.is_a?(Proc)
+              instance_exec(config)
+            else
+              code = IO.read(config)
+              instance_eval(code, config.to_s, 1)
+            end
+          end.options
         end
 
-        def initialize(parent = nil, routes: [], methods: [], protocols: [], hosts: [], ports: [], extensions: [],
-                       controller: self, &block)
+        def initialize(
+          parent = nil,
+          routes: [],
+          methods: [],
+          protocols: [],
+          hosts: [],
+          ports: [],
+          extensions: [],
+          content_types: [],
+          accepts: [],
+          controller: self,
+          &block
+        )
           @parent           = parent
           @children         = []
           @middleware       = {}
           @controller_class = nil
-          @options          = { middleware_loader: lambda {
-            @options[:middleware_loaders].each(&:call)
-            flatten_routes
-          }, middleware_loaders: [] }
+
           @controller = controller
           # We'll store our array of route specs (strings or a single Regexp).
           @routes = Array(routes).flatten
@@ -30,13 +42,18 @@ module Itsi
           @hosts = hosts.map { |s| s.is_a?(Regexp) ? s : s.to_s }
           @ports = ports.map { |s| s.is_a?(Regexp) ? s : s.to_s }
           @extensions = extensions.map { |s| s.is_a?(Regexp) ? s : s.to_s }
+          @content_types = content_types.map { |s| s.is_a?(Regexp) ? s : s.to_s }
+          @accepts = accepts.map { |s| s.is_a?(Regexp) ? s : s.to_s }
 
-          validate_path_specs!(@routes)
+          @options = {
+            middleware_loaders: [],
+            middleware_loader: lambda do
+              @options[:middleware_loaders].each(&:call)
+              flatten_routes
+            end
+          }
+
           instance_exec(&block)
-        end
-
-        def to_options
-          @options
         end
 
         def workers(workers)
@@ -92,10 +109,6 @@ module Itsi
 
         def patch(route, app_proc = nil, &blk)
           endpoint(route, :patch, app_proc, &blk)
-        end
-
-        def options(route, app_proc = nil, &blk)
-          endpoint(route, :options, app_proc, &blk)
         end
 
         def endpoint(route, method, app_proc = nil, &blk)
@@ -220,35 +233,27 @@ module Itsi
           @options[:stream_body] = !!stream_body
         end
 
-        def location(*routes, methods: [], protocols: [], hosts: [], ports: [], extensions: [], &block)
+        def location(*routes, methods: [], protocols: [], hosts: [], ports: [], extensions: [], content_types: [],
+                     accepts: [], &block)
+          build_child = lambda {
+            @children << DSL.new(
+              self,
+              routes: routes,
+              methods: Array(methods) | self.methods,
+              protocols: Array(protocols) | self.protocols,
+              hosts: Array(hosts) | self.hosts,
+              ports: Array(ports) | self.ports,
+              extensions: Array(extensions) | self.extensions,
+              content_types: Array(content_types) | self.content_types,
+              accepts: Array(accepts) | self.accepts,
+              controller: @controller,
+              &block
+            )
+          }
           if @parent.nil?
-            @options[:middleware_loaders] << lambda {
-              routes = routes.flatten
-              child = DSL.new(
-                self,
-                routes: Array(routes),
-                methods: Array(methods),
-                protocols: Array(protocols),
-                hosts: Array(hosts),
-                ports: Array(ports),
-                extensions: Array(extensions),
-                controller: @controller,
-                &block
-              )
-              @children << child
-            }
+            @options[:middleware_loaders] << build_child
           else
-            routes = routes.flatten
-            child = DSL.new(self,
-                            routes: routes,
-                            methods: Array(methods) | self.methods,
-                            protocols: Array(protocols) | self.protocols,
-                            hosts: Array(hosts) | self.hosts,
-                            ports: Array(ports) | self.ports,
-                            extensions: Array(extensions) | self.extensions,
-                            controller: @controller,
-                            &block)
-            @children << child
+            build_child[]
           end
         end
 
@@ -306,128 +311,62 @@ module Itsi
           @middleware[:cors] = args
         end
 
+        def static_assets(**args)
+          raise "`static_assets` must be set inside a location block" if @parent.nil?
+
+          root_dir = args[:root_dir] || "."
+
+          if !File.exist?(root_dir)
+            warn "Warning: static_assets root_dir '#{root_dir}' does not exist!"
+          elsif !File.directory?(root_dir)
+            warn "Warning: static_assets root_dir '#{root_dir}' is not a directory!"
+          end
+
+          args[:relative_path] = true unless args.key?(:relative_path)
+
+          location(/(?<path_suffix>.*)/, extensions: args[:allowed_extensions] || []) do
+            @middleware[:static_assets] = args
+          end
+        end
+
         def file_server(**args)
           raise "`file_server` must be set inside a location block" if @parent.nil?
 
-          @middleware[:file_server] = args
+          # Forward to static_assets for implementation
+          puts "Note: file_server is an alias for static_assets"
+          static_assets(**args)
         end
 
         def flatten_routes
-          child_routes = @children.flat_map(&:flatten_routes)
-          base_expansions = combined_paths_from_parent
-
-          location_route = unless @routes.empty?
-                             pattern_str = or_pattern_for(base_expansions) # the expansions themselves
-                             {
-                               route: Regexp.new("^#{pattern_str}$"),
-                               methods: @methods.any? ? @methods : nil,
-                               protocols: @protocols.any? ? @protocols : nil,
-                               hosts: @hosts.any? ? @hosts : nil,
-                               ports: @ports.any? ? @ports : nil,
-                               extensions: @extensions.any? ? @extensions : nil,
-                               middleware: effective_middleware
-                             }
-                           end
-
           result = []
-          result.concat(child_routes)
-          result << deep_stringify_keys(location_route) if location_route
+          result.concat(@children.flat_map(&:flatten_routes))
+          route_options = paths_from_parent
+          if route_options
+            result << deep_stringify_keys(
+              {
+                route: Regexp.new("^#{route_options}$"),
+                methods: @methods.any? ? @methods : nil,
+                protocols: @protocols.any? ? @protocols : nil,
+                hosts: @hosts.any? ? @hosts : nil,
+                ports: @ports.any? ? @ports : nil,
+                extensions: @extensions.any? ? @extensions : nil,
+                content_types: @content_types.any? ? @content_types : nil,
+                accepts: @accepts.any? ? @accepts : nil,
+                middleware: effective_middleware
+              }
+            )
+          end
           result
         end
 
-        def validate_path_specs!(specs)
-          regexes = specs.select { |s| s.is_a?(Regexp) }
-          return unless regexes.size > 1
+        def paths_from_parent
+          return nil unless @routes.any?
 
-          raise ArgumentError, "Cannot have multiple raw Regex route specs in a single location."
-        end
-
-        # Called by flatten_routes to get expansions from the parent's expansions combined with mine
-        def combined_paths_from_parent
-          if parent
-            pex = parent.combined_paths_from_parent_for_children
-            cartesian_combine(pex, expansions_for(@routes))
-          else
-            expansions_for(@routes)
-          end
-        end
-
-        def combined_paths_from_parent_for_children
-          if parent
-            pex = parent.combined_paths_from_parent_for_children
-            cartesian_combine(pex, expansions_for(@routes))
-          else
-            expansions_for(@routes)
-          end
-        end
-
-        def expand_single_subpath(subpath)
-          expansions_for([subpath]) # just treat it as a mini specs array
-        end
-
-        def expansions_for(specs)
-          return [] if specs.empty?
-
-          if specs.any? { |s| s.is_a? Regexp }
-            raise "Cannot combine a raw Regexp with other strings in the same location." if specs.size > 1
-
-            [[:raw_regex, specs.first]]
-          else
-            specs
-          end
-        end
-
-        def cartesian_combine(parent_exps, child_exps)
-          return child_exps if parent_exps.empty?
-          return parent_exps if child_exps.empty?
-
-          if parent_exps.size == 1 && parent_exps.first.is_a?(Array) && parent_exps.first.first == :raw_regex
-            raise "Cannot nest under a raw Regexp route."
-          end
-
-          if child_exps.size == 1 && child_exps.first.is_a?(Array) && child_exps.first.first == :raw_regex
-            raise "Cannot nest a raw Regexp route under a parent string route."
-          end
-
-          results = []
-          parent_exps.each do |p|
-            child_exps.each do |c|
-              joined = [p, c].reject(&:empty?).join("/").gsub(%r{/\*/}, "").gsub(%r{//}, "/")
-              results << joined
-            end
-          end
-          results
-        end
-
-        def or_pattern_for(expansions)
-          return "" if expansions.empty?
-
-          if expansions.size == 1 && expansions.first.is_a?(Array) && expansions.first.first == :raw_regex
-            raw = expansions.first.last
-            return raw.source # Use the raw Regexp's source
-          end
-
-          pattern_pieces = expansions.map do |exp|
-            if exp.empty?
-              "" # => means top-level "/"
-            else
-              segment_to_regex_with_slash(exp)
-            end
-          end
-
-          joined = pattern_pieces.join("|")
-
-          "(?:#{joined})"
-        end
-
-        def segment_to_regex_with_slash(path_str)
-          return "" if path_str == ""
-
-          segments = path_str.split("/")
-
-          converted = segments.map do |seg|
-            # :param(...)?
-            if seg =~ /^:([A-Za-z_]\w*)(?:\(([^)]*)\))?$/
+          route_or_str = @routes.map do |seg|
+            case seg
+            when Regexp
+              seg.source
+            when /^:([A-Za-z_]\w*)(?:\(([^)]*)\))?$/
               param_name = Regexp.last_match(1)
               custom     = Regexp.last_match(2)
               if custom && !custom.empty?
@@ -435,31 +374,23 @@ module Itsi
               else
                 "(?<#{param_name}>[^/]+)"
               end
-            elsif seg =~ /\*/
+            when /\*/
               seg.gsub(/\*/, ".*")
             else
-              Regexp.escape(seg)
+              Regexp.escape(seg.gsub(%r{/$}, ""))
             end
-          end
+          end.join("|")
 
-          converted.join("/")
+          if parent.paths_from_parent
+            "#{parent.paths_from_parent}(?:#{route_or_str})"
+          else
+            "(?:#{route_or_str})"
+          end
         end
 
         def effective_middleware
           merged = merge_ancestor_middleware
           merged.map { |k, v| { type: k.to_s, parameters: v } }
-        end
-
-        def deep_stringify_keys(obj)
-          case obj
-          when Hash
-            obj.transform_keys!(&:to_s)
-            obj.transform_values! { |v| deep_stringify_keys(v) }
-          when Array
-            obj.map { |v| deep_stringify_keys(v) }
-          else
-            obj
-          end
         end
 
         def merge_ancestor_middleware
@@ -478,6 +409,18 @@ module Itsi
             end
           end
           merged
+        end
+
+        def deep_stringify_keys(obj)
+          case obj
+          when Hash
+            obj.transform_keys!(&:to_s)
+            obj.transform_values! { |v| deep_stringify_keys(v) }
+          when Array
+            obj.map { |v| deep_stringify_keys(v) }
+          else
+            obj
+          end
         end
       end
     end

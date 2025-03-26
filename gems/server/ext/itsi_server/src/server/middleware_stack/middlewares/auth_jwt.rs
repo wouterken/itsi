@@ -1,5 +1,4 @@
-use super::error_response::ErrorResponse;
-use super::{token_source::TokenSource, FromValue, MiddlewareLayer};
+use super::{error_response::ErrorResponse, token_source::TokenSource, FromValue, MiddlewareLayer};
 use crate::server::{
     itsi_service::RequestContext,
     types::{HttpRequest, HttpResponse, RequestExt},

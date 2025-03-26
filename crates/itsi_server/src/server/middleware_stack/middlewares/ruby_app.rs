@@ -1,4 +1,5 @@
 use super::MiddlewareLayer;
+use crate::server::static_file_server::ROOT_STATIC_FILE_SERVER;
 use crate::{
     ruby_types::itsi_http_request::ItsiHttpRequest,
     server::{
@@ -16,13 +17,16 @@ use std::sync::Arc;
 #[derive(Debug)]
 pub struct RubyApp {
     app: Arc<HeapValue<Proc>>,
+    sendfile: bool,
 }
 
 impl RubyApp {
     pub fn from_value(params: HeapVal) -> magnus::error::Result<Self> {
         let app = params.funcall::<_, _, Proc>(Symbol::new("[]"), ("app_proc",))?;
+        let sendfile = params.funcall::<_, _, bool>(Symbol::new("[]"), ("sendfile",))?;
         Ok(RubyApp {
             app: Arc::new(app.into()),
+            sendfile,
         })
     }
 }
@@ -38,5 +42,16 @@ impl MiddlewareLayer for RubyApp {
             .await
             .map_err(|e| e.into())
             .map(Either::Right)
+    }
+
+    async fn after(&self, resp: HttpResponse, _context: &mut RequestContext) -> HttpResponse {
+        if self.sendfile {
+            if let Some(sendfile_header) = resp.headers().get("X-Sendfile") {
+                return ROOT_STATIC_FILE_SERVER
+                    .serve_single(sendfile_header.to_str().unwrap())
+                    .await;
+            }
+        }
+        resp
     }
 }

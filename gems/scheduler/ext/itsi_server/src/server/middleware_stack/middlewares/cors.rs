@@ -154,6 +154,8 @@ impl Cors {
     ) -> Result<HeaderMap> {
         let mut headers = HeaderMap::new();
 
+        headers.insert("Vary", "Origin".parse().map_err(ItsiError::default)?);
+
         let origin = match origin {
             Some(o) if !o.is_empty() => o,
             _ => return Ok(headers), // Missing Origin – preflight fails

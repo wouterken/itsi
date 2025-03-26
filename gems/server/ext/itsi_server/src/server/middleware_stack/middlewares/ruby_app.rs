@@ -1,4 +1,5 @@
 use super::MiddlewareLayer;
+use crate::server::static_file_server::ROOT_STATIC_FILE_SERVER;
 use crate::{
     ruby_types::itsi_http_request::ItsiHttpRequest,
     server::{
@@ -12,6 +13,7 @@ use either::Either;
 use itsi_rb_helpers::{HeapVal, HeapValue};
 use magnus::{block::Proc, error::Result, value::ReprValue, Symbol};
 use std::sync::Arc;
+use tracing::info;
 
 #[derive(Debug)]
 pub struct RubyApp {
@@ -38,5 +40,16 @@ impl MiddlewareLayer for RubyApp {
             .await
             .map_err(|e| e.into())
             .map(Either::Right)
+    }
+
+    async fn after(&self, resp: HttpResponse, _context: &mut RequestContext) -> HttpResponse {
+        info!("Checking for X-Sendfile header in {:?}", resp.headers());
+        if let Some(sendfile_header) = resp.headers().get("X-Sendfile") {
+            ROOT_STATIC_FILE_SERVER
+                .serve_single(sendfile_header.to_str().unwrap())
+                .await
+        } else {
+            resp
+        }
     }
 }

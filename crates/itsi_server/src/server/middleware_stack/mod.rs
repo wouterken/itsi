@@ -1,7 +1,7 @@
 mod middleware;
 mod middlewares;
 use super::types::HttpRequest;
-use http::header::HOST;
+use http::header::{ACCEPT, CONTENT_TYPE, HOST};
 use itsi_rb_helpers::HeapVal;
 use magnus::{error::Result, value::ReprValue, RArray, RHash, Ruby, TryConvert, Value};
 pub use middleware::Middleware;
@@ -26,6 +26,8 @@ pub struct MiddlewareStack {
     hosts: Option<Vec<StringMatch>>,
     extensions: Option<Vec<StringMatch>>,
     ports: Option<Vec<StringMatch>>,
+    content_types: Option<Vec<StringMatch>>,
+    accepts: Option<Vec<StringMatch>>,
 }
 
 #[derive(Debug)]
@@ -96,6 +98,28 @@ impl MiddlewareStack {
             }
         }
 
+        if let Some(content_types) = &self.content_types {
+            if let Some(content_type) = request.headers().get(CONTENT_TYPE) {
+                if !content_types
+                    .iter()
+                    .any(|ct| ct.matches(content_type.to_str().unwrap_or("")))
+                {
+                    return false;
+                }
+            }
+        }
+
+        if let Some(accepts) = &self.accepts {
+            if let Some(accept) = request.headers().get(ACCEPT) {
+                if !accepts
+                    .iter()
+                    .any(|a| a.matches(accept.to_str().unwrap_or("")))
+                {
+                    return false;
+                }
+            }
+        }
+
         true
     }
 }
@@ -149,9 +173,12 @@ impl MiddlewareSet {
                         hosts: extract_optional_match_array(route_hash, "hosts")?,
                         extensions: extract_optional_match_array(route_hash, "extensions")?,
                         ports: extract_optional_match_array(route_hash, "ports")?,
+                        content_types: extract_optional_match_array(route_hash, "content_types")?,
+                        accepts: extract_optional_match_array(route_hash, "accepts")?,
                     },
                 );
             }
+            info!("Routes are {:?}", routes);
             Ok(Self {
                 route_set: RegexSet::new(&routes).map_err(|e| {
                     magnus::Error::new(

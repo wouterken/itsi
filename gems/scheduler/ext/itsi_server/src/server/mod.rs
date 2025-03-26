@@ -11,7 +11,7 @@ pub mod process_worker;
 pub mod request_job;
 pub mod serve_strategy;
 pub mod signal;
-pub mod static_file_cache;
+pub mod static_file_server;
 pub mod thread_worker;
 pub mod tls;
 pub mod types;

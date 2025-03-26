@@ -44,6 +44,16 @@ impl MiddlewareLayer for Redirect {
         req: HttpRequest,
         context: &mut RequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
+        Ok(Either::Right(self.redirect_response(&req, context)?))
+    }
+}
+
+impl Redirect {
+    pub fn redirect_response(
+        &self,
+        req: &HttpRequest,
+        context: &mut RequestContext,
+    ) -> Result<HttpResponse> {
         let mut response = Response::new(BoxBody::new(Empty::new()));
         *response.status_mut() = match self.redirect_type {
             RedirectType::Permanent => StatusCode::PERMANENT_REDIRECT,
@@ -53,14 +63,14 @@ impl MiddlewareLayer for Redirect {
         };
         response.headers_mut().append(
             "Location",
-            self.to.rewrite(&req, context).parse().map_err(|e| {
+            self.to.rewrite(req, context).parse().map_err(|e| {
                 magnus::Error::new(
                     magnus::exception::exception(),
                     format!("Invalid Rewrite String: {:?}: {}", self.to, e),
                 )
             })?,
         );
-        Ok(Either::Right(response))
+        Ok(response)
     }
 }
 impl FromValue for Redirect {}

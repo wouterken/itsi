@@ -3,9 +3,8 @@ threads 1
 
 preload false
 
-bind 'http://0.0.0.0:3000'
+bind 'http://localhost:3000'
 bind 'http://0.0.0.0:8000'
-
 
 fiber_scheduler 'Itsi::Scheduler'
 shutdown_timeout 10
@@ -29,91 +28,120 @@ def user_create(request)
   response.close
 end
 
-location "/cors_test" do
-  cors allowed_origins: ["http://127.0.0.1:8000"], allowed_methods: ["GET", "PATCH", "POST"], allowed_headers: ['Content-Type'], exposed_headers: ['X-Custom-Header'], allow_credentials: true
-  get "/user/:id" do |req|
-    req.respond("You've been CORSed!")
+location '/' do
+  location '/spa' do
+    # Serve static files from the "public/assets" directory
+    static_assets\
+      relative_path: true,
+      root_dir: 'spa/dist',
+      # # Only allow certain file extensions
+      # allowed_extensions: %w[css js jpg jpeg png gif svg ico woff woff2 ttf
+      #                        otf html],
+      # Return a 404 error if file is not found
+      not_found_behavior: { index: 'index.html' },
+      # Enable auto-indexing of directories
+      auto_index: true,
+      # Try adding .html extension to extensionless URLs
+      try_html_extension: true,
+      # Files under this size are cached in memory
+      max_file_size_in_memory: 1024 * 1024, # 1MB
+      # Maximum number of files to keep in memory cache
+      max_files_in_memory: 1000,
+      # Check for file modifications every 5 seconds
+      file_check_interval: 5,
+      # Add custom headers to all responses
+      headers: {
+        'Cache-Control' => 'public, max-age=86400',
+        'X-Content-Type-Options' => 'nosniff'
+      }
+    compress algorithms: ['zstd'], min_size: 0, compress_streams: true, mime_types: ['all'], level: 'fastest'
   end
 end
 
-location "/basic" do
-  auth_basic realm: 'My Realm', credential_pairs: { 'user' => 'password' }
-end
+# location "/cors_test" do
+#   cors allowed_origins: ["http://127.0.0.1:8000"], allowed_methods: ["GET", "PATCH", "POST"], allowed_headers: ['Content-Type'], exposed_headers: ['X-Custom-Header'], allow_credentials: true
+#   get "/user/:id" do |req|
+#     req.respond("You've been CORSed!")
+#   end
+# end
 
-location "/jwt" do
-  auth_jwt token_source: { header: { name: 'Authorization', prefix: 'Bearer ' } }, verifiers: {'hs256' => ["1V6nZzztO/F6Y3XAYXJ1I37AAXCJ/V7EVHJoVnD8lr4="]
-},  error_response: { code: 401, plaintext: 'Unauthorized', default: 'plaintext' }
-  get "/" do |req|
-    req.respond('Hello, JWT user!')
-  end
-end
+# location "/basic" do
+#   auth_basic realm: 'My Realm', credential_pairs: { 'user' => 'password' }
+# end
 
+# location "/jwt" do
+#   auth_jwt token_source: { header: { name: 'Authorization', prefix: 'Bearer ' } }, verifiers: {'hs256' => ["1V6nZzztO/F6Y3XAYXJ1I37AAXCJ/V7EVHJoVnD8lr4="]
+# },  error_response: { code: 401, plaintext: 'Unauthorized', default: 'plaintext' }
+#   get "/" do |req|
+#     req.respond('Hello, JWT user!')
+#   end
+# end
 
-location '/proxy_as_foo_com' do
-  compress algorithms: ['zstd'], min_size: 0, compress_streams: true, mime_types: ['all'], level: 'fastest'
-  proxy to: 'http://foo.com/zstd', backends: ['http://127.0.0.1:3000'], headers: { 'Host' => { 'value' => 'foo.com' } },
-        verify_ssl: false, timeout: 100, tls_sni: true
-end
+# location '/proxy_as_foo_com' do
+#   compress algorithms: ['zstd'], min_size: 0, compress_streams: true, mime_types: ['all'], level: 'fastest'
+#   proxy to: 'http://foo.com/zstd', backends: ['http://127.0.0.1:3000'], headers: { 'Host' => { 'value' => 'foo.com' } },
+#         verify_ssl: false, timeout: 100, tls_sni: true
+# end
 
-location '/proxy_as_bar_com' do
-  proxy to: 'http://bar.com', backends: ['http://127.0.0.1:3000'], headers: { 'Host' => { 'value' => 'bar.com' } },
-        verify_ssl: false, timeout: 100, tls_sni: true
-end
+# location '/proxy_as_bar_com' do
+#   proxy to: 'http://bar.com', backends: ['http://127.0.0.1:3000'], headers: { 'Host' => { 'value' => 'bar.com' } },
+#         verify_ssl: false, timeout: 100, tls_sni: true
+# end
 
-location '/', hosts: ['foo.com'] do
-  get '/' do |req|
-    req.respond('I am foo.com')
-  end
-end
+# location '/', hosts: ['foo.com'] do
+#   get '/' do |req|
+#     req.respond('I am foo.com')
+#   end
+# end
 
-location '/', hosts: ['bar.com'] do
-  get '/' do |req|
-    req.respond('I am bar.com')
-  end
-end
+# location '/', hosts: ['bar.com'] do
+#   get '/' do |req|
+#     req.respond('I am bar.com')
+#   end
+# end
 
-location '/admin*' do
-  auth_api_key valid_keys: %w[one two], token_source: { header: { name: 'Authorization', prefix: 'Bearer ' } },
-               error_response: { code: 401, plaintext: 'Unauthorized', default: 'plaintext' }
-  run lambda { |env|
-    [200, {}, 'Oh look, it also. Clusters!']
-  }
-end
+# location '/admin*' do
+#   auth_api_key valid_keys: %w[one two], token_source: { header: { name: 'Authorization', prefix: 'Bearer ' } },
+#                error_response: { code: 401, plaintext: 'Unauthorized', default: 'plaintext' }
+#   run lambda { |env|
+#     [200, {}, 'Oh look, it also. Clusters!']
+#   }
+# end
 
-location '/br' do
-  compress algorithms: ['brotli'], min_size: 0, compress_streams: true, mime_types: ['all'], level: 'fastest'
-  get '/' do |req|
-    req.respond("Hello world. I'm brotli'd!")
-  end
-end
+# location '/br' do
+#   compress algorithms: ['brotli'], min_size: 0, compress_streams: true, mime_types: ['all'], level: 'fastest'
+#   get '/' do |req|
+#     req.respond("Hello world. I'm brotli'd!")
+#   end
+# end
 
-location '/zstd' do
-  compress algorithms: ['zstd'], min_size: 0, compress_streams: true, mime_types: ['all'], level: 'fastest'
-  get '/' do |req|
-    req.respond("Hello world. I'm zstd'd!")
-  end
-end
+# location '/zstd' do
+#   compress algorithms: ['zstd'], min_size: 0, compress_streams: true, mime_types: ['all'], level: 'fastest'
+#   get '/' do |req|
+#     req.respond("Hello world. I'm zstd'd!")
+#   end
+# end
 
-location 'gzip' do
-  compress algorithms: ['gzip'], min_size: 0, compress_streams: true, mime_types: ['all'], level: 'fastest'
-  get '/' do |req|
-    req.respond("Hello world. I'm gzip'd!")
-  end
-end
+# location 'gzip' do
+#   compress algorithms: ['gzip'], min_size: 0, compress_streams: true, mime_types: ['all'], level: 'fastest'
+#   get '/' do |req|
+#     req.respond("Hello world. I'm gzip'd!")
+#   end
+# end
 
-location 'deflate' do
-  compress algorithms: ['deflate'], min_size: 0, compress_streams: true, mime_types: ['all'], level: 'fastest'
-  get '/' do |req|
-    req.respond("Hello world. I'm deflated!")
-  end
-end
+# location 'deflate' do
+#   compress algorithms: ['deflate'], min_size: 0, compress_streams: true, mime_types: ['all'], level: 'fastest'
+#   get '/' do |req|
+#     req.respond("Hello world. I'm deflated!")
+#   end
+# end
 
-get '/hey' do |req|
-  req.respond("This is a test")
-end
+# get '/hey' do |req|
+#   req.respond("This is a test")
+# end
 
 run lambda { |env|
-  [200, {}, 'Oh look, it also. Clusters!']
+  [200, { 'X-Sendfile' => 'error.html' }, 'Oh look, it also. Clusters!']
 }
 
 # location '*', protocols: :http do
@@ -145,5 +173,5 @@ run lambda { |env|
 #                  error_response: { code: 401, plaintext: 'Unauthorized', default: 'plaintext' }
 #   end
 # end
-#foo
-#foo
+# foo
+# foo

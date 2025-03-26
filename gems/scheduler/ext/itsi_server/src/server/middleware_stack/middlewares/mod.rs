@@ -26,6 +26,7 @@ pub use auth_jwt::AuthJwt;
 pub use compression::Compression;
 pub use compression::CompressionAlgorithm;
 pub use cors::Cors;
+pub use error_response::ErrorResponse;
 pub use logging::Logging;
 pub use proxy::Proxy;
 pub use rate_limit::RateLimit;
@@ -51,7 +52,7 @@ pub trait MiddlewareLayer: Sized + Send + Sync + 'static {
     async fn initialize(&self) -> Result<()> {
         Ok(())
     }
-    /// The “before” hook. By default, it passes through the request.
+    /// The "before" hook. By default, it passes through the request.
     async fn before(
         &self,
         req: HttpRequest,
@@ -60,7 +61,7 @@ pub trait MiddlewareLayer: Sized + Send + Sync + 'static {
         Ok(Either::Left(req))
     }
 
-    /// The “after” hook. By default, it passes through the response.
+    /// The "after" hook. By default, it passes through the response.
     async fn after(&self, resp: HttpResponse, _context: &mut RequestContext) -> HttpResponse {
         resp
     }

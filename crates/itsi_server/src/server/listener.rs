@@ -398,6 +398,7 @@ fn connect_tcp_socket(addr: IpAddr, port: u16) -> Result<TcpListener> {
     socket.set_nonblocking(true).ok();
     socket.set_nodelay(true).ok();
     socket.set_recv_buffer_size(262_144).ok();
+    socket.set_only_v6(false).ok();
     socket.bind(&socket_address.into())?;
     socket.listen(1024)?;
     Ok(socket.into())

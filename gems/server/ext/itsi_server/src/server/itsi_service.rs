@@ -119,8 +119,7 @@ impl Service<HttpRequest> for ItsiService {
                     ))
                 }
             };
-
-            for elm in stack.iter().rev().skip(stack.len() - depth) {
+            for elm in stack.iter().rev().skip(stack.len() - depth - 1) {
                 resp = elm.after(resp, &mut context).await;
             }
 

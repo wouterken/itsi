@@ -166,8 +166,8 @@ fn resolve_hostname(hostname: &str) -> Option<IpAddr> {
         .to_socket_addrs()
         .ok()?
         .find_map(|addr| {
-            if addr.is_ipv6() {
-                Some(addr.ip()) // Prefer IPv6
+            if addr.is_ipv4() {
+                Some(addr.ip()) // Prefer IPv4
             } else {
                 None
             }
