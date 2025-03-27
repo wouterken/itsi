@@ -343,9 +343,27 @@ module Itsi
           @middleware[:rate_limit] = args
         end
 
+        def cache_control(**args)
+          raise "`cache_control` must be set inside a location block" if @parent.nil?
+
+          @middleware[:cache_control] = args
+        end
+
+        def etag(**args)
+          raise "`etag` must be set inside a location block" if @parent.nil?
+
+          @middleware[:etag] = args
+        end
+
         def intrusion_protection(**args)
           raise "`intrusion_protection` must be set inside a location block" if @parent.nil?
-
+          args[:banned_url_patterns] = Array(args[:banned_url_patterns]).map do |pattern|
+            if pattern.is_a?(Regexp)
+              pattern.source
+            else
+              pattern
+            end
+          end
           @middleware[:intrusion_protection] = args
         end
 
@@ -421,11 +439,11 @@ module Itsi
             when /\*/
               seg.gsub(/\*/, ".*")
             else
-              Regexp.escape(seg.gsub(%r{/$}, ""))
+              Regexp.escape(seg).gsub(%r{/$}, ".*")
             end
           end.join("|")
 
-          if parent.paths_from_parent && parent.paths_from_parent != "(?:/)"
+          if parent.paths_from_parent && parent.paths_from_parent != "(?:/.*)"
             "#{parent.paths_from_parent}#{ route_or_str != "" ? "(?:#{route_or_str})" : ""}"
           else
             route_or_str = "/#{route_or_str}" unless route_or_str.start_with?("/")

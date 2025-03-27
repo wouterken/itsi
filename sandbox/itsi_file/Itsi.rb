@@ -27,21 +27,93 @@ def user_create(request)
   response.close
 end
 
-location "/hey" do
-  location "/world" do
-    request_headers additions: {"X-Custom-Req" => ["Foo", "Bar", "Baz"]}, removals: [""]
-    response_headers additions: {"X-Custom-Resp" => ["Foo", "Bar"]}, removals: []
+location "/etag-test" do
+  etag type: 'strong', algorithm: 'sha256', min_body_size: 0
 
+  get '/' do |req|
+    # Fixed content that will generate the same ETag each time
+    content = "This is a fixed response that will always have the same ETag."
+
+    # Add a timestamp as a comment to see the response is fresh
+    resp = req.response
+    req.respond("Content: #{content}.# Generated at: #{Time.now}")
+  end
+end
+
+
+location "/cached-with-etag" do
+  # Set up caching parameters
+  cache_control max_age: 3600, public: true, vary: ['Accept-Encoding']
+
+  # Add ETags for cache validation
+  etag type: 'weak', algorithm: 'md5', min_body_size: 0
+
+  get '/' do |req|
+    req.respond("This response will have both cache headers and an ETag.")
+  end
+end
+
+
+location "/" do
+  intrusion_protection banned_time_seconds: 5, banned_url_patterns: [/\/admin/, /\/secret/], store_config: { redis: { connection_url: 'redis://localhost:6379/0' } }, error_response: { plaintext: 'no way', code: 403, default: 'plaintext' }
+
+  # Example for API endpoints with ETags
+  location "/api" do
+    etag type: 'weak', algorithm: 'md5', min_body_size: 0
+    get '/users/id' do |req|
+      user_id = 5
+      req.respond("User data for #{user_id}")
+    end
+  end
+
+  location "/hey" do
+    location "/world*" do
+      request_headers additions: {"X-Custom-Req" => ["Foo", "Bar", "Baz"]}, removals: [""]
+      response_headers additions: {"X-Custom-Resp" => ["Foo", "Bar"]}, removals: []
+      rate_limit requests: 5, seconds: 30, key: 'address', store_config: { redis: { connection_url: 'redis://localhost:6379/0' } }, error_response: { plaintext: 'no way', code: 429, default: 'plaintext' }
+      post '/' do |req|
+        puts "I'm a post!"
+        req.respond("Post successful!")
+      end
+      get '/' do |req|
+        puts "Headers are", "#{req["foo"]}"
+        req.respond("Is this still fast?")
+      end
+    end
+  end
+
+  # Add a new location with cache_control middleware
+  location "/cached" do
+    cache_control max_age: 3600, public: true, vary: ['Accept-Encoding']
     get '/' do |req|
-      puts "Headers are", "#{req["foo"]}"
-      req.respond("Is this still fast?")
+      req.respond("This content is cached for 1 hour.")
+    end
+  end
+
+  location "/etag" do
+    etag enabled: true, etag_type: 'strong', hash_algorithm: 'sha256', min_body_size: 0
+    get '/' do |req|
+      # Create a response large enough to be worth ETagging
+      content = "This content will have ETags. " * 20
+      req.respond(content)
     end
   end
 end
 
-run( lambda do |env|
-  [200, {}, ['Hello, world!']]
-end)
+
+
+# For an assets example
+location "/assets" do
+  cache_control max_age: 604800, s_max_age: 2592000,
+               stale_while_revalidate: 86400,
+               public: true, immutable: true
+
+  get "/:file" do |req|
+    file_name = req.params["file"]
+    req.respond("Pretending to serve #{file_name} with long-lived caching")
+  end
+end
+
 # location '' do
 
   # location '/spa' do
@@ -189,3 +261,16 @@ end)
 # end
 # foo
 # foo
+
+# Example of using ETag middleware
+# location "/with-etag" do
+#   etag
+#   get '/' do |req|
+#     req.respond("This response will have an ETag header based on content hash.")
+#   end
+# end
+
+# Example with both caching and ETags
+
+
+# Simple ETag test endpoint with predictable content

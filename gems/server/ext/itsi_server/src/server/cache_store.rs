@@ -9,10 +9,9 @@ pub enum CacheError {
     RedisError(RedisError),
     // Other error variants as needed.
 }
-
 /// A general-purpose cache trait with an atomic “increment with timeout” operation.
 #[async_trait]
-pub trait CacheStore: Send + Sync {
+pub trait CacheStore: Send + Sync + std::fmt::Debug {
     /// Increments the counter associated with `key` and sets (or extends) its expiration.
     /// Returns the new counter value.
     async fn increment(&self, key: &str, timeout: Duration) -> Result<u64, CacheError>;
@@ -23,6 +22,12 @@ pub trait CacheStore: Send + Sync {
 #[derive(Clone)]
 pub struct RedisCacheStore {
     connection: Arc<ConnectionManager>,
+}
+
+impl std::fmt::Debug for RedisCacheStore {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RedisCacheStore").finish()
+    }
 }
 
 impl RedisCacheStore {

@@ -69,6 +69,11 @@ impl StringRewrite {
                         "method" => req.method().as_str().to_string(),
                         "path" => req.uri().path().to_string(),
                         "host" => req.uri().host().unwrap_or("localhost").to_string(),
+                        "path_and_query" => req
+                            .uri()
+                            .path_and_query()
+                            .map(|pq| pq.to_string())
+                            .unwrap_or("".to_string()),
                         "query" => {
                             let query = req.uri().query().unwrap_or("").to_string();
                             if query.is_empty() {

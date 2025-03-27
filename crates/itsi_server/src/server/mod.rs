@@ -8,6 +8,7 @@ pub mod lifecycle_event;
 pub mod listener;
 pub mod middleware_stack;
 pub mod process_worker;
+pub mod rate_limiter;
 pub mod request_job;
 pub mod serve_strategy;
 pub mod signal;

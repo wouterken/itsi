@@ -67,6 +67,8 @@ pub struct RequestContextInner {
     pub start_time: chrono::DateTime<chrono::Utc>,
     pub request: Option<Arc<HttpRequest>>,
     pub request_start_time: OnceLock<chrono::DateTime<Local>>,
+    pub if_none_match: OnceLock<Option<String>>,
+    pub etag_value: OnceLock<Option<String>>,
 }
 
 impl RequestContext {
@@ -81,6 +83,8 @@ impl RequestContext {
                 start_time: chrono::Utc::now(),
                 request: None,
                 request_start_time: OnceLock::new(),
+                if_none_match: OnceLock::new(),
+                etag_value: OnceLock::new(),
             }),
         }
     }
@@ -91,6 +95,14 @@ impl RequestContext {
 
     pub fn set_origin(&self, origin: Option<String>) {
         self.inner.origin.set(origin).unwrap();
+    }
+
+    pub fn set_if_none_match(&self, value: Option<String>) {
+        self.inner.if_none_match.set(value).unwrap();
+    }
+
+    pub fn get_if_none_match(&self) -> Option<String> {
+        self.inner.if_none_match.get().cloned().flatten()
     }
 
     pub fn request_id(&self) -> String {

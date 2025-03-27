@@ -252,7 +252,12 @@ impl MiddlewareSet {
             "auth_basic" => Middleware::AuthBasic(AuthBasic::from_value(parameters)?),
             "auth_jwt" => Middleware::AuthJwt(Box::new(AuthJwt::from_value(parameters)?)),
             "auth_api_key" => Middleware::AuthAPIKey(AuthAPIKey::from_value(parameters)?),
+            "cache_control" => Middleware::CacheControl(CacheControl::from_value(parameters)?),
             "deny_list" => Middleware::DenyList(DenyList::from_value(parameters)?),
+            "etag" => Middleware::ETag(ETag::from_value(parameters)?),
+            "intrusion_protection" => {
+                Middleware::IntrusionProtection(IntrusionProtection::from_value(parameters)?)
+            }
             "rate_limit" => Middleware::RateLimit(RateLimit::from_value(parameters)?),
             "cors" => Middleware::Cors(Box::new(Cors::from_value(parameters)?)),
             "request_headers" => {
