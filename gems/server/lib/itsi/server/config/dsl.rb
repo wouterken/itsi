@@ -257,6 +257,32 @@ module Itsi
           end
         end
 
+        def log_requests(**args)
+          @middleware[:log_requests] = args
+        end
+
+        def allow_list(**args)
+          args[:allowed_patterns] = Array(args[:allowed_patterns]).map do |pattern|
+            if pattern.is_a?(Regexp)
+              pattern.source
+            else
+              pattern
+            end
+          end
+          @middleware[:allow_list] = args
+        end
+
+        def deny_list(**args)
+          args[:denied_patterns] = Array(args[:denied_patterns]).map do |pattern|
+            if pattern.is_a?(Regexp)
+              pattern.source
+            else
+              pattern
+            end
+          end
+          @middleware[:deny_list] = args
+        end
+
         def controller(controller)
           raise "`controller` must be set inside a location block" if @parent.nil?
 
@@ -299,10 +325,28 @@ module Itsi
           @middleware[:compression] = args
         end
 
-        def rate_limit(name, **args)
+        def request_headers(**args)
+          raise "`request_headers` must be set inside a location block" if @parent.nil?
+
+          @middleware[:request_headers] = args
+        end
+
+        def response_headers(**args)
+          raise "`response_headers` must be set inside a location block" if @parent.nil?
+
+          @middleware[:response_headers] = args
+        end
+
+        def rate_limit(**args)
           raise "`rate_limit` must be set inside a location block" if @parent.nil?
 
-          @middleware[:rate_limit] = { name: name }.merge(args)
+          @middleware[:rate_limit] = args
+        end
+
+        def intrusion_protection(**args)
+          raise "`intrusion_protection` must be set inside a location block" if @parent.nil?
+
+          @middleware[:intrusion_protection] = args
         end
 
         def cors(**args)
@@ -381,9 +425,10 @@ module Itsi
             end
           end.join("|")
 
-          if parent.paths_from_parent
-            "#{parent.paths_from_parent}(?:#{route_or_str})"
+          if parent.paths_from_parent && parent.paths_from_parent != "(?:/)"
+            "#{parent.paths_from_parent}#{ route_or_str != "" ? "(?:#{route_or_str})" : ""}"
           else
+            route_or_str = "/#{route_or_str}" unless route_or_str.start_with?("/")
             "(?:#{route_or_str})"
           end
         end

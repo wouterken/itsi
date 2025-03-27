@@ -49,7 +49,7 @@ impl ProxiedHeader {
     pub fn to_string(&self, req: &HttpRequest, context: &RequestContext) -> String {
         match self {
             ProxiedHeader::String(value) => value.clone(),
-            ProxiedHeader::StringRewrite(rewrite) => rewrite.rewrite(req, context),
+            ProxiedHeader::StringRewrite(rewrite) => rewrite.rewrite_request(req, context),
         }
     }
 }
@@ -139,7 +139,7 @@ impl MiddlewareLayer for Proxy {
         req: HttpRequest,
         context: &mut RequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
-        let url = self.to.rewrite(&req, context);
+        let url = self.to.rewrite_request(&req, context);
         let destination = Url::parse(&url).map_err(|e| {
             magnus::Error::new(
                 magnus::exception::exception(),

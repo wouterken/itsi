@@ -6,8 +6,7 @@ preload false
 bind 'http://localhost:3000'
 bind 'http://0.0.0.0:8000'
 
-fiber_scheduler 'Itsi::Scheduler'
-shutdown_timeout 10
+shutdown_timeout 3
 multithreaded_reactor true
 
 watch '*.rb', [%w[bundle exec itsi restart]]
@@ -28,35 +27,53 @@ def user_create(request)
   response.close
 end
 
-location '/' do
-  location '/spa' do
-    # Serve static files from the "public/assets" directory
-    static_assets\
-      relative_path: true,
-      root_dir: 'spa/dist',
-      # # Only allow certain file extensions
-      # allowed_extensions: %w[css js jpg jpeg png gif svg ico woff woff2 ttf
-      #                        otf html],
-      # Return a 404 error if file is not found
-      not_found_behavior: { index: 'index.html' },
-      # Enable auto-indexing of directories
-      auto_index: true,
-      # Try adding .html extension to extensionless URLs
-      try_html_extension: true,
-      # Files under this size are cached in memory
-      max_file_size_in_memory: 1024 * 1024, # 1MB
-      # Maximum number of files to keep in memory cache
-      max_files_in_memory: 1000,
-      # Check for file modifications every 5 seconds
-      file_check_interval: 5,
-      # Add custom headers to all responses
-      headers: {
-        'Cache-Control' => 'public, max-age=86400',
-        'X-Content-Type-Options' => 'nosniff'
-      }
-    compress algorithms: ['zstd'], min_size: 0, compress_streams: true, mime_types: ['all'], level: 'fastest'
+location "/hey" do
+  location "/world" do
+    request_headers additions: {"X-Custom-Req" => ["Foo", "Bar", "Baz"]}, removals: [""]
+    response_headers additions: {"X-Custom-Resp" => ["Foo", "Bar"]}, removals: []
+
+    get '/' do |req|
+      puts "Headers are", "#{req["foo"]}"
+      req.respond("Is this still fast?")
+    end
   end
 end
+
+run( lambda do |env|
+  [200, {}, ['Hello, world!']]
+end)
+# location '' do
+
+  # location '/spa' do
+  #   # Serve static files from the "public/assets" directory
+  #   log_requests before: { format: "REQUEST_ID={request_id}  METHOD={method} PATH={path} QUERY={query} HOST={host} PORT={port} START_TIME={start_time}" , level: 'INFO'}, after: { format: "REQUEST_ID={request_id} RESPONSE_TIME={response_time}", level: 'INFO' }
+  #   allow_list allowed_patterns: [/127.*/], error_response: { plaintext: 'no way', code: 401, default: 'plaintext' }
+  #   static_assets\
+  #     relative_path: true,
+  #     root_dir: 'spa/dist',
+  #     # # Only allow certain file extensions
+  #     # allowed_extensions: %w[css js jpg jpeg png gif svg ico woff woff2 ttf
+  #     #                        otf html],
+  #     # Return a 404 error if file is not found
+  #     not_found_behavior: { index: 'index.html' },
+  #     # Enable auto-indexing of directories
+  #     auto_index: true,
+  #     # Try adding .html extension to extensionless URLs
+  #     try_html_extension: true,
+  #     # Files under this size are cached in memory
+  #     max_file_size_in_memory: 1024 * 1024, # 1MB
+  #     # Maximum number of files to keep in memory cache
+  #     max_files_in_memory: 1000,
+  #     # Check for file modifications every 5 seconds
+  #     file_check_interval: 5,
+  #     # Add custom headers to all responses
+  #     headers: {
+  #       'Cache-Control' => 'public, max-age=86400',
+  #       'X-Content-Type-Options' => 'nosniff'
+  #     }
+  #   compress algorithms: ['zstd'], min_size: 0, compress_streams: true, mime_types: ['all'], level: 'fastest'
+  # end
+# end
 
 # location "/cors_test" do
 #   cors allowed_origins: ["http://127.0.0.1:8000"], allowed_methods: ["GET", "PATCH", "POST"], allowed_headers: ['Content-Type'], exposed_headers: ['X-Custom-Header'], allow_credentials: true
@@ -140,9 +157,6 @@ end
 #   req.respond("This is a test")
 # end
 
-run lambda { |env|
-  [200, { 'X-Sendfile' => 'error.html' }, 'Oh look, it also. Clusters!']
-}
 
 # location '*', protocols: :http do
 #   location 'foo' do

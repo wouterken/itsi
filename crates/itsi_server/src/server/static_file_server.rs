@@ -106,6 +106,17 @@ impl CacheEntry {
     }
 }
 
+struct ServeStreamArgs(PathBuf, Metadata, u64, u64, bool, Option<SystemTime>, bool);
+struct ServeCacheArgs<'a>(
+    &'a CacheEntry,
+    u64,
+    u64,
+    bool,
+    Option<SystemTime>,
+    bool,
+    &'a Path,
+);
+
 impl StaticFileServer {
     pub fn new(config: StaticFileServerConfig) -> Self {
         let cache = Cache::builder().max_capacity(config.max_entries).build();
@@ -141,7 +152,7 @@ impl StaticFileServer {
                 let is_range_request = matches!(serve_range, ServeRange::Range { .. });
 
                 if let Some(cache_entry) = cache_entry {
-                    self.serve_cached_content(
+                    self.serve_cached_content(ServeCacheArgs(
                         &cache_entry,
                         start,
                         end,
@@ -149,9 +160,9 @@ impl StaticFileServer {
                         if_modified_since,
                         is_head_request,
                         &path,
-                    )
+                    ))
                 } else {
-                    self.serve_stream_content(
+                    self.serve_stream_content(ServeStreamArgs(
                         path,
                         metadata.unwrap(),
                         start,
@@ -159,7 +170,7 @@ impl StaticFileServer {
                         is_range_request,
                         if_modified_since,
                         is_head_request,
-                    )
+                    ))
                     .await
                 }
             }
@@ -194,17 +205,32 @@ impl StaticFileServer {
 
     pub async fn serve_single(&self, path: &str) -> HttpResponse {
         let resolved = self.resolve(path, path).await;
-        info!("Resolved to {:?}", resolved);
         if let Ok(ResolvedAsset {
             path,
             cache_entry: Some(cache_entry),
             ..
         }) = resolved
         {
-            return self.serve_cached_content(&cache_entry, 0, u64::MAX, false, None, false, &path);
+            return self.serve_cached_content(ServeCacheArgs(
+                &cache_entry,
+                0,
+                u64::MAX,
+                false,
+                None,
+                false,
+                &path,
+            ));
         } else if let Ok(ResolvedAsset { path, metadata, .. }) = resolved {
             return self
-                .serve_stream_content(path, metadata.unwrap(), 0, u64::MAX, false, None, false)
+                .serve_stream_content(ServeStreamArgs(
+                    path,
+                    metadata.unwrap(),
+                    0,
+                    u64::MAX,
+                    false,
+                    None,
+                    false,
+                ))
                 .await;
         }
 
@@ -267,7 +293,6 @@ impl StaticFileServer {
         let normalized_path = normalize_path(key).ok_or(NotFoundBehavior::InternalServerError)?;
         let mut full_path = self.config.root_dir.clone();
         full_path.push(normalized_path);
-        info!("Checking full path: {:?}", full_path);
         // Check if path exists and is a file
         match tokio::fs::metadata(&full_path).await {
             Ok(metadata) => {
@@ -283,7 +308,6 @@ impl StaticFileServer {
                     } else {
                         None
                     };
-                    info!("Returning resolved asset");
                     return Ok(ResolvedAsset {
                         path: full_path,
                         cache_entry,
@@ -480,16 +504,17 @@ impl StaticFileServer {
         }
     }
 
-    async fn serve_stream_content(
-        &self,
-        file: PathBuf,
-        metadata: Metadata,
-        start: u64,
-        end: u64,
-        is_range_request: bool,
-        if_modified_since: Option<SystemTime>,
-        is_head_request: bool,
-    ) -> http::Response<BoxBody<Bytes, Infallible>> {
+    async fn serve_stream_content(&self, stream_args: ServeStreamArgs) -> HttpResponse {
+        let ServeStreamArgs(
+            file,
+            metadata,
+            start,
+            end,
+            is_range_request,
+            if_modified_since,
+            is_head_request,
+        ) = stream_args;
+
         let content_length = metadata.len();
         let last_modified = metadata.modified().unwrap();
 
@@ -579,14 +604,18 @@ impl StaticFileServer {
 
     fn serve_cached_content(
         &self,
-        cache_entry: &CacheEntry,
-        start: u64,
-        end: u64,
-        is_range_request: bool,
-        if_modified_since: Option<SystemTime>,
-        is_head_request: bool,
-        path: &Path,
+        serve_cache_args: ServeCacheArgs,
     ) -> http::Response<BoxBody<Bytes, Infallible>> {
+        let ServeCacheArgs(
+            cache_entry,
+            start,
+            end,
+            is_range_request,
+            if_modified_since,
+            is_head_request,
+            path,
+        ) = serve_cache_args;
+
         let content_length = cache_entry.content.len() as u64;
 
         // Handle If-Modified-Since header

@@ -14,7 +14,6 @@ use itsi_error::ItsiError;
 use magnus::error::Result;
 use serde::Deserialize;
 use std::{collections::HashMap, path::PathBuf, sync::OnceLock, time::Duration};
-use tracing::info;
 
 #[derive(Debug, Deserialize)]
 pub struct StaticAssets {
@@ -85,9 +84,6 @@ impl MiddlewareLayer for StaticAssets {
                 None => return Ok(Either::Left(req)),
             }
         };
-
-        info!("Abs path: {}", abs_path);
-        info!("Rel path: {}", rel_path);
 
         // Determine if this is a HEAD request
         let is_head_request = req.method() == Method::HEAD;

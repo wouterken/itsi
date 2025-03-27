@@ -12,7 +12,7 @@ use crate::server::{
     types::{HttpRequest, HttpResponse},
 };
 
-use super::{string_rewrite::StringRewrite, FromValue, MiddlewareLayer};
+use super::{string_rewrite::StringRewrite, ErrorResponse, FromValue, MiddlewareLayer};
 
 use async_trait::async_trait;
 use either::Either;
@@ -23,7 +23,7 @@ use hyper::body::Frame;
 use magnus::error::Result;
 use reqwest::{dns::Resolve, Body, Client, Url};
 use serde::Deserialize;
-use tracing::*;
+use tracing::error;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Proxy {
@@ -35,6 +35,7 @@ pub struct Proxy {
     pub tls_sni: bool,
     #[serde(skip_deserializing)]
     pub client: OnceLock<Client>,
+    pub error_response: ErrorResponse,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -49,7 +50,7 @@ impl ProxiedHeader {
     pub fn to_string(&self, req: &HttpRequest, context: &RequestContext) -> String {
         match self {
             ProxiedHeader::String(value) => value.clone(),
-            ProxiedHeader::StringRewrite(rewrite) => rewrite.rewrite(req, context),
+            ProxiedHeader::StringRewrite(rewrite) => rewrite.rewrite_request(req, context),
         }
     }
 }
@@ -139,13 +140,13 @@ impl MiddlewareLayer for Proxy {
         req: HttpRequest,
         context: &mut RequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
-        let url = self.to.rewrite(&req, context);
-        let destination = Url::parse(&url).map_err(|e| {
-            magnus::Error::new(
-                magnus::exception::exception(),
-                format!("Failed to create route set: {}", e),
-            )
-        })?;
+        let url = self.to.rewrite_request(&req, context);
+        let error_response = self.error_response.to_http_response(&req).await;
+
+        let destination = match Url::parse(&url) {
+            Ok(dest) => dest,
+            Err(_) => return Ok(Either::Right(error_response)),
+        };
 
         let host_str = destination.host_str().unwrap_or_else(|| {
             req.headers()
@@ -183,34 +184,32 @@ impl MiddlewareLayer for Proxy {
         }
 
         let reqwest_builder = reqwest_builder.body(Body::wrap_stream(req.into_data_stream()));
-        let reqwest_response = reqwest_builder.send().await.map_err(|e| {
-            error!("Failed to build Reqwest response: {:?}", e);
-            magnus::Error::new(
-                magnus::exception::runtime_error(),
-                format!("Reqwest request failed: {}", e),
-            )
-        })?;
+        let reqwest_response = reqwest_builder.send().await;
 
-        let status = reqwest_response.status();
-        let mut builder = Response::builder().status(status);
-        for (hn, hv) in reqwest_response.headers() {
-            builder = builder.header(hn, hv);
-        }
-        let response = builder
-            .body(BoxBody::new(StreamBody::new(
-                reqwest_response
-                    .bytes_stream()
-                    .map_ok(Frame::data)
-                    .map_err(|_| -> Infallible { unreachable!("We handle IO errors above") }),
-            )))
-            .map_err(|e| {
-                error!("Failed to build Hyper response: {}", e);
-                magnus::Error::new(
-                    magnus::exception::runtime_error(),
-                    format!("Failed to build Hyper response: {}", e),
-                )
-            })?;
-
+        let response = match reqwest_response {
+            Ok(response) => {
+                let status = response.status();
+                let mut builder = Response::builder().status(status);
+                for (hn, hv) in response.headers() {
+                    builder = builder.header(hn, hv);
+                }
+                let response = builder.body(BoxBody::new(StreamBody::new(
+                    response
+                        .bytes_stream()
+                        .map_ok(Frame::data)
+                        .map_err(|_| -> Infallible { unreachable!("We handle IO errors above") }),
+                )));
+                if let Ok(response) = response {
+                    response
+                } else {
+                    error_response
+                }
+            }
+            Err(e) => {
+                error!("Error sending request: {}", e);
+                error_response
+            }
+        };
         Ok(Either::Right(response))
     }
 }

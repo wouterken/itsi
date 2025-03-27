@@ -63,7 +63,7 @@ impl Redirect {
         };
         response.headers_mut().append(
             "Location",
-            self.to.rewrite(req, context).parse().map_err(|e| {
+            self.to.rewrite_request(req, context).parse().map_err(|e| {
                 magnus::Error::new(
                     magnus::exception::exception(),
                     format!("Invalid Rewrite String: {:?}: {}", self.to, e),

@@ -249,6 +249,17 @@ impl ItsiHttpRequest {
             .collect::<Vec<(&str, &str)>>())
     }
 
+    pub fn header(&self, name: String) -> MagnusResult<Option<Vec<&str>>> {
+        let result: Vec<&str> = self
+            .parts
+            .headers
+            .get_all(&name)
+            .iter()
+            .filter_map(|value| value.to_str().ok())
+            .collect();
+        Ok(Some(result))
+    }
+
     pub(crate) fn remote_addr(&self) -> MagnusResult<&str> {
         Ok(&self.context.addr)
     }

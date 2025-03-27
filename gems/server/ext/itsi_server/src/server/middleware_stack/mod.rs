@@ -248,14 +248,22 @@ impl MiddlewareSet {
         ))?;
 
         let result = match middleware_type.as_str() {
+            "allow_list" => Middleware::AllowList(AllowList::from_value(parameters)?),
             "auth_basic" => Middleware::AuthBasic(AuthBasic::from_value(parameters)?),
             "auth_jwt" => Middleware::AuthJwt(Box::new(AuthJwt::from_value(parameters)?)),
             "auth_api_key" => Middleware::AuthAPIKey(AuthAPIKey::from_value(parameters)?),
+            "deny_list" => Middleware::DenyList(DenyList::from_value(parameters)?),
             "rate_limit" => Middleware::RateLimit(RateLimit::from_value(parameters)?),
             "cors" => Middleware::Cors(Box::new(Cors::from_value(parameters)?)),
+            "request_headers" => {
+                Middleware::RequestHeaders(RequestHeaders::from_value(parameters)?)
+            }
+            "response_headers" => {
+                Middleware::ResponseHeaders(ResponseHeaders::from_value(parameters)?)
+            }
             "static_assets" => Middleware::StaticAssets(StaticAssets::from_value(parameters)?),
             "compression" => Middleware::Compression(Compression::from_value(parameters)?),
-            "logging" => Middleware::Logging(Logging::from_value(parameters)?),
+            "log_requests" => Middleware::LogRequests(LogRequests::from_value(parameters)?),
             "redirect" => Middleware::Redirect(Redirect::from_value(parameters)?),
             "app" => Middleware::RubyApp(RubyApp::from_value(parameters.into())?),
             "proxy" => Middleware::Proxy(Proxy::from_value(parameters)?),

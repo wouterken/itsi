@@ -13,18 +13,20 @@ use either::Either;
 use itsi_rb_helpers::{HeapVal, HeapValue};
 use magnus::{block::Proc, error::Result, value::ReprValue, Symbol};
 use std::sync::Arc;
-use tracing::info;
 
 #[derive(Debug)]
 pub struct RubyApp {
     app: Arc<HeapValue<Proc>>,
+    sendfile: bool,
 }
 
 impl RubyApp {
     pub fn from_value(params: HeapVal) -> magnus::error::Result<Self> {
         let app = params.funcall::<_, _, Proc>(Symbol::new("[]"), ("app_proc",))?;
+        let sendfile = params.funcall::<_, _, bool>(Symbol::new("[]"), ("sendfile",))?;
         Ok(RubyApp {
             app: Arc::new(app.into()),
+            sendfile,
         })
     }
 }
@@ -43,13 +45,13 @@ impl MiddlewareLayer for RubyApp {
     }
 
     async fn after(&self, resp: HttpResponse, _context: &mut RequestContext) -> HttpResponse {
-        info!("Checking for X-Sendfile header in {:?}", resp.headers());
-        if let Some(sendfile_header) = resp.headers().get("X-Sendfile") {
-            ROOT_STATIC_FILE_SERVER
-                .serve_single(sendfile_header.to_str().unwrap())
-                .await
-        } else {
-            resp
+        if self.sendfile {
+            if let Some(sendfile_header) = resp.headers().get("X-Sendfile") {
+                return ROOT_STATIC_FILE_SERVER
+                    .serve_single(sendfile_header.to_str().unwrap())
+                    .await;
+            }
         }
+        resp
     }
 }

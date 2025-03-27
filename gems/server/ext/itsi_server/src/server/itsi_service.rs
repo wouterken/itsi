@@ -6,6 +6,8 @@ use super::serve_strategy::single_mode::RunningPhase;
 use super::types::HttpRequest;
 use super::types::HttpResponse;
 use crate::ruby_types::itsi_server::itsi_server_config::ServerParams;
+use chrono;
+use chrono::Local;
 use either::Either;
 use hyper::service::Service;
 use itsi_error::ItsiError;
@@ -57,20 +59,28 @@ impl Deref for RequestContextInner {
 }
 
 pub struct RequestContextInner {
+    pub request_id: i128,
     pub service: ItsiService,
     pub matching_pattern: Option<Arc<Regex>>,
     pub compression_method: OnceLock<CompressionAlgorithm>,
     pub origin: OnceLock<Option<String>>,
+    pub start_time: chrono::DateTime<chrono::Utc>,
+    pub request: Option<Arc<HttpRequest>>,
+    pub request_start_time: OnceLock<chrono::DateTime<Local>>,
 }
 
 impl RequestContext {
     fn new(service: ItsiService, matching_pattern: Option<Arc<Regex>>) -> Self {
         RequestContext {
             inner: Arc::new(RequestContextInner {
+                request_id: rand::random::<i128>(),
                 service,
                 matching_pattern,
                 compression_method: OnceLock::new(),
                 origin: OnceLock::new(),
+                start_time: chrono::Utc::now(),
+                request: None,
+                request_start_time: OnceLock::new(),
             }),
         }
     }
@@ -81,6 +91,27 @@ impl RequestContext {
 
     pub fn set_origin(&self, origin: Option<String>) {
         self.inner.origin.set(origin).unwrap();
+    }
+
+    pub fn request_id(&self) -> String {
+        self.inner.request_id.to_string()
+    }
+
+    pub fn track_start_time(&self) {
+        self.inner
+            .request_start_time
+            .get_or_init(chrono::Local::now);
+    }
+
+    pub fn start_time(&self) -> Option<chrono::DateTime<Local>> {
+        self.inner.request_start_time.get().cloned()
+    }
+
+    pub fn get_response_time(&self) -> Option<chrono::TimeDelta> {
+        self.inner
+            .request_start_time
+            .get()
+            .map(|instant| Local::now() - instant)
     }
 }
 

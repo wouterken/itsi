@@ -58,7 +58,7 @@ pub enum RunningPhase {
 }
 
 impl SingleMode {
-    #[instrument(parent=None, skip_all, fields(pid=format!("{:?}", Pid::this())))]
+    #[instrument(parent=None, skip_all)]
     pub fn new(server_config: Arc<ItsiServerConfig>) -> Result<Self> {
         server_config.server_params.read().preload_ruby()?;
         Ok(Self {

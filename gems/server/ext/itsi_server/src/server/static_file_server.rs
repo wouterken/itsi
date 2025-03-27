@@ -194,7 +194,6 @@ impl StaticFileServer {
 
     pub async fn serve_single(&self, path: &str) -> HttpResponse {
         let resolved = self.resolve(path, path).await;
-        info!("Resolved to {:?}", resolved);
         if let Ok(ResolvedAsset {
             path,
             cache_entry: Some(cache_entry),
@@ -267,7 +266,6 @@ impl StaticFileServer {
         let normalized_path = normalize_path(key).ok_or(NotFoundBehavior::InternalServerError)?;
         let mut full_path = self.config.root_dir.clone();
         full_path.push(normalized_path);
-        info!("Checking full path: {:?}", full_path);
         // Check if path exists and is a file
         match tokio::fs::metadata(&full_path).await {
             Ok(metadata) => {
@@ -283,7 +281,6 @@ impl StaticFileServer {
                     } else {
                         None
                     };
-                    info!("Returning resolved asset");
                     return Ok(ResolvedAsset {
                         path: full_path,
                         cache_entry,

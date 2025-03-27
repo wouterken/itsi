@@ -1,16 +1,25 @@
-use serde::{Deserialize, Serialize};
+use std::sync::{Arc, OnceLock};
 
-use super::{MiddlewareLayer, FromValue};
+use serde::Deserialize;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+use crate::server::cache_store::CacheStore;
+
+use super::{token_source::TokenSource, ErrorResponse, FromValue, MiddlewareLayer};
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct RateLimit {
-    pub max_requests: u64,
-    pub window_seconds: u64,
-    pub burst_capacity: Option<u64>,
-    pub strategy: Option<String>,      // e.g., "token_bucket"
-    pub key_extractor: Option<String>, // e.g., "ip", "api_key"
-    pub error_message: Option<String>,
-    pub status_code: Option<u16>,
+    pub requests: u64,
+    pub seconds: u64,
+    pub key: RateLimitKey,
+    #[serde(skip_deserializing)]
+    pub cache_store: OnceLock<Arc<dyn CacheStore>>,
+    pub error_response: ErrorResponse,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub enum RateLimitKey {
+    SocketAddress,
+    Parameter(TokenSource),
 }
 
 impl MiddlewareLayer for RateLimit {}

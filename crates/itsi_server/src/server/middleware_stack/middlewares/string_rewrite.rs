@@ -1,8 +1,9 @@
-use std::sync::OnceLock;
-
+use crate::server::{
+    itsi_service::RequestContext,
+    types::{HttpRequest, HttpResponse},
+};
 use serde::Deserialize;
-
-use crate::server::{itsi_service::RequestContext, types::HttpRequest};
+use std::sync::OnceLock;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(transparent)]
@@ -18,7 +19,7 @@ pub enum Segment {
     Placeholder(String),
 }
 
-fn parse_template(template: &str) -> Vec<Segment> {
+pub fn parse_template(template: &str) -> Vec<Segment> {
     let mut segments = Vec::new();
     let mut last_index = 0;
     while let Some(start_index) = template[last_index..].find('{') {
@@ -48,7 +49,7 @@ fn parse_template(template: &str) -> Vec<Segment> {
 }
 
 impl StringRewrite {
-    pub fn rewrite(&self, req: &HttpRequest, context: &RequestContext) -> String {
+    pub fn rewrite_request(&self, req: &HttpRequest, context: &RequestContext) -> String {
         let segments = self
             .segments
             .get_or_init(|| parse_template(&self.template_string));
@@ -64,6 +65,7 @@ impl StringRewrite {
                 Segment::Literal(text) => result.push_str(text),
                 Segment::Placeholder(placeholder) => {
                     let replacement = match placeholder.as_str() {
+                        "request_id" => context.request_id(),
                         "method" => req.method().as_str().to_string(),
                         "path" => req.uri().path().to_string(),
                         "host" => req.uri().host().unwrap_or("localhost").to_string(),
@@ -80,6 +82,13 @@ impl StringRewrite {
                             .port()
                             .map(|p| p.to_string())
                             .unwrap_or_else(|| "80".to_string()),
+                        "start_time" => {
+                            if let Some(start_time) = context.start_time() {
+                                start_time.format("%Y-%m-%d:%H:%M:%S:%3f").to_string()
+                            } else {
+                                "N/A".to_string()
+                            }
+                        }
                         other => {
                             // Try using the context's matching regex if available.
                             if let Some(caps) = &captures {
@@ -89,6 +98,46 @@ impl StringRewrite {
                                     // Fallback: leave the placeholder as is.
                                     format!("{{{}}}", other)
                                 }
+                            } else {
+                                format!("{{{}}}", other)
+                            }
+                        }
+                    };
+                    result.push_str(&replacement);
+                }
+            }
+        }
+
+        result
+    }
+
+    pub fn rewrite_response(&self, resp: &HttpResponse, context: &RequestContext) -> String {
+        let segments = self
+            .segments
+            .get_or_init(|| parse_template(&self.template_string));
+
+        let mut result = String::with_capacity(self.template_string.len());
+        for segment in segments {
+            match segment {
+                Segment::Literal(text) => result.push_str(text),
+                Segment::Placeholder(placeholder) => {
+                    let replacement = match placeholder.as_str() {
+                        "request_id" => context.request_id(),
+                        "status" => resp.status().as_str().to_string(),
+                        "response_time" => {
+                            if let Some(response_time) = context.get_response_time() {
+                                if let Some(microseconds) = response_time.num_microseconds() {
+                                    format!("{:.3}ms", microseconds as f64 / 1000.0)
+                                } else {
+                                    format!("{}ms", response_time.num_milliseconds())
+                                }
+                            } else {
+                                "-".to_string()
+                            }
+                        }
+                        other => {
+                            if let Some(header_value) = resp.headers().get(other) {
+                                format!("{:?}", header_value)
                             } else {
                                 format!("{{{}}}", other)
                             }

@@ -10,14 +10,18 @@ use std::cmp::Ordering;
 
 #[derive(Debug)]
 pub enum Middleware {
+    DenyList(DenyList),
+    AllowList(AllowList),
     AuthBasic(AuthBasic),
     AuthJwt(Box<AuthJwt>),
     AuthAPIKey(AuthAPIKey),
     RateLimit(RateLimit),
+    RequestHeaders(RequestHeaders),
+    ResponseHeaders(ResponseHeaders),
     Cors(Box<Cors>),
     StaticAssets(StaticAssets),
     Compression(Compression),
-    Logging(Logging),
+    LogRequests(LogRequests),
     Redirect(Redirect),
     Proxy(Proxy),
     RubyApp(RubyApp),
@@ -28,14 +32,18 @@ impl MiddlewareLayer for Middleware {
     /// Called just once, to initialize the middleware state.
     async fn initialize(&self) -> Result<()> {
         match self {
+            Middleware::DenyList(filter) => filter.initialize().await,
+            Middleware::AllowList(filter) => filter.initialize().await,
             Middleware::AuthBasic(filter) => filter.initialize().await,
             Middleware::AuthJwt(filter) => filter.initialize().await,
             Middleware::AuthAPIKey(filter) => filter.initialize().await,
             Middleware::RateLimit(filter) => filter.initialize().await,
+            Middleware::RequestHeaders(filter) => filter.initialize().await,
+            Middleware::ResponseHeaders(filter) => filter.initialize().await,
             Middleware::Cors(filter) => filter.initialize().await,
             Middleware::StaticAssets(filter) => filter.initialize().await,
             Middleware::Compression(filter) => filter.initialize().await,
-            Middleware::Logging(filter) => filter.initialize().await,
+            Middleware::LogRequests(filter) => filter.initialize().await,
             Middleware::Redirect(filter) => filter.initialize().await,
             Middleware::Proxy(filter) => filter.initialize().await,
             Middleware::RubyApp(filter) => filter.initialize().await,
@@ -48,14 +56,18 @@ impl MiddlewareLayer for Middleware {
         context: &mut RequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
         match self {
+            Middleware::DenyList(filter) => filter.before(req, context).await,
+            Middleware::AllowList(filter) => filter.before(req, context).await,
             Middleware::AuthBasic(filter) => filter.before(req, context).await,
             Middleware::AuthJwt(filter) => filter.before(req, context).await,
             Middleware::AuthAPIKey(filter) => filter.before(req, context).await,
+            Middleware::RequestHeaders(filter) => filter.before(req, context).await,
+            Middleware::ResponseHeaders(filter) => filter.before(req, context).await,
             Middleware::RateLimit(filter) => filter.before(req, context).await,
             Middleware::Cors(filter) => filter.before(req, context).await,
             Middleware::StaticAssets(filter) => filter.before(req, context).await,
             Middleware::Compression(filter) => filter.before(req, context).await,
-            Middleware::Logging(filter) => filter.before(req, context).await,
+            Middleware::LogRequests(filter) => filter.before(req, context).await,
             Middleware::Redirect(filter) => filter.before(req, context).await,
             Middleware::Proxy(filter) => filter.before(req, context).await,
             Middleware::RubyApp(filter) => filter.before(req, context).await,
@@ -64,14 +76,18 @@ impl MiddlewareLayer for Middleware {
 
     async fn after(&self, res: HttpResponse, context: &mut RequestContext) -> HttpResponse {
         match self {
+            Middleware::DenyList(filter) => filter.after(res, context).await,
+            Middleware::AllowList(filter) => filter.after(res, context).await,
             Middleware::AuthBasic(filter) => filter.after(res, context).await,
             Middleware::AuthJwt(filter) => filter.after(res, context).await,
             Middleware::AuthAPIKey(filter) => filter.after(res, context).await,
             Middleware::RateLimit(filter) => filter.after(res, context).await,
+            Middleware::RequestHeaders(filter) => filter.after(res, context).await,
+            Middleware::ResponseHeaders(filter) => filter.after(res, context).await,
             Middleware::Cors(filter) => filter.after(res, context).await,
             Middleware::StaticAssets(filter) => filter.after(res, context).await,
             Middleware::Compression(filter) => filter.after(res, context).await,
-            Middleware::Logging(filter) => filter.after(res, context).await,
+            Middleware::LogRequests(filter) => filter.after(res, context).await,
             Middleware::Redirect(filter) => filter.after(res, context).await,
             Middleware::Proxy(filter) => filter.after(res, context).await,
             Middleware::RubyApp(filter) => filter.after(res, context).await,
@@ -82,17 +98,21 @@ impl MiddlewareLayer for Middleware {
 impl Middleware {
     fn variant_order(&self) -> usize {
         match self {
-            Middleware::Redirect(_) => 0,
-            Middleware::Logging(_) => 1,
-            Middleware::AuthBasic(_) => 2,
-            Middleware::AuthJwt(_) => 3,
-            Middleware::AuthAPIKey(_) => 4,
-            Middleware::RateLimit(_) => 5,
-            Middleware::Compression(_) => 6,
-            Middleware::Proxy(_) => 7,
-            Middleware::Cors(_) => 8,
-            Middleware::StaticAssets(_) => 9,
-            Middleware::RubyApp(_) => 10,
+            Middleware::DenyList(_) => 0,
+            Middleware::AllowList(_) => 1,
+            Middleware::Redirect(_) => 2,
+            Middleware::LogRequests(_) => 3,
+            Middleware::RequestHeaders(_) => 4,
+            Middleware::ResponseHeaders(_) => 5,
+            Middleware::AuthBasic(_) => 6,
+            Middleware::AuthJwt(_) => 7,
+            Middleware::AuthAPIKey(_) => 8,
+            Middleware::RateLimit(_) => 9,
+            Middleware::Compression(_) => 10,
+            Middleware::Proxy(_) => 11,
+            Middleware::Cors(_) => 12,
+            Middleware::StaticAssets(_) => 13,
+            Middleware::RubyApp(_) => 14,
         }
     }
 }

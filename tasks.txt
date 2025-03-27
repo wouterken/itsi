@@ -1,17 +1,33 @@
-- Fix graceful shutdown
-- Filters (Medium)
-- Static File Serve (Medium).error pages
-- Preload Groups
-- Support a Signal for logging live server info
-- Dashboard
-- HTTP to HTTPS redirect
+Filters:
+- Rate Limit: Uses Store: Rate limit. Throttle requests per IP. Bad access scanner also adds you to rate limit immediately.
+- ETag and Cache
+- gRPC (Handlers)
 
-- Polish and Release (At Lake)
--- Log params (Think long and hard about what we should and shouldn't log)
--- Parameterize EVERYTHING (OOB GC - Make sure this works for non fiber mode, and others)
--- No unwrap or except
+Polish and Release (At Lake):
+-- Fix tests
+-- Server start takes Itsifile block
+-- Config Improvements (Make ultra robust, fool proof, verbose errors). Refuse to restart or reload if config is invalid. Gather all errors before bailing.
+-- Implement Print routes command
+-- Offer password hash generation, and load from files for basic auth, api key, jwt.
+-- Script name comes from location in hierarchy instead of params.
+-- Request convenience functions (body JSON, body form-encoded)
+-- Try (Again) to build rack env in Rust for perf bump
+-- Nice Readme
+-- New Tests for all filters
+-- Revisit logging everywhere (Think long and hard about what we should and shouldn't log). Add lots of debug. Little info. Missing warnings and errors.
+-- Parameterize EVERYTHING (socket params etc.)
+-- No unwrap or except unless truly necessary.
 -- Add notes on: PGGSSENCMODE="disable"
+-- Optimize Rack hash creation
 
 Later:
-- Broken shutdown (sometimes) in Fiber mode
-- Hunt down sporradic bad file desc during tests
+- First class websockets
+- Implement Simple Request timeout (non-fiber mode. Kill stuck threads. Default to nil)
+- Print out warning if we can detect a location block will never be hit.
+- Optimize: Avoid double encoding in compression filter if already compressed
+- Built in dashboard + Stats
+- Support Request timeout in Fiber scheduler mode
+- Support UDP
+- Support unix socket proxy
+-- Hunt down sporradic bad file desc during tests
+-- WASM pluggable middleware
