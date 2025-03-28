@@ -124,7 +124,20 @@ module Itsi
           end
         end
 
-        def run(app)
+        def grpc(handler, **)
+          if @middleware[:app] && @middleware[:app][:request_type].to_s != "grpc"
+            raise "App has already been set. You can use only one of `run` and `rackup_file` or `grpc` per location"
+          end
+
+          @middleware[:app] ||= {
+            request_type: "grpc",
+            impls: []
+          }
+          @middleware[:app][:impls] << handler
+          @middleware[:app][:app_proc] = Itsi::Server::GrpcInterface.for(@middleware[:app][:impls])
+        end
+
+        def run(app, sendfile: true)
           if @options[:app_loader]
             raise "App has already been set. You can use only one of `run` and `rackup_file` per location"
           end
@@ -132,7 +145,7 @@ module Itsi
           if @parent.nil?
             @options[:app_loader] = -> { { "app_proc" => Itsi::Server::RackInterface.for(app) } }
           else
-            @middleware[:app] = { app_proc: Itsi::Server::RackInterface.for(app) }
+            @middleware[:app] = { app_proc: Itsi::Server::RackInterface.for(app), sendfile: sendfile }
           end
         end
 
@@ -357,6 +370,7 @@ module Itsi
 
         def intrusion_protection(**args)
           raise "`intrusion_protection` must be set inside a location block" if @parent.nil?
+
           args[:banned_url_patterns] = Array(args[:banned_url_patterns]).map do |pattern|
             if pattern.is_a?(Regexp)
               pattern.source
@@ -444,7 +458,7 @@ module Itsi
           end.join("|")
 
           if parent.paths_from_parent && parent.paths_from_parent != "(?:/.*)"
-            "#{parent.paths_from_parent}#{ route_or_str != "" ? "(?:#{route_or_str})" : ""}"
+            "#{parent.paths_from_parent}#{route_or_str != "" ? "(?:#{route_or_str})" : ""}"
           else
             route_or_str = "/#{route_or_str}" unless route_or_str.start_with?("/")
             "(?:#{route_or_str})"

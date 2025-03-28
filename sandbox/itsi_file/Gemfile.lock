@@ -14,10 +14,25 @@ PATH
 GEM
   remote: https://rubygems.org/
   specs:
+    bigdecimal (3.1.9)
     date (3.4.1)
     debug (1.10.0)
       irb (~> 1.10)
       reline (>= 0.3.8)
+    google-protobuf (4.30.2)
+      bigdecimal
+      rake (>= 13)
+    google-protobuf (4.30.2-arm64-darwin)
+      bigdecimal
+      rake (>= 13)
+    googleapis-common-protos-types (1.19.0)
+      google-protobuf (>= 3.18, < 5.a)
+    grpc (1.71.0)
+      google-protobuf (>= 3.25, < 5.0)
+      googleapis-common-protos-types (~> 1.0)
+    grpc (1.71.0-arm64-darwin)
+      google-protobuf (>= 3.25, < 5.0)
+      googleapis-common-protos-types (~> 1.0)
     io-console (0.8.0)
     irb (1.15.1)
       pp (>= 0.6.0)
@@ -30,6 +45,7 @@ GEM
       date
       stringio
     rack (3.1.12)
+    rake (13.2.1)
     rake-compiler-dock (1.9.1)
     rb_sys (0.9.111)
       rake-compiler-dock (= 1.9.1)
@@ -45,6 +61,7 @@ PLATFORMS
 
 DEPENDENCIES
   debug
+  grpc
   itsi-scheduler!
   itsi-server!
 

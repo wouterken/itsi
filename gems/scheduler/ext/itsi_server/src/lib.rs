@@ -1,8 +1,10 @@
 use magnus::{error::Result, function, method, Module, Object, Ruby};
 use ruby_types::{
-    itsi_body_proxy::ItsiBodyProxy, itsi_http_request::ItsiHttpRequest,
-    itsi_http_response::ItsiHttpResponse, itsi_server::ItsiServer, ITSI_BODY_PROXY, ITSI_MODULE,
-    ITSI_REQUEST, ITSI_RESPONSE, ITSI_SERVER,
+    itsi_body_proxy::ItsiBodyProxy, itsi_grpc_request::ItsiGrpcRequest,
+    itsi_grpc_stream::ItsiGrpcStream, itsi_http_request::ItsiHttpRequest,
+    itsi_http_response::ItsiHttpResponse, itsi_server::ItsiServer, ITSI_BODY_PROXY,
+    ITSI_GRPC_REQUEST, ITSI_GRPC_RESPONSE, ITSI_GRPC_STREAM, ITSI_MODULE, ITSI_REQUEST,
+    ITSI_RESPONSE, ITSI_SERVER,
 };
 use server::signal::reset_signal_handlers;
 use tracing::*;
@@ -73,6 +75,25 @@ fn init(ruby: &Ruby) -> Result<()> {
     response.define_method("hijack", method!(ItsiHttpResponse::hijack, 1))?;
     response.define_method("json?", method!(ItsiHttpResponse::is_json, 0))?;
     response.define_method("html?", method!(ItsiHttpResponse::is_html, 0))?;
+
+    let grpc_request = ruby.get_inner(&ITSI_GRPC_REQUEST);
+
+    grpc_request.define_method("service_name", method!(ItsiGrpcRequest::service_name, 0))?;
+    grpc_request.define_method("method_name", method!(ItsiGrpcRequest::method_name, 0))?;
+    grpc_request.define_method("stream", method!(ItsiGrpcRequest::stream, 0))?;
+    grpc_request.define_method("json?", method!(ItsiGrpcRequest::is_json, 0))?;
+    grpc_request.define_method(
+        "content_type",
+        method!(ItsiGrpcRequest::content_type_str, 0),
+    )?;
+
+    let grpc_stream = ruby.get_inner(&ITSI_GRPC_STREAM);
+    grpc_stream.define_method("read", method!(ItsiGrpcStream::read, 1))?;
+    grpc_stream.define_method("write", method!(ItsiGrpcStream::write, 1))?;
+    grpc_stream.define_method("flush", method!(ItsiGrpcStream::flush, 0))?;
+    grpc_stream.define_method("send_trailers", method!(ItsiGrpcStream::send_trailers, 1))?;
+
+    let _grpc_response = ruby.get_inner(&ITSI_GRPC_RESPONSE);
 
     Ok(())
 }

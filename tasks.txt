@@ -1,13 +1,20 @@
 Filters:
-- Rate Limit: Uses Store: Rate limit. Throttle requests per IP. Bad access scanner also adds you to rate limit immediately.
-- ETag and Cache
-- gRPC (Handlers)
+- gRPC (Handlers).
+  - Read should be non-blocking.
+  - Support fall through and graceful routing
+  - Support gzip and compression flag
+  - Unary JSON support
+- Remove Github copies
+- Support all middleware at top level.
 
 Polish and Release (At Lake):
--- Fix tests
 -- Server start takes Itsifile block
+-- Fix tests (Take advantage of above)
 -- Config Improvements (Make ultra robust, fool proof, verbose errors). Refuse to restart or reload if config is invalid. Gather all errors before bailing.
+-- Fix opaque error handling in middleware.
+-- Consider switch to Anyhow where appropriate (or make own errors cleaner)
 -- Implement Print routes command
+-- Implement match route command.
 -- Offer password hash generation, and load from files for basic auth, api key, jwt.
 -- Script name comes from location in hierarchy instead of params.
 -- Request convenience functions (body JSON, body form-encoded)
@@ -31,3 +38,4 @@ Later:
 - Support unix socket proxy
 -- Hunt down sporradic bad file desc during tests
 -- WASM pluggable middleware
+-- proto proxy

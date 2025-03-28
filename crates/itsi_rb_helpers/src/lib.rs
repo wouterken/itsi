@@ -193,9 +193,12 @@ pub fn print_rb_backtrace(rb_err: Value) {
     let backtrace = rb_err
         .funcall::<_, _, Vec<String>>(*ID_BACKTRACE, ())
         .unwrap_or_default();
-
+    let rust_backtrace = std::backtrace::Backtrace::capture().to_string();
     eprintln!("Ruby exception {:?}", rb_err);
     for line in backtrace {
+        eprintln!("{}", line);
+    }
+    for line in rust_backtrace.lines() {
         eprintln!("{}", line);
     }
 }

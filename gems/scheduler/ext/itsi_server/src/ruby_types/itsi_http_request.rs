@@ -124,7 +124,7 @@ impl ItsiHttpRequest {
         let response = request.response.clone();
         match context
             .sender
-            .send(RequestJob::ProcessRequest(request, app))
+            .send(RequestJob::ProcessHttpRequest(request, app))
             .await
         {
             Err(err) => {

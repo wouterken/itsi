@@ -3,8 +3,9 @@
 require_relative "server/version"
 require_relative "server/itsi_server"
 require_relative "server/rack_interface"
-require_relative "server/signal_trap"
+require_relative "server/grpc_interface"
 require_relative "server/scheduler_interface"
+require_relative "server/signal_trap"
 require_relative "server/rack/handler/itsi"
 require_relative "server/config"
 require_relative "standard_headers"
@@ -21,15 +22,15 @@ module Itsi
         !!@running
       end
 
-      def start_in_background_thread(cli_params, itsi_file=Itsi::Server::Config.config_file_path)
+      def start_in_background_thread(cli_params, itsi_file = Itsi::Server::Config.config_file_path)
         start(cli_params, itsi_file, background: true)
       end
 
-      def start(cli_params, itsi_file=Itsi::Server::Config.config_file_path, background: false)
+      def start(cli_params, itsi_file = Itsi::Server::Config.config_file_path, background: false)
         new(cli_params, itsi_file).tap do |server|
           previous_handler = Signal.trap(:INT, :DEFAULT)
           @running = true
-          run = -> do
+          run = lambda do
             write_pid
             server.start
             @running = false
@@ -50,20 +51,20 @@ module Itsi
         else
           nil
         end
-      rescue
+      rescue StandardError
         nil
       end
 
       def reload
-        if pid = get_pid
-          Process.kill(:USR2, pid)
-        end
+        return unless pid = get_pid
+
+        Process.kill(:USR2, pid)
       end
 
       def restart
-        if pid = get_pid
-          Process.kill(:USR1, pid)
-        end
+        return unless pid = get_pid
+
+        Process.kill(:USR1, pid)
       end
 
       def down
@@ -75,21 +76,21 @@ module Itsi
       end
 
       def add_worker
-        if pid = get_pid
-          Process.kill(:TTIN, pid)
-        end
+        return unless pid = get_pid
+
+        Process.kill(:TTIN, pid)
       end
 
       def remove_worker
-        if pid = get_pid
-          Process.kill(:TTOU, pid)
-        end
+        return unless pid = get_pid
+
+        Process.kill(:TTOU, pid)
       end
 
       def status
-        if pid = get_pid
-          Process.kill(:INFO, pid)
-        end
+        return unless pid = get_pid
+
+        Process.kill(:INFO, pid)
       end
     end
   end

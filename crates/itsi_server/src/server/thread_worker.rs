@@ -24,7 +24,8 @@ use tokio::{runtime::Builder as RuntimeBuilder, sync::watch};
 use tracing::instrument;
 
 use crate::ruby_types::{
-    itsi_http_request::ItsiHttpRequest, itsi_server::itsi_server_config::ServerParams, ITSI_SERVER,
+    itsi_grpc_request::ItsiGrpcRequest, itsi_http_request::ItsiHttpRequest,
+    itsi_server::itsi_server_config::ServerParams, ITSI_SERVER,
 };
 
 use super::request_job::RequestJob;
@@ -62,7 +63,7 @@ pub fn build_thread_workers(
     pid: Pid,
     threads: NonZeroU8,
 ) -> ThreadWorkerBuildResult {
-    let (sender, receiver) = async_channel::bounded((threads.get() * 30) as usize);
+    let (sender, receiver) = async_channel::bounded((threads.get() as u16 * 30) as usize);
     let receiver_ref = Arc::new(receiver);
     let sender_ref = sender;
     let scheduler_class = load_scheduler_class(params.scheduler_class.clone())?;
@@ -204,8 +205,11 @@ impl ThreadWorker {
                 let mut idle_counter = 0;
                 if let Some(v) = leader_clone.lock().take() {
                     match v {
-                        RequestJob::ProcessRequest(itsi_request, app_proc) => {
-                            batch.push(RequestJob::ProcessRequest(itsi_request, app_proc))
+                        RequestJob::ProcessHttpRequest(itsi_request, app_proc) => {
+                            batch.push(RequestJob::ProcessHttpRequest(itsi_request, app_proc))
+                        }
+                        RequestJob::ProcessGrpcRequest(itsi_request, app_proc) => {
+                            batch.push(RequestJob::ProcessGrpcRequest(itsi_request, app_proc))
                         }
                         RequestJob::Shutdown => {
                             waker_sender.send(TerminateWakerSignal(true)).unwrap();
@@ -224,7 +228,7 @@ impl ThreadWorker {
                 let shutdown_requested = call_with_gvl(|_| {
                     for req in batch.drain(..) {
                         match req {
-                            RequestJob::ProcessRequest(request, app_proc) => {
+                            RequestJob::ProcessHttpRequest(request, app_proc) => {
                                 self_ref.request_id.fetch_add(1, Ordering::Relaxed);
                                 self_ref.current_request_start.store(
                                     SystemTime::now()
@@ -239,6 +243,23 @@ impl ThreadWorker {
                                     (app_proc.as_value(), request),
                                 ) {
                                     ItsiHttpRequest::internal_error(ruby, response, err)
+                                }
+                            }
+                            RequestJob::ProcessGrpcRequest(request, app_proc) => {
+                                self_ref.request_id.fetch_add(1, Ordering::Relaxed);
+                                self_ref.current_request_start.store(
+                                    SystemTime::now()
+                                        .duration_since(UNIX_EPOCH)
+                                        .unwrap()
+                                        .as_secs(),
+                                    Ordering::Relaxed,
+                                );
+                                let response = request.stream.clone();
+                                if let Err(err) = server.funcall::<_, _, Value>(
+                                    *ID_SCHEDULE,
+                                    (app_proc.as_value(), request),
+                                ) {
+                                    ItsiGrpcRequest::internal_error(ruby, response, err)
                                 }
                             }
                             RequestJob::Shutdown => return true,
@@ -379,7 +400,23 @@ impl ThreadWorker {
                 };
             }
             match receiver.recv_blocking() {
-                Ok(RequestJob::ProcessRequest(request, app_proc)) => {
+                Ok(RequestJob::ProcessHttpRequest(request, app_proc)) => {
+                    self_ref.request_id.fetch_add(1, Ordering::Relaxed);
+                    self_ref.current_request_start.store(
+                        SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs(),
+                        Ordering::Relaxed,
+                    );
+                    call_with_gvl(|_ruby| {
+                        request.process(&ruby, app_proc).ok();
+                    });
+                    if terminated.load(Ordering::Relaxed) {
+                        break;
+                    }
+                }
+                Ok(RequestJob::ProcessGrpcRequest(request, app_proc)) => {
                     self_ref.request_id.fetch_add(1, Ordering::Relaxed);
                     self_ref.current_request_start.store(
                         SystemTime::now()
