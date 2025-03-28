@@ -19,3 +19,5 @@ terraform.tfstate*
 .itsi.pid
 sandbox/itsi_file/public
 sandbox/itsi_file/spa
+gems/scheduler/ext
+gems/server/ext

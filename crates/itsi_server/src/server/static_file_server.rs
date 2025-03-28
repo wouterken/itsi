@@ -634,9 +634,9 @@ impl StaticFileServer {
 
         // Adjust end bound for open-ended ranges or to not exceed file size
         let adjusted_end = if end == u64::MAX {
-            content_length - 1
+            content_length.saturating_sub(1)
         } else {
-            std::cmp::min(end, content_length - 1)
+            std::cmp::min(end, content_length.saturating_sub(1))
         };
 
         // Create response based on request type

@@ -27,7 +27,10 @@ Gem::Specification.new do |spec|
       (f == gemspec) ||
         f.start_with?(*%w[bin/ test/ spec/ features/ .git appveyor Gemfile])
     end
-  end
+  end + Dir["../../crates/**/*.{toml,rs,lock}"].map do |ext_file|
+    "ext/#{ext_file[%r{.*crates/(.*?)$}, 1]}"
+  end.compact
+
   spec.bindir = "exe"
   spec.executables = spec.files.grep(%r{\Aexe/}) { |f| File.basename(f) }
   spec.require_paths = ["lib"]

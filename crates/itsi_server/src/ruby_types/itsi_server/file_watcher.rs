@@ -15,12 +15,14 @@ use std::{
     sync::mpsc,
     thread::{self},
 };
+use tracing::info;
 
 /// Represents a set of patterns and commands.
 #[derive(Debug, Clone)]
 struct PatternGroup {
     base_dir: PathBuf,
     glob_set: GlobSet,
+    pattern: String,
     commands: Vec<Vec<String>>,
     last_triggered: Option<Instant>,
 }
@@ -28,6 +30,21 @@ struct PatternGroup {
 /// Extracts the base directory from a wildcard pattern by taking the portion up to the first
 /// component that contains a wildcard character.
 fn extract_and_canonicalize_base_dir(pattern: &str) -> PathBuf {
+    if !(pattern.contains("*") || pattern.contains("?") || pattern.contains('[')) {
+        if let Ok(metadata) = fs::metadata(pattern) {
+            if metadata.is_dir() {
+                return fs::canonicalize(pattern).unwrap();
+            }
+            if metadata.is_file() {
+                return fs::canonicalize(pattern)
+                    .unwrap()
+                    .parent()
+                    .unwrap()
+                    .to_path_buf();
+            }
+        }
+    }
+
     let path = Path::new(pattern);
     let mut base = PathBuf::new();
     for comp in path.components() {
@@ -39,11 +56,12 @@ fn extract_and_canonicalize_base_dir(pattern: &str) -> PathBuf {
         }
     }
     // If no base was built, default to "."
-    let base = if base.as_os_str().is_empty() {
+    let base = if base.as_os_str().is_empty() || !base.exists() {
         PathBuf::from(".")
     } else {
         base
     };
+
     // Canonicalize to get the absolute path.
     fs::canonicalize(&base).unwrap_or(base)
 }
@@ -103,6 +121,7 @@ pub fn watch_groups(pattern_groups: Vec<(String, Vec<Vec<String>>)>) -> Result<O
             groups.push(PatternGroup {
                 base_dir,
                 glob_set,
+                pattern,
                 commands,
                 last_triggered: None,
             });
@@ -142,7 +161,9 @@ pub fn watch_groups(pattern_groups: Vec<(String, Vec<Vec<String>>)>) -> Result<O
                     for group in &mut groups {
                         for path in event.paths.iter() {
                             if let Ok(rel_path) = path.strip_prefix(&group.base_dir) {
-                                if group.glob_set.is_match(rel_path) {
+                                if group.glob_set.is_match(rel_path)
+                                    || rel_path.to_str().is_some_and(|s| s == group.pattern)
+                                {
                                     // Check if we should debounce this event
                                     if let Some(last_triggered) = group.last_triggered {
                                         if now.duration_since(last_triggered) < DEBOUNCE_DURATION {
@@ -150,10 +171,10 @@ pub fn watch_groups(pattern_groups: Vec<(String, Vec<Vec<String>>)>) -> Result<O
                                             continue;
                                         }
                                     }
-                                    
+
                                     // Update the last triggered time
                                     group.last_triggered = Some(now);
-                                    
+
                                     // Execute the commands for this group.
                                     for command in &group.commands {
                                         if command.is_empty() {

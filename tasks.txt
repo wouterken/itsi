@@ -3,9 +3,10 @@ Filters:
   - Read should be non-blocking.
   - Support fall through and graceful routing
   - Support gzip and compression flag
+  - Add reflection support
   - Unary JSON support
 - Remove Github copies
-- Support all middleware at top level.
+- Support all middleware at top level (And remove top-level app requirement, and gRPC can be top level app)
 
 Polish and Release (At Lake):
 -- Server start takes Itsifile block
