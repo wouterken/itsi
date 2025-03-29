@@ -22,22 +22,27 @@ module Itsi
         !!@running
       end
 
-      def start_in_background_thread(cli_params, itsi_file = Itsi::Server::Config.config_file_path)
-        start(cli_params, itsi_file, background: true)
+      def start_in_background_thread(cli_params, itsi_file = Itsi::Server::Config.config_file_path, &blk)
+        @background_thread = start(cli_params, itsi_file, background: true, &blk)
       end
 
-      def start(cli_params, itsi_file = Itsi::Server::Config.config_file_path, background: false)
-        new(cli_params, itsi_file).tap do |server|
-          previous_handler = Signal.trap(:INT, :DEFAULT)
-          @running = true
-          run = lambda do
-            write_pid
-            server.start
-            @running = false
-            Signal.trap(:INT, previous_handler)
-          end
-          background ? Thread.new(&run) : run[]
+      def start(cli_params, itsi_file = Itsi::Server::Config.config_file_path, background: false, &blk)
+        server = new(cli_params, itsi_file, blk)
+        previous_handler = Signal.trap(:INT, :DEFAULT)
+        run = lambda do
+          write_pid
+          @running = server
+          server.start
+          Signal.trap(:INT, previous_handler)
+          server
         end
+        background ? Thread.new(&run) : run[]
+      end
+
+      def stop_background_thread
+        @running&.stop
+        @running = nil
+        @background_thread&.join
       end
 
       def write_pid

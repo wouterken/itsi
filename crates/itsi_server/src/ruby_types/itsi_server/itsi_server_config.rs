@@ -5,6 +5,7 @@ use crate::{
 };
 use derive_more::Debug;
 use itsi_rb_helpers::{call_with_gvl, print_rb_backtrace, HeapVal, HeapValue};
+use itsi_tracing::set_level;
 use magnus::{
     block::Proc,
     error::Result,
@@ -31,6 +32,7 @@ static ID_RELOAD_EXEC: LazyId = LazyId::new("reload_exec");
 pub struct ItsiServerConfig {
     pub cli_params: Arc<HeapValue<RHash>>,
     pub itsifile_path: Option<PathBuf>,
+    pub itsi_config_proc: Arc<Option<HeapValue<Proc>>>,
     #[debug(skip)]
     pub server_params: Arc<RwLock<Arc<ServerParams>>>,
     pub watcher_fd: Arc<Option<OwnedFd>>,
@@ -133,6 +135,11 @@ impl ServerParams {
             rb_param_hash.fetch("oob_gc_responses_threshold")?;
         let middleware_loader: Proc = rb_param_hash.fetch("middleware_loader")?;
         let default_app_loader: Proc = rb_param_hash.fetch("default_app_loader")?;
+        let log_level: Option<String> = rb_param_hash.fetch("log_level")?;
+
+        if let Some(level) = log_level {
+            set_level(&level);
+        }
 
         let binds: Option<Vec<String>> = rb_param_hash.fetch("binds")?;
         let binds = binds
@@ -209,8 +216,19 @@ impl ServerParams {
 }
 
 impl ItsiServerConfig {
-    pub fn new(ruby: &Ruby, cli_params: RHash, itsifile_path: Option<PathBuf>) -> Result<Self> {
-        let server_params = Self::combine_params(ruby, cli_params, itsifile_path.as_ref())?;
+    pub fn new(
+        ruby: &Ruby,
+        cli_params: RHash,
+        itsifile_path: Option<PathBuf>,
+        itsi_config_proc: Option<Proc>,
+    ) -> Result<Self> {
+        let itsi_config_proc = Arc::new(itsi_config_proc.map(HeapValue::from));
+        let server_params = Self::combine_params(
+            ruby,
+            cli_params,
+            itsifile_path.as_ref(),
+            itsi_config_proc.clone(),
+        )?;
         cli_params.delete::<_, Value>(Symbol::new("listeners"))?;
 
         let watcher_fd = if let Some(watchers) = server_params.notify_watchers.clone() {
@@ -222,6 +240,7 @@ impl ItsiServerConfig {
         Ok(ItsiServerConfig {
             cli_params: Arc::new(cli_params.into()),
             server_params: RwLock::new(server_params.clone()).into(),
+            itsi_config_proc,
             itsifile_path,
             watcher_fd: watcher_fd.into(),
         })
@@ -230,7 +249,12 @@ impl ItsiServerConfig {
     /// Reload
     pub fn reload(self: Arc<Self>, cluster_worker: bool) -> Result<bool> {
         let server_params = call_with_gvl(|ruby| {
-            Self::combine_params(&ruby, self.cli_params.cloned(), self.itsifile_path.as_ref())
+            Self::combine_params(
+                &ruby,
+                self.cli_params.cloned(),
+                self.itsifile_path.as_ref(),
+                self.itsi_config_proc.clone(),
+            )
         })?;
 
         let is_single_mode = self.server_params.read().workers == 1;
@@ -255,10 +279,16 @@ impl ItsiServerConfig {
         ruby: &Ruby,
         cli_params: RHash,
         itsifile_path: Option<&PathBuf>,
+        itsi_config_proc: Arc<Option<HeapValue<Proc>>>,
     ) -> Result<Arc<ServerParams>> {
-        let rb_param_hash: RHash = ruby
-            .get_inner_ref(&ITSI_SERVER_CONFIG)
-            .funcall(*ID_BUILD_CONFIG, (cli_params, itsifile_path.cloned()))?;
+        let inner = itsi_config_proc
+            .as_ref()
+            .clone()
+            .map(|hv| hv.clone().inner());
+        let rb_param_hash: RHash = ruby.get_inner_ref(&ITSI_SERVER_CONFIG).funcall(
+            *ID_BUILD_CONFIG,
+            (cli_params, itsifile_path.cloned(), inner),
+        )?;
         Ok(Arc::new(ServerParams::from_rb_hash(rb_param_hash)?))
     }
 

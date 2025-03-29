@@ -58,6 +58,8 @@ task :sync_crates do
   GEMS.each do |gem_info|
     Dir.chdir('crates') do
       to_sync = Dir['*'].each do |to_sync|
+        next unless File.directory?(to_sync)
+
         system("rsync -q -av #{to_sync}/ ../#{gem_info[:dir]}/ext/#{to_sync} --delete")
         system("cp ../Cargo.lock ../#{gem_info[:dir]}/Cargo.lock")
       end
@@ -78,22 +80,20 @@ task :build_all do
 end
 
 task :test_env_up do
-  system("terraform -chdir=sandbox/deploy apply")
+  system('terraform -chdir=sandbox/deploy apply')
 end
 
 task :test_env_down do
-  system("terraform -chdir=sandbox/deploy destroy")
+  system('terraform -chdir=sandbox/deploy destroy')
 end
 %i[itsi puma iodine falcon unicorn].each do |server|
   namespace server do
     %i[hanami roda async rack rack_lint rails sinatra].each do |sandbox|
       namespace sandbox do
         task :serve do |args|
-          begin
-            system("(cd sandbox/itsi_sandbox_#{sandbox} && bundle exec #{server} #{ARGV[2..]&.join(" ")} )")
-          rescue Interrupt
-            # Suppress the stacktrace and message for Interrupt
-          end
+          system("(cd sandbox/itsi_sandbox_#{sandbox} && bundle exec #{server} #{ARGV[2..]&.join(' ')} )")
+        rescue Interrupt
+          # Suppress the stacktrace and message for Interrupt
         end
       end
     end

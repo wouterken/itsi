@@ -4,6 +4,11 @@ gemspec
 gemspec path: 'gems/server'
 gemspec path: 'gems/scheduler'
 
+group :test do
+  gem 'activerecord'
+  gem 'pg'
+end
+
 group :development, :test do
   gem 'bundler'
   gem 'debug'

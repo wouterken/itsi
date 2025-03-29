@@ -9,7 +9,7 @@ Filters:
 - Support all middleware at top level (And remove top-level app requirement, and gRPC can be top level app)
 
 Polish and Release (At Lake):
--- Server start takes Itsifile block
+-- Fix server shutdown tests
 -- Fix tests (Take advantage of above)
 -- Config Improvements (Make ultra robust, fool proof, verbose errors). Refuse to restart or reload if config is invalid. Gather all errors before bailing.
 -- Fix opaque error handling in middleware.

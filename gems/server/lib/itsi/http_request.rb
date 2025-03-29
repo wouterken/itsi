@@ -5,21 +5,20 @@ require "socket"
 
 module Itsi
   class HttpRequest
-
     attr_accessor :hijacked
 
     EMPTY_IO = StringIO.new("").freeze
-    RACK_HEADER_MAP = StandardHeaders::ALL.map do  |header|
+    RACK_HEADER_MAP = StandardHeaders::ALL.map do |header|
       rack_form = if header == "content-type"
-         "CONTENT_TYPE"
-      elsif header == "content-length"
-        "CONTENT_LENGTH"
-      else
-        "HTTP_#{header.upcase.gsub(/-/, "_")}"
-      end
+                    "CONTENT_TYPE"
+                  elsif header == "content-length"
+                    "CONTENT_LENGTH"
+                  else
+                    "HTTP_#{header.upcase.gsub(/-/, "_")}"
+                  end
       [header, rack_form]
     end.to_h.tap do |hm|
-      hm.default_proc = proc { |hsh, key| "HTTP_#{key.upcase.gsub(/-/, '_')}" }
+      hm.default_proc = proc { |hsh, key| "HTTP_#{key.upcase.gsub(/-/, "_")}" }
     end
 
     def to_rack_env
@@ -58,7 +57,8 @@ module Itsi
       end
     end
 
-    def respond _body=nil, _status=200, _header=nil, status: _status, headers: _header, body: _body, hijack: false, &blk
+    def respond(_body = nil, _status = 200, _header = nil, status: _status, headers: _header, body: _body,
+                hijack: false, &blk)
       response.respond(status: status, headers: headers, body: body, hijack: hijack, &blk)
     end
 
@@ -66,10 +66,10 @@ module Itsi
       lambda do
         self.hijacked = true
         UNIXSocket.pair.yield_self do |(server_sock, app_sock)|
+          server_sock.autoclose = false
           response.hijack(server_sock.fileno)
           server_sock.sync = true
           app_sock.sync = true
-          app_sock.instance_variable_set("@server_sock", server_sock)
           app_sock
         end
       end

@@ -17,8 +17,15 @@ module Itsi
       # 1. CLI Args.
       # 2. Itsi.rb file.
       # 3. Default values.
-      def self.build_config(args, config_file_path)
-        itsifile_config = File.exist?(config_file_path.to_s) ? DSL.evaluate(config_file_path) : {}
+      def self.build_config(args, config_file_path, builder_proc)
+        itsifile_config = \
+          if builder_proc
+            DSL.evaluate(builder_proc)
+          elsif File.exist?(config_file_path.to_s)
+            DSL.evaluate(config_file_path)
+          else
+            {}
+          end
         args.transform_keys!(&:to_sym)
         itsifile_config.transform_keys!(&:to_sym)
 
@@ -66,6 +73,7 @@ module Itsi
           oob_gc_responses_threshold: args.fetch(:oob_gc_responses_threshold) do
             itsifile_config.fetch(:oob_gc_responses_threshold, nil)
           end,
+          log_level: args.fetch(:log_level) { itsifile_config.fetch(:log_level, nil) },
           binds: args.fetch(:binds) { itsifile_config.fetch(:binds, ["http://0.0.0.0:3000"]) },
           middleware_loader: middleware_loader,
           default_app_loader: default_app_loader,
@@ -77,7 +85,6 @@ module Itsi
       # using exec, passing in any active file descriptors
       # and previous invocation arguments
       def self.reload_exec(listener_info)
-
         if ENV["BUNDLE_BIN_PATH"]
           exec "bundle", "exec", $PROGRAM_NAME, *@argv, "--listeners", listener_info
         else

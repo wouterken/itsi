@@ -76,7 +76,6 @@ class TestItsiServer < Minitest::Test
     end
   end
 
-    require 'debug'
   def test_scheduler_non_blocking
     run_app(
       lambda do |env|
@@ -290,7 +289,8 @@ class TestItsiServer < Minitest::Test
     run_app(lambda do |env|
       [200, { "Content-Type" => "text/plain" }, ["Hello, HTTPS!"]]
     end, protocol: "https") do |uri|
-      response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, verify_mode: OpenSSL::SSL::VERIFY_NONE) do |http|
+      response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true,
+                                                         verify_mode: OpenSSL::SSL::VERIFY_NONE) do |http|
         http.request(Net::HTTP::Get.new(uri))
       end
       assert_equal "200", response.code

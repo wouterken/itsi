@@ -5,7 +5,7 @@ use crate::server::{
 use itsi_rb_helpers::{call_without_gvl, print_rb_backtrace};
 use itsi_server_config::ItsiServerConfig;
 use itsi_tracing::{error, run_silently};
-use magnus::{error::Result, RHash, Ruby};
+use magnus::{block::Proc, error::Result, RHash, Ruby};
 use parking_lot::Mutex;
 use std::{path::PathBuf, sync::Arc};
 use tracing::{info, instrument};
@@ -18,12 +18,18 @@ pub struct ItsiServer {
 }
 
 impl ItsiServer {
-    pub fn new(ruby: &Ruby, cli_params: RHash, itsifile_path: Option<PathBuf>) -> Result<Self> {
+    pub fn new(
+        ruby: &Ruby,
+        cli_params: RHash,
+        itsifile_path: Option<PathBuf>,
+        itsi_config_proc: Option<Proc>,
+    ) -> Result<Self> {
         Ok(Self {
             config: Arc::new(Mutex::new(Arc::new(ItsiServerConfig::new(
                 ruby,
                 cli_params,
                 itsifile_path,
+                itsi_config_proc,
             )?))),
         })
     }

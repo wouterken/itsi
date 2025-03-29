@@ -8,7 +8,7 @@ module Itsi
         def self.evaluate(config = Itsi::Server::Config.config_file_path)
           new do
             if config.is_a?(Proc)
-              instance_exec(config)
+              instance_exec(&config)
             else
               code = IO.read(config)
               instance_eval(code, config.to_s, 1)
@@ -56,6 +56,7 @@ module Itsi
           instance_exec(&block)
         end
 
+
         def workers(workers)
           raise "Workers must be set at the root" unless @parent.nil?
 
@@ -77,7 +78,7 @@ module Itsi
         def log_level(level)
           raise "Log level must be set at the root" unless @parent.nil?
 
-          ENV["ITSI_LOG"] = level.to_s
+          @options[:log_level] = level.to_s
         end
 
         def log_format(format)

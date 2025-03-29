@@ -15,7 +15,6 @@ use std::{
     sync::mpsc,
     thread::{self},
 };
-use tracing::info;
 
 /// Represents a set of patterns and commands.
 #[derive(Debug, Clone)]
