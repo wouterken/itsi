@@ -1,3 +1,10 @@
+---
+title: Code of Conduct
+type: docs
+next: docs/
+prev: docs/folder/
+---
+
 # Contributor Covenant Code of Conduct
 
 ## Our Pledge

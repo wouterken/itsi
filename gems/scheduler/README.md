@@ -1,3 +1,8 @@
+---
+title: Itsi Scheduler
+type: docs
+---
+
 # ItsiScheduler
 
 TODO: Delete this and the text below, and describe your gem

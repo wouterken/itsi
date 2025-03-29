@@ -1,0 +1,77 @@
+# Hugo configuration file
+title: My Site
+
+# import hextra as module
+module:
+  imports:
+    - path: github.com/imfing/hextra
+  mounts:
+    - source: "../crates"
+      target: "content/crates"
+      includeFiles: ["*.md", "*/**.md", "**/**.md"]
+    - source: "../gems/scheduler/README.md"
+      target: "content/gems/_index.md"
+    - source: "../gems"
+      target: "content/gems"
+      includeFiles: ["*.md", "*/*.md"]
+      excludeFiles: ["*/tmp/**.md"]
+    - source: "content"
+      target: "content"
+    - source: "static"
+      target: "static"
+
+markup:
+  # allow raw html
+  goldmark:
+    renderer:
+      unsafe: true
+
+  # enable hextra syntax highlight
+  highlight:
+    noClasses: false
+
+menu:
+  main:
+    - name: Docs
+      pageRef: /docs
+      weight: 1
+    - name: About
+      pageRef: /about
+      weight: 2
+    - name: Crates
+      pageRef: /crates
+      weight: 2
+    - name: Contact ↗
+      url: "https://github.com/imfing"
+      weight: 3
+    - name: Search
+      weight: 4
+      params:
+        type: search
+    - name: GitHub
+      weight: 5
+      url: "https://github.com/imfing/hextra-starter-template"
+      params:
+        icon: github
+    - name: Twitter
+      weight: 6
+      url: "https://twitter.com/"
+      params:
+        icon: x-twitter
+
+params:
+  navbar:
+    displayTitle: true
+    displayLogo: false
+
+  footer:
+    displayCopyright: false
+    displayPoweredBy: true
+
+  editURL:
+    enable: true
+    base: "https://github.com/imfing/hextra-starter-template/edit/main/content"
+
+ignoreFiles:
+  - "\\.rs$"
+  - "\\.rb$"
