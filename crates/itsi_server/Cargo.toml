@@ -42,7 +42,7 @@ hyper-util = { version = "0.1.10", features = ["full"] }
 itsi_error = { path = "../itsi_error" }
 itsi_rb_helpers = { path = "../itsi_rb_helpers" }
 itsi_tracing = { path = "../itsi_tracing" }
-jwt-simple = "0.12.12"
+jsonwebtoken = "9.3.1"
 magnus = { version = "0.7.1", features = ["bytes", "rb-sys"] }
 moka = { version = "0.12.10", features = ["sync"] }
 notify = { version = "8.0.0" }
@@ -87,3 +87,9 @@ tracing = "0.1.41"
 url = "2.5.4"
 uuid = "1.16.0"
 md5 = "0.7.0"
+
+
+[profile.release]
+opt-level = 3
+codegen-units = 1
+lto = "fat"

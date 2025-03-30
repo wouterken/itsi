@@ -11,3 +11,9 @@ members = [
   "./crates/itsi_rb_helpers",
 ]
 resolver = "2"
+
+
+[profile.release]
+opt-level = 3
+codegen-units = 1
+lto = "fat"

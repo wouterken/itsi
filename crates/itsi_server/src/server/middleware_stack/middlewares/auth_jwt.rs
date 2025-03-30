@@ -5,31 +5,29 @@ use crate::server::{
 };
 use async_trait::async_trait;
 use base64::{engine::general_purpose, Engine};
+use derive_more::Debug;
 use either::Either;
 use itsi_error::ItsiError;
-use jwt_simple::{
-    claims::{self, JWTClaims, NoCustomClaims},
-    prelude::{
-        ECDSAP256PublicKeyLike, ECDSAP384PublicKeyLike, ES256PublicKey, ES384PublicKey, HS256Key,
-        HS384Key, HS512Key, MACLike, PS256PublicKey, PS384PublicKey, PS512PublicKey,
-        RS256PublicKey, RS384PublicKey, RS512PublicKey, RSAPublicKeyLike,
-    },
-    token::Token,
+use jsonwebtoken::{
+    decode, decode_header, Algorithm as JwtAlg, DecodingKey, TokenData, Validation,
 };
 use magnus::error::Result;
 use serde::Deserialize;
-use std::str;
 use std::{
     collections::{HashMap, HashSet},
     sync::OnceLock,
 };
+use tracing::{error, info};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct AuthJwt {
     pub token_source: TokenSource,
+    // The verifiers map still holds base64-encoded key strings keyed by algorithm.
     pub verifiers: HashMap<JwtAlgorithm, Vec<String>>,
+    // We now store jsonwebtoken’s DecodingKey in our OnceLock.
     #[serde(skip_deserializing)]
-    pub keys: OnceLock<HashMap<JwtAlgorithm, Vec<JwtKey>>>,
+    #[debug(skip)]
+    pub keys: OnceLock<HashMap<JwtAlgorithm, Vec<DecodingKey>>>,
     pub audiences: Option<HashSet<String>>,
     pub subjects: Option<HashSet<String>>,
     pub issuers: Option<HashSet<String>>,
@@ -63,161 +61,91 @@ pub enum JwtAlgorithm {
     Ps512,
 }
 
+// Allow conversion from jsonwebtoken’s Algorithm to our JwtAlgorithm.
+impl From<JwtAlg> for JwtAlgorithm {
+    fn from(alg: JwtAlg) -> Self {
+        match alg {
+            JwtAlg::HS256 => JwtAlgorithm::Hs256,
+            JwtAlg::HS384 => JwtAlgorithm::Hs384,
+            JwtAlg::HS512 => JwtAlgorithm::Hs512,
+            JwtAlg::RS256 => JwtAlgorithm::Rs256,
+            JwtAlg::RS384 => JwtAlgorithm::Rs384,
+            JwtAlg::RS512 => JwtAlgorithm::Rs512,
+            JwtAlg::ES256 => JwtAlgorithm::Es256,
+            JwtAlg::ES384 => JwtAlgorithm::Es384,
+            JwtAlg::PS256 => JwtAlgorithm::Ps256,
+            JwtAlg::PS384 => JwtAlgorithm::Ps384,
+            JwtAlg::PS512 => JwtAlgorithm::Ps512,
+            _ => panic!("Unsupported algorithm"),
+        }
+    }
+}
+
 impl JwtAlgorithm {
-    pub fn key_from(&self, base64: &str) -> Result<JwtKey> {
-        let bytes = general_purpose::STANDARD
-            .decode(base64)
-            .map_err(ItsiError::default)?;
-
+    /// Given a base64-encoded key string, decode and construct a jsonwebtoken::DecodingKey.
+    pub fn key_from(&self, base64: &str) -> itsi_error::Result<DecodingKey> {
         match self {
-            JwtAlgorithm::Hs256 => Ok(JwtKey::Hs256(HS256Key::from_bytes(&bytes))),
-            JwtAlgorithm::Hs384 => Ok(JwtKey::Hs384(HS384Key::from_bytes(&bytes))),
-            JwtAlgorithm::Hs512 => Ok(JwtKey::Hs512(HS512Key::from_bytes(&bytes))),
-            JwtAlgorithm::Rs256 => Ok(RS256PublicKey::from_der(&bytes)
-                .or_else(|_| {
-                    RS256PublicKey::from_pem(
-                        &String::from_utf8(bytes.clone()).map_err(ItsiError::default)?,
-                    )
-                })
-                .map(JwtKey::Rs256)
-                .map_err(ItsiError::default)?),
-            JwtAlgorithm::Rs384 => Ok(RS384PublicKey::from_der(&bytes)
-                .or_else(|_| {
-                    RS384PublicKey::from_pem(
-                        &String::from_utf8(bytes.clone()).map_err(ItsiError::default)?,
-                    )
-                })
-                .map(JwtKey::Rs384)
-                .map_err(ItsiError::default)?),
-            JwtAlgorithm::Rs512 => Ok(RS512PublicKey::from_der(&bytes)
-                .or_else(|_| {
-                    RS512PublicKey::from_pem(
-                        &String::from_utf8(bytes.clone()).map_err(ItsiError::default)?,
-                    )
-                })
-                .map(JwtKey::Rs512)
-                .map_err(ItsiError::default)?),
-            JwtAlgorithm::Es256 => Ok(ES256PublicKey::from_der(&bytes)
-                .or_else(|_| {
-                    ES256PublicKey::from_pem(
-                        &String::from_utf8(bytes.clone()).map_err(ItsiError::default)?,
-                    )
-                })
-                .map(JwtKey::Es256)
-                .map_err(ItsiError::default)?),
-            JwtAlgorithm::Es384 => Ok(ES384PublicKey::from_der(&bytes)
-                .or_else(|_| {
-                    ES384PublicKey::from_pem(
-                        &String::from_utf8(bytes.clone()).map_err(ItsiError::default)?,
-                    )
-                })
-                .map(JwtKey::Es384)
-                .map_err(ItsiError::default)?),
-            JwtAlgorithm::Ps256 => Ok(PS256PublicKey::from_der(&bytes)
-                .or_else(|_| {
-                    PS256PublicKey::from_pem(
-                        &String::from_utf8(bytes.clone()).map_err(ItsiError::default)?,
-                    )
-                })
-                .map(JwtKey::Ps256)
-                .map_err(ItsiError::default)?),
-            JwtAlgorithm::Ps384 => Ok(PS384PublicKey::from_der(&bytes)
-                .or_else(|_| {
-                    PS384PublicKey::from_pem(
-                        &String::from_utf8(bytes.clone()).map_err(ItsiError::default)?,
-                    )
-                })
-                .map(JwtKey::Ps384)
-                .map_err(ItsiError::default)?),
-            JwtAlgorithm::Ps512 => Ok(PS512PublicKey::from_der(&bytes)
-                .or_else(|_| {
-                    PS512PublicKey::from_pem(
-                        &String::from_utf8(bytes.clone()).map_err(ItsiError::default)?,
-                    )
-                })
-                .map(JwtKey::Ps512)
-                .map_err(ItsiError::default)?),
+            // For HMAC algorithms, use the secret directly.
+            JwtAlgorithm::Hs256 | JwtAlgorithm::Hs384 | JwtAlgorithm::Hs512 => {
+                Ok(DecodingKey::from_secret(
+                    &general_purpose::STANDARD
+                        .decode(base64)
+                        .map_err(ItsiError::default)?,
+                ))
+            }
+            // For RSA (and PS) algorithms, expect a PEM-formatted key.
+            JwtAlgorithm::Rs256
+            | JwtAlgorithm::Rs384
+            | JwtAlgorithm::Rs512
+            | JwtAlgorithm::Ps256
+            | JwtAlgorithm::Ps384
+            | JwtAlgorithm::Ps512 => DecodingKey::from_rsa_pem(base64.trim_ascii().as_bytes())
+                .map_err(|e| ItsiError::default(e.to_string())),
+            // For ECDSA algorithms, expect a PEM-formatted key.
+            JwtAlgorithm::Es256 | JwtAlgorithm::Es384 => {
+                DecodingKey::from_ec_pem(base64.trim_ascii().as_bytes())
+                    .map_err(|e| ItsiError::default(e.to_string()))
+            }
         }
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum JwtKey {
-    Hs256(HS256Key),
-    Hs384(HS384Key),
-    Hs512(HS512Key),
-    Rs256(RS256PublicKey),
-    Rs384(RS384PublicKey),
-    Rs512(RS512PublicKey),
-    Es256(ES256PublicKey),
-    Es384(ES384PublicKey),
-    Ps256(PS256PublicKey),
-    Ps384(PS384PublicKey),
-    Ps512(PS512PublicKey),
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum Audience {
+    Single(String),
+    Multiple(Vec<String>),
 }
 
-impl TryFrom<&str> for JwtAlgorithm {
-    type Error = itsi_error::ItsiError;
-
-    fn try_from(value: &str) -> std::result::Result<Self, Self::Error> {
-        match value.to_ascii_lowercase().as_str() {
-            "hs256" => Ok(JwtAlgorithm::Hs256),
-            "hs384" => Ok(JwtAlgorithm::Hs384),
-            "hs512" => Ok(JwtAlgorithm::Hs512),
-            "rs256" => Ok(JwtAlgorithm::Rs256),
-            "rs384" => Ok(JwtAlgorithm::Rs384),
-            "rs512" => Ok(JwtAlgorithm::Rs512),
-            "es256" => Ok(JwtAlgorithm::Es256),
-            "es384" => Ok(JwtAlgorithm::Es384),
-            "ps256" => Ok(JwtAlgorithm::Ps256),
-            "ps384" => Ok(JwtAlgorithm::Ps384),
-            "ps512" => Ok(JwtAlgorithm::Ps512),
-            _ => Err(itsi_error::ItsiError::UnsupportedProtocol(
-                "Unsupported JWT Algorithm".to_string(),
-            )),
-        }
-    }
-}
-
-impl JwtKey {
-    pub fn verify(
-        &self,
-        token: &str,
-    ) -> std::result::Result<JWTClaims<claims::NoCustomClaims>, jwt_simple::Error> {
-        match self {
-            JwtKey::Hs256(key) => key.verify_token::<NoCustomClaims>(token, None),
-            JwtKey::Hs384(key) => key.verify_token::<NoCustomClaims>(token, None),
-            JwtKey::Hs512(key) => key.verify_token::<NoCustomClaims>(token, None),
-            JwtKey::Rs256(key) => key.verify_token::<NoCustomClaims>(token, None),
-            JwtKey::Rs384(key) => key.verify_token::<NoCustomClaims>(token, None),
-            JwtKey::Rs512(key) => key.verify_token::<NoCustomClaims>(token, None),
-            JwtKey::Es256(key) => key.verify_token::<NoCustomClaims>(token, None),
-            JwtKey::Es384(key) => key.verify_token::<NoCustomClaims>(token, None),
-            JwtKey::Ps256(key) => key.verify_token::<NoCustomClaims>(token, None),
-            JwtKey::Ps384(key) => key.verify_token::<NoCustomClaims>(token, None),
-            JwtKey::Ps512(key) => key.verify_token::<NoCustomClaims>(token, None),
-        }
-    }
+#[derive(Debug, Deserialize)]
+struct Claims {
+    // Here we assume the token includes an expiration.
+    #[allow(dead_code)]
+    exp: usize,
+    // The audience claim may be a single string or an array.
+    aud: Option<Audience>,
+    sub: Option<String>,
+    iss: Option<String>,
 }
 
 #[async_trait]
 impl MiddlewareLayer for AuthJwt {
     async fn initialize(&self) -> Result<()> {
-        let keys: HashMap<JwtAlgorithm, Vec<JwtKey>> = self
+        let keys: HashMap<JwtAlgorithm, Vec<DecodingKey>> = self
             .verifiers
             .iter()
             .map(|(algorithm, key_strings)| {
                 let algo = algorithm.clone();
-                let keys: Result<Vec<JwtKey>> = key_strings
+                let keys: itsi_error::Result<Vec<DecodingKey>> = key_strings
                     .iter()
                     .map(|key_string| algorithm.key_from(key_string))
                     .collect();
                 keys.map(|keys| (algo, keys))
             })
-            .collect::<Result<HashMap<JwtAlgorithm, Vec<JwtKey>>>>()?;
+            .collect::<itsi_error::Result<HashMap<JwtAlgorithm, Vec<DecodingKey>>>>()?;
         self.keys
             .set(keys)
-            .map_err(|e| ItsiError::default(format!("Failed to set keys: {:?}", e)))?;
+            .map_err(|_| ItsiError::default("Failed to set keys".to_string()))?;
         Ok(())
     }
 
@@ -226,6 +154,7 @@ impl MiddlewareLayer for AuthJwt {
         req: HttpRequest,
         _context: &mut RequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
+        // Retrieve the JWT token from either a header or a query parameter.
         let token_str = match &self.token_source {
             TokenSource::Header { name, prefix } => {
                 if let Some(header) = req.header(name) {
@@ -241,50 +170,80 @@ impl MiddlewareLayer for AuthJwt {
             TokenSource::Query(query_name) => req.query_param(query_name),
         };
 
+        info!("Token str is {:?}", token_str);
         if token_str.is_none() {
             return Ok(Either::Right(
                 self.error_response.to_http_response(&req).await,
             ));
         }
-
         let token_str = token_str.unwrap();
-        let token_meta = Token::decode_metadata(token_str);
 
-        if token_meta.is_err() {
+        info!("Token str is {:?}", token_str);
+        // Use jsonwebtoken's decode_header to inspect the token and determine its algorithm.
+        let header =
+            decode_header(token_str).map_err(|_| ItsiError::default("Invalid token header"))?;
+        info!("Header is {:?}", header);
+        let alg: JwtAlgorithm = header.alg.into();
+
+        if !self.verifiers.contains_key(&alg) {
             return Ok(Either::Right(
                 self.error_response.to_http_response(&req).await,
             ));
         }
-        let token_meta: std::result::Result<JwtAlgorithm, ItsiError> =
-            token_meta.unwrap().algorithm().try_into();
-        if token_meta.is_err() {
+        let keys = self.keys.get().unwrap().get(&alg).unwrap();
+
+        // Build validation based on the algorithm and optional leeway.
+        let mut validation = Validation::new(match alg {
+            JwtAlgorithm::Hs256 => JwtAlg::HS256,
+            JwtAlgorithm::Hs384 => JwtAlg::HS384,
+            JwtAlgorithm::Hs512 => JwtAlg::HS512,
+            JwtAlgorithm::Rs256 => JwtAlg::RS256,
+            JwtAlgorithm::Rs384 => JwtAlg::RS384,
+            JwtAlgorithm::Rs512 => JwtAlg::RS512,
+            JwtAlgorithm::Es256 => JwtAlg::ES256,
+            JwtAlgorithm::Es384 => JwtAlg::ES384,
+            JwtAlgorithm::Ps256 => JwtAlg::PS256,
+            JwtAlgorithm::Ps384 => JwtAlg::PS384,
+            JwtAlgorithm::Ps512 => JwtAlg::PS512,
+        });
+
+        info!("Validation is {:?}", validation);
+        if let Some(leeway) = self.leeway {
+            validation.leeway = leeway;
+        }
+        // (Optional) You could set expected issuer or audience on `validation` here.
+
+        info!("Keys are {:?}", keys.len());
+        // Try verifying the token using each key until one succeeds.
+        let token_data: Option<TokenData<Claims>> =
+            keys.iter()
+                .find_map(|key| match decode::<Claims>(token_str, key, &validation) {
+                    Ok(data) => Some(data),
+                    Err(e) => {
+                        error!("Token validation failed: {:?}", e);
+                        None
+                    }
+                });
+        let token_data = if let Some(data) = token_data {
+            data
+        } else {
             return Ok(Either::Right(
                 self.error_response.to_http_response(&req).await,
             ));
-        }
-        let algorithm = token_meta.unwrap();
+        };
 
-        if !self.verifiers.contains_key(&algorithm) {
-            return Ok(Either::Right(
-                self.error_response.to_http_response(&req).await,
-            ));
-        }
+        info!("Got past token verification");
 
-        let keys = self.keys.get().unwrap().get(&algorithm).unwrap();
+        let claims = token_data.claims;
 
-        let verified_claims = keys.iter().find_map(|key| key.verify(token_str).ok());
-        if verified_claims.is_none() {
-            return Ok(Either::Right(
-                self.error_response.to_http_response(&req).await,
-            ));
-        }
-
-        let claims = verified_claims.unwrap();
-
+        // Verify expected audiences.
         if let Some(expected_audiences) = &self.audiences {
-            // The aud claim may be a string or an array.
-            if let Some(audiences) = &claims.audiences {
-                if !audiences.contains(expected_audiences) {
+            if let Some(aud) = &claims.aud {
+                let token_auds: HashSet<String> = match aud {
+                    Audience::Single(s) => [s.clone()].into_iter().collect(),
+                    Audience::Multiple(v) => v.iter().cloned().collect(),
+                };
+                if expected_audiences.is_disjoint(&token_auds) {
                     return Ok(Either::Right(
                         self.error_response.to_http_response(&req).await,
                     ));
@@ -292,10 +251,10 @@ impl MiddlewareLayer for AuthJwt {
             }
         }
 
+        // Verify expected subject.
         if let Some(expected_subjects) = &self.subjects {
-            // The aud claim may be a string or an array.
-            if let Some(subject) = &claims.subject {
-                if !expected_subjects.contains(subject) {
+            if let Some(sub) = &claims.sub {
+                if !expected_subjects.contains(sub) {
                     return Ok(Either::Right(
                         self.error_response.to_http_response(&req).await,
                     ));
@@ -303,10 +262,10 @@ impl MiddlewareLayer for AuthJwt {
             }
         }
 
+        // Verify expected issuer.
         if let Some(expected_issuers) = &self.issuers {
-            // The aud claim may be a string or an array.
-            if let Some(issuer) = &claims.issuer {
-                if !expected_issuers.contains(issuer) {
+            if let Some(iss) = &claims.iss {
+                if !expected_issuers.contains(iss) {
                     return Ok(Either::Right(
                         self.error_response.to_http_response(&req).await,
                     ));

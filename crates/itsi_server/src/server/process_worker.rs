@@ -7,7 +7,7 @@ use nix::{
     sys::{
         signal::{
             kill,
-            Signal::{SIGINFO, SIGKILL, SIGTERM},
+            Signal::{SIGKILL, SIGTERM, SIGUSR2},
         },
         wait::{waitpid, WaitPidFlag, WaitStatus},
     },
@@ -174,8 +174,12 @@ impl ProcessWorker {
     pub(crate) fn request_shutdown(&self) {
         let child_pid = *self.child_pid.lock();
         if let Some(pid) = child_pid {
-            if let Err(e) = kill(pid, SIGTERM) {
-                error!("Failed to send SIGTERM to process {}: {}", pid, e);
+            if self.is_alive() {
+                if let Err(e) = kill(pid, SIGTERM) {
+                    error!("Failed to send SIGTERM to process {}: {}", pid, e);
+                }
+            } else {
+                error!("Trying to shutdown a dead process");
             }
         }
     }
@@ -184,6 +188,7 @@ impl ProcessWorker {
         let child_pid = *self.child_pid.lock();
         if let Some(pid) = child_pid {
             if self.is_alive() {
+                info!("Worker still alive, sending SIGKILL {}", pid);
                 if let Err(e) = kill(pid, SIGKILL) {
                     error!("Failed to force kill process {}: {}", pid, e);
                 }
@@ -195,8 +200,8 @@ impl ProcessWorker {
         let child_pid = *self.child_pid.lock();
         if let Some(pid) = child_pid {
             println!("Worker {:?}, PID: {:?}", self.worker_id, pid);
-            if let Err(e) = kill(pid, SIGINFO) {
-                error!("Failed to send SIGINFO to process {}: {}", pid, e);
+            if let Err(e) = kill(pid, SIGUSR2) {
+                error!("Failed to send SIGUSR2 to process {}: {}", pid, e);
             }
         }
 

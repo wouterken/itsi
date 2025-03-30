@@ -35,7 +35,7 @@ fn init(ruby: &Ruby) -> Result<()> {
     request.define_method("path", method!(ItsiHttpRequest::path, 0))?;
     request.define_method("script_name", method!(ItsiHttpRequest::script_name, 0))?;
     request.define_method("query_string", method!(ItsiHttpRequest::query_string, 0))?;
-    request.define_method("method", method!(ItsiHttpRequest::method, 0))?;
+    request.define_method("request_method", method!(ItsiHttpRequest::method, 0))?;
     request.define_method("version", method!(ItsiHttpRequest::version, 0))?;
     request.define_method("rack_protocol", method!(ItsiHttpRequest::rack_protocol, 0))?;
     request.define_method("host", method!(ItsiHttpRequest::host, 0))?;
@@ -88,7 +88,7 @@ fn init(ruby: &Ruby) -> Result<()> {
     )?;
 
     let grpc_stream = ruby.get_inner(&ITSI_GRPC_STREAM);
-    grpc_stream.define_method("read", method!(ItsiGrpcStream::read, 1))?;
+    grpc_stream.define_method("reader", method!(ItsiGrpcStream::reader, 0))?;
     grpc_stream.define_method("write", method!(ItsiGrpcStream::write, 1))?;
     grpc_stream.define_method("flush", method!(ItsiGrpcStream::flush, 0))?;
     grpc_stream.define_method("send_trailers", method!(ItsiGrpcStream::send_trailers, 1))?;

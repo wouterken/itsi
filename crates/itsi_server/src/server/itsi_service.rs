@@ -139,7 +139,7 @@ impl Service<HttpRequest> for ItsiService {
         Box::pin(async move {
             let mut req = req;
             let mut resp: Option<HttpResponse> = None;
-            let (stack, matching_pattern) = params.middleware.get().unwrap().stack_for(&req);
+            let (stack, matching_pattern) = params.middleware.get().unwrap().stack_for(&req)?;
             let mut context = RequestContext::new(self_clone, matching_pattern);
             let mut depth = 0;
             for (index, elm) in stack.iter().enumerate() {

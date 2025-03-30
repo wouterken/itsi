@@ -15,6 +15,7 @@ use itsi_rb_helpers::{HeapVal, HeapValue};
 use magnus::{block::Proc, error::Result, value::ReprValue, Symbol};
 use std::str::FromStr;
 use std::sync::Arc;
+use tracing::info;
 
 #[derive(Debug)]
 pub struct RubyApp {
@@ -52,7 +53,7 @@ impl RubyApp {
             .unwrap_or("http".to_string())
             .parse()
             .unwrap_or(RequestType::Http);
-
+        info!("Request type {:?}", request_type);
         Ok(RubyApp {
             app: Arc::new(app.into()),
             sendfile,

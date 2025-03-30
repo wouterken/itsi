@@ -5,14 +5,33 @@ use std::{
 };
 pub use tracing::{debug, error, info, trace, warn};
 use tracing_appender::rolling;
-use tracing_subscriber::Layer;
 use tracing_subscriber::fmt::writer::BoxMakeWriter;
 use tracing_subscriber::{EnvFilter, fmt, prelude::*, reload};
+use tracing_subscriber::{Layer, Registry, layer::Layered};
 
 // Global reload handle for changing the level at runtime.
 static RELOAD_HANDLE: OnceLock<
     Mutex<Option<reload::Handle<EnvFilter, tracing_subscriber::Registry>>>,
 > = OnceLock::new();
+
+// Global reload handle for changing the formatting layer (log target/format) at runtime.
+type ReloadFmtHandle = reload::Handle<
+    Box<
+        dyn Layer<
+                tracing_subscriber::layer::Layered<
+                    reload::Layer<EnvFilter, tracing_subscriber::Registry>,
+                    tracing_subscriber::Registry,
+                >,
+            > + Send
+            + Sync,
+    >,
+    Layered<tracing_subscriber::reload::Layer<EnvFilter, Registry>, Registry>,
+>;
+
+static RELOAD_FMT_HANDLE: OnceLock<Mutex<Option<ReloadFmtHandle>>> = OnceLock::new();
+
+// Global current log configuration for formatting options.
+static CURRENT_CONFIG: OnceLock<Mutex<LogConfig>> = OnceLock::new();
 
 /// Log format: Plain or JSON.
 #[derive(Debug, Clone)]
@@ -73,18 +92,19 @@ impl Default for LogConfig {
     }
 }
 
-/// Initialize the global tracing subscriber with the default configuration.
-pub fn init() {
-    init_with_config(LogConfig::default());
-}
-
-/// Initialize the global tracing subscriber with a given configuration.
-pub fn init_with_config(config: LogConfig) {
-    // Build an EnvFilter from the configured level.
-    let env_filter = EnvFilter::new(config.level);
-
-    // Build the formatting layer based on target and format.
-    let fmt_layer = match config.target {
+/// Build the formatting layer based on the provided configuration.
+fn build_fmt_layer(
+    config: &LogConfig,
+) -> Box<
+    dyn Layer<
+            tracing_subscriber::layer::Layered<
+                reload::Layer<EnvFilter, tracing_subscriber::Registry>,
+                tracing_subscriber::Registry,
+            >,
+        > + Send
+        + Sync,
+> {
+    match &config.target {
         LogTarget::Stdout => match config.format {
             LogFormat::Plain => fmt::layer()
                 .compact()
@@ -106,35 +126,39 @@ pub fn init_with_config(config: LogConfig) {
                 .json()
                 .boxed(),
         },
-        LogTarget::File(file) => match config.format {
-            LogFormat::Plain => fmt::layer()
-                .compact()
-                .with_file(false)
-                .with_line_number(false)
-                .with_target(false)
-                .with_thread_ids(false)
-                .with_writer(BoxMakeWriter::new({
-                    let file = file.clone();
-                    move || rolling::daily(".", file.clone())
-                }))
-                .with_ansi(false)
-                .boxed(),
-            LogFormat::Json => fmt::layer()
-                .compact()
-                .with_file(false)
-                .with_line_number(false)
-                .with_target(false)
-                .with_thread_ids(false)
-                .with_writer(BoxMakeWriter::new({
-                    let file = file.clone();
-                    move || rolling::daily(".", file.clone())
-                }))
-                .with_ansi(false)
-                .json()
-                .boxed(),
-        },
+        LogTarget::File(file) => {
+            let file_clone = file.clone();
+            match config.format {
+                LogFormat::Plain => fmt::layer()
+                    .compact()
+                    .with_file(false)
+                    .with_line_number(false)
+                    .with_target(false)
+                    .with_thread_ids(false)
+                    .with_writer(BoxMakeWriter::new(move || {
+                        rolling::daily(".", file_clone.clone())
+                    }))
+                    .with_ansi(false)
+                    .boxed(),
+                LogFormat::Json => {
+                    let file_clone = file.clone();
+                    fmt::layer()
+                        .compact()
+                        .with_file(false)
+                        .with_line_number(false)
+                        .with_target(false)
+                        .with_thread_ids(false)
+                        .with_writer(BoxMakeWriter::new(move || {
+                            rolling::daily(".", file_clone.clone())
+                        }))
+                        .with_ansi(false)
+                        .json()
+                        .boxed()
+                }
+            }
+        }
         LogTarget::Both(file) => {
-            // For "Both" target, handle each format separately to avoid type mismatches
+            let file_clone = file.clone();
             match config.format {
                 LogFormat::Plain => {
                     let stdout_layer = fmt::layer()
@@ -145,19 +169,16 @@ pub fn init_with_config(config: LogConfig) {
                         .with_thread_ids(false)
                         .with_writer(BoxMakeWriter::new(std::io::stdout))
                         .with_ansi(config.use_ansi);
-
                     let file_layer = fmt::layer()
                         .compact()
                         .with_file(false)
                         .with_line_number(false)
                         .with_target(false)
                         .with_thread_ids(false)
-                        .with_writer(BoxMakeWriter::new({
-                            let file = file.clone();
-                            move || rolling::daily(".", file.clone())
+                        .with_writer(BoxMakeWriter::new(move || {
+                            rolling::daily(".", file_clone.clone())
                         }))
                         .with_ansi(false);
-
                     stdout_layer.and_then(file_layer).boxed()
                 }
                 LogFormat::Json => {
@@ -170,30 +191,61 @@ pub fn init_with_config(config: LogConfig) {
                         .with_writer(BoxMakeWriter::new(std::io::stdout))
                         .with_ansi(config.use_ansi)
                         .json();
-
                     let file_layer = fmt::layer()
                         .compact()
                         .with_file(false)
                         .with_line_number(false)
                         .with_target(false)
                         .with_thread_ids(false)
-                        .with_writer(BoxMakeWriter::new({
-                            let file = file.clone();
-                            move || rolling::daily(".", file.clone())
+                        .with_writer(BoxMakeWriter::new(move || {
+                            rolling::daily(".", file_clone.clone())
                         }))
                         .with_ansi(false)
                         .json();
-
                     stdout_layer.and_then(file_layer).boxed()
                 }
             }
         }
-    };
+    }
+}
+
+/// Update the formatting layer using the current configuration.
+fn update_fmt_layer(config: &LogConfig) {
+    if let Some(handle) = RELOAD_FMT_HANDLE.get().unwrap().lock().unwrap().as_ref() {
+        let new_layer = build_fmt_layer(config);
+        handle
+            .modify(|layer| {
+                *layer = new_layer;
+            })
+            .expect("Failed to update formatting layer");
+    } else {
+        eprintln!("Reload handle for formatting layer not initialized; call init() first.");
+    }
+}
+
+/// Initialize the global tracing subscriber with the default configuration.
+pub fn init() {
+    init_with_config(LogConfig::default());
+}
+
+/// Initialize the global tracing subscriber with a given configuration.
+pub fn init_with_config(config: LogConfig) {
+    // Store the current config in a global for future updates.
+    CURRENT_CONFIG.set(Mutex::new(config.clone())).ok();
+
+    // Build an EnvFilter from the configured level.
+    let env_filter = EnvFilter::new(config.clone().level);
+
+    // Build the formatting layer based on the configuration.
+    let fmt_layer = build_fmt_layer(&config);
 
     // Create a reloadable filter layer so we can update the level at runtime.
-    let (filter_layer, handle) = reload::Layer::new(env_filter);
+    let (filter_layer, filter_handle) = reload::Layer::new(env_filter);
 
-    // Build the subscriber registry
+    // Create a reloadable formatting layer so we can update the target/format at runtime.
+    let (fmt_layer, fmt_handle) = reload::Layer::new(fmt_layer);
+
+    // Build the subscriber registry.
     let subscriber = tracing_subscriber::registry()
         .with(filter_layer)
         .with(fmt_layer);
@@ -201,7 +253,8 @@ pub fn init_with_config(config: LogConfig) {
     tracing::subscriber::set_global_default(subscriber)
         .expect("Unable to set global tracing subscriber");
 
-    RELOAD_HANDLE.set(Mutex::new(Some(handle))).unwrap();
+    RELOAD_HANDLE.set(Mutex::new(Some(filter_handle))).unwrap();
+    RELOAD_FMT_HANDLE.set(Mutex::new(Some(fmt_handle))).ok();
 }
 
 /// Change the log level at runtime.
@@ -210,8 +263,45 @@ pub fn set_level(new_level: &str) {
         handle
             .modify(|filter| *filter = EnvFilter::new(new_level))
             .expect("Failed to update log level");
+
+        // Also update the stored config.
+        if let Some(config_mutex) = CURRENT_CONFIG.get() {
+            let mut config = config_mutex.lock().unwrap();
+            config.level = new_level.to_string();
+        }
     } else {
         eprintln!("Reload handle not initialized; call init() first.");
+    }
+}
+
+/// Change the log target at runtime.
+pub fn set_target(new_target: &str) {
+    let target: LogTarget = match new_target {
+        "stdout" => LogTarget::Stdout,
+        path => LogTarget::File(path.to_string()),
+    };
+    if let Some(config_mutex) = CURRENT_CONFIG.get() {
+        let mut config = config_mutex.lock().unwrap();
+        config.target = target;
+        update_fmt_layer(&config);
+    } else {
+        eprintln!("Current configuration not initialized; call init() first.");
+    }
+}
+
+/// Change the log format at runtime.
+pub fn set_format(new_format: &str) {
+    let format = match new_format {
+        "json" => LogFormat::Json,
+        "plain" => LogFormat::Plain,
+        _ => LogFormat::Json,
+    };
+    if let Some(config_mutex) = CURRENT_CONFIG.get() {
+        let mut config = config_mutex.lock().unwrap();
+        config.format = format;
+        update_fmt_layer(&config);
+    } else {
+        eprintln!("Current configuration not initialized; call init() first.");
     }
 }
 

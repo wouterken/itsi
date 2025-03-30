@@ -4,8 +4,8 @@ use crate::{
     server::{bind::Bind, listener::Listener, middleware_stack::MiddlewareSet},
 };
 use derive_more::Debug;
-use itsi_rb_helpers::{call_with_gvl, print_rb_backtrace, HeapVal, HeapValue};
-use itsi_tracing::set_level;
+use itsi_rb_helpers::{call_with_gvl, print_rb_backtrace, HeapValue};
+use itsi_tracing::{set_format, set_level, set_target};
 use magnus::{
     block::Proc,
     error::Result,
@@ -23,7 +23,6 @@ use std::{
     path::PathBuf,
     sync::{Arc, OnceLock},
 };
-
 static DEFAULT_BIND: &str = "http://localhost:3000";
 static ID_BUILD_CONFIG: LazyId = LazyId::new("build_config");
 static ID_RELOAD_EXEC: LazyId = LazyId::new("reload_exec");
@@ -57,7 +56,6 @@ pub struct ServerParams {
     pub scheduler_class: Option<String>,
     pub oob_gc_responses_threshold: Option<u64>,
     pub middleware_loader: HeapValue<Proc>,
-    pub default_app_loader: HeapValue<Proc>,
     pub middleware: OnceLock<MiddlewareSet>,
     pub binds: Vec<Bind>,
     #[debug(skip)]
@@ -75,7 +73,6 @@ impl ServerParams {
             {
                 ruby.require("itsi/scheduler")?;
             }
-            let default_app: HeapVal = self.default_app_loader.call::<_, Value>(())?.into();
             let middleware = MiddlewareSet::new(
                 self.middleware_loader
                     .call::<_, Option<Value>>(())
@@ -85,7 +82,6 @@ impl ServerParams {
                         }
                     })?
                     .map(|mw| mw.into()),
-                default_app,
             )?;
             self.middleware.set(middleware).map_err(|_| {
                 magnus::Error::new(
@@ -104,7 +100,9 @@ impl ServerParams {
             .unwrap_or(num_cpus::get() as u8);
         let worker_memory_limit: Option<u64> = rb_param_hash.fetch("worker_memory_limit")?;
         let silence: bool = rb_param_hash.fetch("silence")?;
-        let multithreaded_reactor: bool = rb_param_hash.fetch("multithreaded_reactor")?;
+        let multithreaded_reactor: bool = rb_param_hash
+            .fetch::<_, Option<bool>>("multithreaded_reactor")?
+            .unwrap_or(workers == 1);
         let shutdown_timeout: f64 = rb_param_hash.fetch("shutdown_timeout")?;
 
         let hooks: Option<RHash> = rb_param_hash.fetch("hooks")?;
@@ -134,11 +132,20 @@ impl ServerParams {
         let oob_gc_responses_threshold: Option<u64> =
             rb_param_hash.fetch("oob_gc_responses_threshold")?;
         let middleware_loader: Proc = rb_param_hash.fetch("middleware_loader")?;
-        let default_app_loader: Proc = rb_param_hash.fetch("default_app_loader")?;
         let log_level: Option<String> = rb_param_hash.fetch("log_level")?;
+        let log_target: Option<String> = rb_param_hash.fetch("log_target")?;
+        let log_format: Option<String> = rb_param_hash.fetch("log_format")?;
 
         if let Some(level) = log_level {
             set_level(&level);
+        }
+
+        if let Some(target) = log_target {
+            set_target(&target);
+        }
+
+        if let Some(format) = log_format {
+            set_format(&format);
         }
 
         let binds: Option<Vec<String>> = rb_param_hash.fetch("binds")?;
@@ -209,7 +216,6 @@ impl ServerParams {
             listener_info: Mutex::new(listener_info),
             listeners: Mutex::new(listeners),
             middleware_loader: middleware_loader.into(),
-            default_app_loader: default_app_loader.into(),
             middleware: OnceLock::new(),
         })
     }

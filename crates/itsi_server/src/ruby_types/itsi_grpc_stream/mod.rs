@@ -1,11 +1,15 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    os::fd::{AsRawFd, FromRawFd, IntoRawFd, OwnedFd},
+    sync::Arc,
+};
 
 use crate::server::{
     byte_frame::ByteFrame, serve_strategy::single_mode::RunningPhase, types::HttpResponse,
 };
 use bytes::Bytes;
 use derive_more::Debug;
-use futures::{executor::block_on, stream::unfold};
+use futures::stream::unfold;
 use http::{
     header::{HeaderName, HeaderValue, CONTENT_TYPE},
     HeaderMap, Response,
@@ -13,10 +17,14 @@ use http::{
 use http_body_util::{combinators::BoxBody, BodyDataStream, BodyExt, Empty, Full, StreamBody};
 use hyper::body::{Frame, Incoming};
 use magnus::error::Result as MagnusResult;
+use nix::unistd::pipe;
 use parking_lot::Mutex;
-use tokio::sync::{
-    mpsc::{Receiver, Sender},
-    oneshot, watch,
+use tokio::{
+    spawn,
+    sync::{
+        mpsc::{self, Sender},
+        oneshot, watch,
+    },
 };
 use tokio_stream::{wrappers::ReceiverStream, StreamExt};
 use tracing::{error, info, warn};
@@ -29,7 +37,7 @@ pub struct ItsiGrpcStream {
 
 #[derive(Debug)]
 pub struct ItsiGrpcStreamInner {
-    pub body: BodyDataStream<Incoming>,
+    pub incoming_reader: Option<OwnedFd>,
     pub buf: Vec<u8>,
     pub response_sender: Sender<ByteFrame>,
     pub response: Option<HttpResponse>,
@@ -38,41 +46,8 @@ pub struct ItsiGrpcStreamInner {
 }
 
 impl ItsiGrpcStreamInner {
-    pub fn read(&mut self, bytes: usize) -> MagnusResult<Bytes> {
-        let stream = &mut self.body;
-        let buf = &mut self.buf;
-        let mut result = Vec::with_capacity(bytes);
-
-        info!("Entering read with {:?}. Current buf is {:?}", bytes, buf);
-
-        // First, use any data already in the buffer
-        if !buf.is_empty() {
-            let remaining = bytes.min(buf.len());
-            result.extend_from_slice(&buf[..remaining]);
-            buf.drain(..remaining);
-        }
-
-        while result.len() < bytes {
-            if let Some(chunk) = block_on(stream.next()) {
-                let chunk = chunk.map_err(|err| {
-                    magnus::Error::new(
-                        magnus::exception::exception(),
-                        format!("Error reading body {:?}", err),
-                    )
-                })?;
-                let remaining = bytes - result.len();
-                if chunk.len() > remaining {
-                    result.extend_from_slice(&chunk[..remaining]);
-                    buf.extend_from_slice(&chunk[remaining..]);
-                } else {
-                    result.extend_from_slice(&chunk);
-                }
-            } else {
-                break;
-            }
-        }
-
-        Ok(result.into())
+    pub fn reader(&mut self) -> MagnusResult<i32> {
+        Ok(self.incoming_reader.take().unwrap().into_raw_fd())
     }
 
     pub fn write(&mut self, bytes: Bytes) -> MagnusResult<()> {
@@ -118,12 +93,39 @@ impl ItsiGrpcStreamInner {
 }
 
 impl ItsiGrpcStream {
-    pub fn new(response_sender: Sender<ByteFrame>, body: BodyDataStream<Incoming>) -> Self {
+    pub async fn new(
+        response_sender: Sender<ByteFrame>,
+        mut body: BodyDataStream<Incoming>,
+    ) -> Self {
         let (trailer_tx, trailer_rx) = oneshot::channel::<HeaderMap>();
+        let (pipe_read, pipe_write) = pipe().unwrap();
+
+        nix::fcntl::fcntl(
+            pipe_read.as_raw_fd(),
+            nix::fcntl::FcntlArg::F_SETFL(nix::fcntl::OFlag::O_NONBLOCK),
+        )
+        .unwrap();
+
+        nix::fcntl::fcntl(
+            pipe_write.as_raw_fd(),
+            nix::fcntl::FcntlArg::F_SETFL(nix::fcntl::OFlag::O_NONBLOCK),
+        )
+        .unwrap();
+
+        let pipe_raw_fd = pipe_write.into_raw_fd();
+
+        spawn(async move {
+            use std::io::Write;
+            let mut write_end = unsafe { std::fs::File::from_raw_fd(pipe_raw_fd) };
+            while let Some(Ok(body)) = body.next().await {
+                write_end.write_all(&body).unwrap();
+            }
+        });
+
         ItsiGrpcStream {
             inner: Arc::new(Mutex::new(ItsiGrpcStreamInner {
-                body,
                 buf: Vec::new(),
+                incoming_reader: Some(pipe_read),
                 response_sender,
                 response: Some(Response::new(BoxBody::new(Empty::new()))),
                 trailer_tx,
@@ -132,8 +134,8 @@ impl ItsiGrpcStream {
         }
     }
 
-    pub fn read(&self, bytes: usize) -> MagnusResult<Bytes> {
-        self.inner.lock().read(bytes)
+    pub fn reader(&self) -> MagnusResult<i32> {
+        self.inner.lock().reader()
     }
 
     pub fn write(&self, bytes: Bytes) -> MagnusResult<()> {
@@ -151,7 +153,7 @@ impl ItsiGrpcStream {
     pub async fn build_response(
         &self,
         first_frame: ByteFrame,
-        receiver: Receiver<ByteFrame>,
+        receiver: mpsc::Receiver<ByteFrame>,
         shutdown_rx: watch::Receiver<RunningPhase>,
     ) -> HttpResponse {
         let mut response = self.inner.lock().response.take().unwrap();

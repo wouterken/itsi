@@ -1,9 +1,7 @@
 # frozen_string_literal: true
+ENV["ITSI_LOG"] = "off"
 
 require "minitest/reporters"
-
-# ENV["ITSI_LOG"] = "off"
-
 require "itsi/server"
 require "itsi/scheduler"
 
@@ -17,16 +15,17 @@ def free_bind(protocol)
 end
 
 def run_app(app, protocol: "http", bind: free_bind(protocol), scheduler_class: nil)
-  server = Itsi::Server.start_in_background_thread({}) do
+  Itsi::Server.start_in_background_thread do
+    # Inline Itsi.rb
     bind bind
     workers 1
     threads 1
-    fiber_scheduler scheduler_class if scheduler_class
-    log_level :error
+    fiber_scheduler scheduler_class
+    log_level :warn
     run app
   end
 
-  yield URI(bind), server
+  yield URI(bind)
 ensure
   Itsi::Server.stop_background_thread
 end

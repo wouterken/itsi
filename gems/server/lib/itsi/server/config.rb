@@ -18,43 +18,35 @@ module Itsi
       # 2. Itsi.rb file.
       # 3. Default values.
       def self.build_config(args, config_file_path, builder_proc)
+        args.transform_keys!(&:to_sym)
+
         itsifile_config = \
           if builder_proc
-            DSL.evaluate(builder_proc)
+            DSL.evaluate(&builder_proc)
           elsif File.exist?(config_file_path.to_s)
             DSL.evaluate(config_file_path)
           else
-            {}
+            DSL.evaluate do
+              preload true
+              rackup_file args.fetch(:rackup_file, "./config.ru")
+            end
           end
-        args.transform_keys!(&:to_sym)
+
         itsifile_config.transform_keys!(&:to_sym)
 
         # We'll preload while we load config, if enabled.
         middleware_loader = itsifile_config.fetch(:middleware_loader, -> {})
-        default_app_loader = itsifile_config.fetch(:app_loader) do
-          rackup_file_path = args.fetch(:rackup_file, "./config.ru")
-          if File.exist?(rackup_file_path)
-            lambda {
-              { "app_proc" => Itsi::Server::RackInterface.for(rackup_file_path) }
-            }
-          else
-            DEFAULT_APP
-          end
-        end
         preload = args.fetch(:preload) { itsifile_config.fetch(:preload, false) }
 
         case preload
         # If we preload everything, then we'll load middleware and default rack app ahead of time
         when true
           preloaded_middleware = middleware_loader.call
-          preloaded_app = default_app_loader.call
           middleware_loader = -> { preloaded_middleware }
-          default_app_loader = -> { preloaded_app }
         # If we're just preloading a specific gem group, we'll do that here too
         when Symbol
           Bundler.require(preload)
         end
-
         {
           workers: args.fetch(:workers) { itsifile_config.fetch(:workers, Etc.nprocessors) },
           worker_memory_limit: args.fetch(:worker_memory_limit) { itsifile_config.fetch(:worker_memory_limit, nil) },
@@ -67,16 +59,17 @@ module Itsi
           script_name: args.fetch(:script_name) { itsifile_config.fetch(:script_name, "") },
           streamable_body: args.fetch(:streamable_body) { itsifile_config.fetch(:streamable_body, false) },
           multithreaded_reactor: args.fetch(:multithreaded_reactor) do
-            itsifile_config.fetch(:multithreaded_reactor, true)
+            itsifile_config.fetch(:multithreaded_reactor, nil)
           end,
           scheduler_class: args.fetch(:scheduler_class) { itsifile_config.fetch(:scheduler_class, nil) },
           oob_gc_responses_threshold: args.fetch(:oob_gc_responses_threshold) do
             itsifile_config.fetch(:oob_gc_responses_threshold, nil)
           end,
           log_level: args.fetch(:log_level) { itsifile_config.fetch(:log_level, nil) },
+          log_format: args.fetch(:log_format) { itsifile_config.fetch(:log_format, nil) },
+          log_target: args.fetch(:log_target) { itsifile_config.fetch(:log_target, nil) },
           binds: args.fetch(:binds) { itsifile_config.fetch(:binds, ["http://0.0.0.0:3000"]) },
           middleware_loader: middleware_loader,
-          default_app_loader: default_app_loader,
           listeners: args.fetch(:listeners) { nil }
         }.transform_keys(&:to_s)
       end

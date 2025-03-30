@@ -1,10 +1,14 @@
-use std::sync::{atomic::AtomicI8, LazyLock};
+use std::sync::{
+    atomic::{AtomicBool, AtomicI8},
+    LazyLock,
+};
 
 use nix::libc::{self, sighandler_t};
 use tokio::sync::{self, broadcast};
 
 use super::lifecycle_event::LifecycleEvent;
 
+pub static SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
 pub static SIGNAL_HANDLER_CHANNEL: LazyLock<(
     broadcast::Sender<LifecycleEvent>,
     broadcast::Receiver<LifecycleEvent>,
@@ -19,6 +23,7 @@ fn receive_signal(signum: i32, _: sighandler_t) {
     SIGINT_COUNT.fetch_add(-1, std::sync::atomic::Ordering::SeqCst);
     match signum {
         libc::SIGTERM | libc::SIGINT => {
+            SHUTDOWN_REQUESTED.store(true, std::sync::atomic::Ordering::SeqCst);
             SIGINT_COUNT.fetch_add(2, std::sync::atomic::Ordering::SeqCst);
             if SIGINT_COUNT.load(std::sync::atomic::Ordering::SeqCst) < 2 {
                 SIGNAL_HANDLER_CHANNEL.0.send(LifecycleEvent::Shutdown).ok();
@@ -30,7 +35,7 @@ fn receive_signal(signum: i32, _: sighandler_t) {
                     .ok();
             }
         }
-        libc::SIGINFO => {
+        libc::SIGUSR2 => {
             SIGNAL_HANDLER_CHANNEL
                 .0
                 .send(LifecycleEvent::PrintInfo)
@@ -39,7 +44,7 @@ fn receive_signal(signum: i32, _: sighandler_t) {
         libc::SIGUSR1 => {
             SIGNAL_HANDLER_CHANNEL.0.send(LifecycleEvent::Restart).ok();
         }
-        libc::SIGUSR2 => {
+        libc::SIGHUP => {
             SIGNAL_HANDLER_CHANNEL.0.send(LifecycleEvent::Reload).ok();
         }
         libc::SIGTTIN => {
@@ -66,12 +71,13 @@ fn receive_signal(signum: i32, _: sighandler_t) {
 
 pub fn reset_signal_handlers() -> bool {
     SIGINT_COUNT.store(0, std::sync::atomic::Ordering::SeqCst);
+    SHUTDOWN_REQUESTED.store(false, std::sync::atomic::Ordering::SeqCst);
     unsafe {
         libc::signal(libc::SIGTERM, receive_signal as usize);
         libc::signal(libc::SIGINT, receive_signal as usize);
-        libc::signal(libc::SIGINFO, receive_signal as usize);
-        libc::signal(libc::SIGUSR1, receive_signal as usize);
         libc::signal(libc::SIGUSR2, receive_signal as usize);
+        libc::signal(libc::SIGUSR1, receive_signal as usize);
+        libc::signal(libc::SIGHUP, receive_signal as usize);
         libc::signal(libc::SIGTTIN, receive_signal as usize);
         libc::signal(libc::SIGTTOU, receive_signal as usize);
         libc::signal(libc::SIGCHLD, receive_signal as usize);
@@ -83,9 +89,9 @@ pub fn clear_signal_handlers() {
     unsafe {
         libc::signal(libc::SIGTERM, libc::SIG_DFL);
         libc::signal(libc::SIGINT, libc::SIG_DFL);
-        libc::signal(libc::SIGINFO, libc::SIG_DFL);
-        libc::signal(libc::SIGUSR1, libc::SIG_DFL);
         libc::signal(libc::SIGUSR2, libc::SIG_DFL);
+        libc::signal(libc::SIGUSR1, libc::SIG_DFL);
+        libc::signal(libc::SIGHUP, libc::SIG_DFL);
         libc::signal(libc::SIGTTIN, libc::SIG_DFL);
         libc::signal(libc::SIGTTOU, libc::SIG_DFL);
         libc::signal(libc::SIGCHLD, libc::SIG_DFL);

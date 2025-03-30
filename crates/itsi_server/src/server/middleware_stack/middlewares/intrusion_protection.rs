@@ -118,7 +118,7 @@ impl MiddlewareLayer for IntrusionProtection {
         // Check for banned URL patterns
         if let Some(url_matcher) = self.banned_url_pattern_matcher.get() {
             let path = req.uri().path_and_query().map(|p| p.as_str()).unwrap_or("");
-            info!("Checking URL pattern match for {}", path);
+
             if url_matcher.is_match(path) {
                 info!("Intrusion detected: URL pattern match for {}", path);
 

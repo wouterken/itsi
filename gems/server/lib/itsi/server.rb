@@ -22,7 +22,7 @@ module Itsi
         !!@running
       end
 
-      def start_in_background_thread(cli_params, itsi_file = Itsi::Server::Config.config_file_path, &blk)
+      def start_in_background_thread(cli_params={}, itsi_file = Itsi::Server::Config.config_file_path, &blk)
         @background_thread = start(cli_params, itsi_file, background: true, &blk)
       end
 

@@ -15,7 +15,6 @@ pub struct MiddlewareSet {
     pub route_set: RegexSet,
     pub patterns: Vec<Arc<Regex>>,
     pub stacks: HashMap<usize, MiddlewareStack>,
-    pub default_stack: Vec<Middleware>,
 }
 
 #[derive(Debug)]
@@ -125,7 +124,7 @@ impl MiddlewareStack {
 }
 
 impl MiddlewareSet {
-    pub fn new(routes_raw: Option<HeapVal>, default_app: HeapVal) -> Result<Self> {
+    pub fn new(routes_raw: Option<HeapVal>) -> Result<Self> {
         if let Some(routes_raw) = routes_raw {
             let mut stacks = HashMap::new();
             let mut routes = vec![];
@@ -159,9 +158,6 @@ impl MiddlewareSet {
                     .into_iter()
                     .map(MiddlewareSet::parse_middleware)
                     .collect::<Result<Vec<_>>>()?;
-                layers.push(Middleware::RubyApp(RubyApp::from_value(
-                    default_app.clone(),
-                )?));
                 routes.push(route_raw);
                 layers.sort();
                 stacks.insert(
@@ -200,30 +196,41 @@ impl MiddlewareSet {
                     .map(Arc::new)
                     .collect(),
                 stacks,
-                default_stack: vec![Middleware::RubyApp(RubyApp::from_value(default_app)?)],
             })
         } else {
-            Ok(Self {
-                route_set: RegexSet::empty(),
-                patterns: Vec::new(),
-                stacks: HashMap::new(),
-                default_stack: vec![Middleware::RubyApp(RubyApp::from_value(default_app)?)],
-            })
+            Err(magnus::Error::new(
+                magnus::exception::exception(),
+                "Failed to create middleware stack",
+            ))
         }
     }
 
-    pub fn stack_for(&self, request: &HttpRequest) -> (&Vec<Middleware>, Option<Arc<Regex>>) {
+    pub fn stack_for(
+        &self,
+        request: &HttpRequest,
+    ) -> Result<(&Vec<Middleware>, Option<Arc<Regex>>)> {
         let binding = self.route_set.matches(request.uri().path());
         let matches = binding.iter();
         for index in matches {
             let matching_pattern = self.patterns.get(index).cloned();
             if let Some(stack) = self.stacks.get(&index) {
                 if stack.matches(request) {
-                    return (&stack.layers, matching_pattern);
+                    return Ok((&stack.layers, matching_pattern));
                 }
             }
         }
-        (self.default_stack(), None)
+        info!(
+            "Failed to match request URI {:?} to self.route_set: {:?}",
+            request.uri().path(),
+            self.route_set
+        );
+        Err(magnus::Error::new(
+            magnus::exception::exception(),
+            format!(
+                "No matching middleware stack found for request: {:?}",
+                request
+            ),
+        ))
     }
 
     pub fn parse_middleware(middleware: Value) -> Result<Middleware> {
@@ -238,6 +245,7 @@ impl MiddlewareSet {
                 format!("Filter must have a :type key. Got {:?}", middleware_hash),
             ))?
             .to_string();
+        let mw_type = middleware_type.clone();
 
         let parameters: Value = middleware_hash.get("parameters").ok_or(magnus::Error::new(
             magnus::exception::exception(),
@@ -247,50 +255,62 @@ impl MiddlewareSet {
             ),
         ))?;
 
-        let result = match middleware_type.as_str() {
-            "allow_list" => Middleware::AllowList(AllowList::from_value(parameters)?),
-            "auth_basic" => Middleware::AuthBasic(AuthBasic::from_value(parameters)?),
-            "auth_jwt" => Middleware::AuthJwt(Box::new(AuthJwt::from_value(parameters)?)),
-            "auth_api_key" => Middleware::AuthAPIKey(AuthAPIKey::from_value(parameters)?),
-            "cache_control" => Middleware::CacheControl(CacheControl::from_value(parameters)?),
-            "deny_list" => Middleware::DenyList(DenyList::from_value(parameters)?),
-            "etag" => Middleware::ETag(ETag::from_value(parameters)?),
-            "intrusion_protection" => {
-                Middleware::IntrusionProtection(IntrusionProtection::from_value(parameters)?)
-            }
-            "rate_limit" => Middleware::RateLimit(RateLimit::from_value(parameters)?),
-            "cors" => Middleware::Cors(Box::new(Cors::from_value(parameters)?)),
-            "request_headers" => {
-                Middleware::RequestHeaders(RequestHeaders::from_value(parameters)?)
-            }
-            "response_headers" => {
-                Middleware::ResponseHeaders(ResponseHeaders::from_value(parameters)?)
-            }
-            "static_assets" => Middleware::StaticAssets(StaticAssets::from_value(parameters)?),
-            "compression" => Middleware::Compression(Compression::from_value(parameters)?),
-            "log_requests" => Middleware::LogRequests(LogRequests::from_value(parameters)?),
-            "redirect" => Middleware::Redirect(Redirect::from_value(parameters)?),
-            "app" => Middleware::RubyApp(RubyApp::from_value(parameters.into())?),
-            "proxy" => Middleware::Proxy(Proxy::from_value(parameters)?),
-            _ => {
-                return Err(magnus::Error::new(
+        let result = (move || -> Result<Middleware> {
+            match mw_type.as_str() {
+                "allow_list" => Ok(Middleware::AllowList(AllowList::from_value(parameters)?)),
+                "auth_basic" => Ok(Middleware::AuthBasic(AuthBasic::from_value(parameters)?)),
+                "auth_jwt" => Ok(Middleware::AuthJwt(Box::new(AuthJwt::from_value(
+                    parameters,
+                )?))),
+                "auth_api_key" => Ok(Middleware::AuthAPIKey(AuthAPIKey::from_value(parameters)?)),
+                "cache_control" => Ok(Middleware::CacheControl(CacheControl::from_value(
+                    parameters,
+                )?)),
+                "deny_list" => Ok(Middleware::DenyList(DenyList::from_value(parameters)?)),
+                "etag" => Ok(Middleware::ETag(ETag::from_value(parameters)?)),
+                "intrusion_protection" => Ok({
+                    Middleware::IntrusionProtection(IntrusionProtection::from_value(parameters)?)
+                }),
+                "rate_limit" => Ok(Middleware::RateLimit(RateLimit::from_value(parameters)?)),
+                "cors" => Ok(Middleware::Cors(Box::new(Cors::from_value(parameters)?))),
+                "request_headers" => Ok(Middleware::RequestHeaders(RequestHeaders::from_value(
+                    parameters,
+                )?)),
+                "response_headers" => Ok(Middleware::ResponseHeaders(ResponseHeaders::from_value(
+                    parameters,
+                )?)),
+                "static_assets" => Ok(Middleware::StaticAssets(StaticAssets::from_value(
+                    parameters,
+                )?)),
+                "compression" => Ok(Middleware::Compression(Compression::from_value(
+                    parameters,
+                )?)),
+                "log_requests" => Ok(Middleware::LogRequests(LogRequests::from_value(
+                    parameters,
+                )?)),
+                "redirect" => Ok(Middleware::Redirect(Redirect::from_value(parameters)?)),
+                "app" => Ok(Middleware::RubyApp(RubyApp::from_value(parameters.into())?)),
+                "proxy" => Ok(Middleware::Proxy(Proxy::from_value(parameters)?)),
+                _ => Err(magnus::Error::new(
                     magnus::exception::exception(),
-                    format!("Unknown filter type: {}", middleware_type),
-                ))
+                    format!("Unknown filter type: {}", mw_type),
+                )),
             }
-        };
+        })();
 
-        Ok(result)
-    }
-
-    fn default_stack(&self) -> &Vec<Middleware> {
-        &self.default_stack
+        match result {
+            Ok(result) => Ok(result),
+            Err(err) => Err(magnus::Error::new(
+                magnus::exception::exception(),
+                format!(
+                    "Failed to instantiate middleware of type {}, due to {}",
+                    middleware_type, err
+                ),
+            )),
+        }
     }
 
     pub async fn initialize_layers(&self) -> Result<()> {
-        for middleware in &self.default_stack {
-            middleware.initialize().await?;
-        }
         for stack in self.stacks.values() {
             for middleware in &stack.layers {
                 middleware.initialize().await?;

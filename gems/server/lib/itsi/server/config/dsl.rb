@@ -5,10 +5,10 @@ module Itsi
         attr_reader :parent, :children, :middleware, :controller_class, :routes, :methods, :protocols,
                     :hosts, :ports, :extensions, :content_types, :accepts, :options
 
-        def self.evaluate(config = Itsi::Server::Config.config_file_path)
-          new do
-            if config.is_a?(Proc)
-              instance_exec(&config)
+        def self.evaluate(config = Itsi::Server::Config.config_file_path, &blk)
+          new(routes: ["*"]) do
+            if blk
+              instance_exec(&blk)
             else
               code = IO.read(config)
               instance_eval(code, config.to_s, 1)
@@ -35,7 +35,6 @@ module Itsi
           @controller_class = nil
 
           @controller = controller
-          # We'll store our array of route specs (strings or a single Regexp).
           @routes = Array(routes).flatten
           @methods = methods.map { |s| s.is_a?(Regexp) ? s : s.to_s }
           @protocols = protocols.map { |s| s.is_a?(Regexp) ? s : s.to_s }
@@ -49,6 +48,8 @@ module Itsi
             middleware_loaders: [],
             middleware_loader: lambda do
               @options[:middleware_loaders].each(&:call)
+              @middleware[:app] ||= {}
+              @middleware[:app][:app_proc] = @middleware[:app]&.[](:preloader)&.call || DEFAULT_APP[]
               flatten_routes
             end
           }
@@ -84,12 +85,13 @@ module Itsi
         def log_format(format)
           raise "Log format must be set at the root" unless @parent.nil?
 
-          case format.to_s
-          when "auto" then nil
-          when "ansi" then ENV["ITSI_LOG_ANSI"] = "true"
-          when "json", "plain" then ENV["ITSI_LOG_PLAIN"] = "true"
-          else raise "Invalid log format '#{format}'"
-          end
+          @options[:log_format] = format.to_s
+        end
+
+        def log_target(target)
+          raise "Log target must be set at the root" unless @parent.nil?
+
+          @options[:log_target] = target.to_s
         end
 
         def get(route, app_proc = nil, &blk)
@@ -121,47 +123,30 @@ module Itsi
           app_proc ||= blk
 
           location(route, methods: [method]) do
-            @middleware[:app] = { app_proc: app_proc }
+            @middleware[:app] = { preloader: ->{ app_proc } }
           end
         end
 
-        def grpc(handler, **)
+        def grpc(*handlers, **)
           if @middleware[:app] && @middleware[:app][:request_type].to_s != "grpc"
             raise "App has already been set. You can use only one of `run` and `rackup_file` or `grpc` per location"
           end
-
-          @middleware[:app] ||= {
-            request_type: "grpc",
-            impls: []
-          }
-          @middleware[:app][:impls] << handler
-          @middleware[:app][:app_proc] = Itsi::Server::GrpcInterface.for(@middleware[:app][:impls])
+          handlers.each do |handler|
+            location("#{handler.class.service_name}*") do
+              @middleware[:app] = { preloader: ->{  Itsi::Server::GrpcInterface.for(handler) }, request_type: "grpc" }
+            end
+          end
         end
 
         def run(app, sendfile: true)
-          if @options[:app_loader]
-            raise "App has already been set. You can use only one of `run` and `rackup_file` per location"
-          end
-
-          if @parent.nil?
-            @options[:app_loader] = -> { { "app_proc" => Itsi::Server::RackInterface.for(app) } }
-          else
-            @middleware[:app] = { app_proc: Itsi::Server::RackInterface.for(app), sendfile: sendfile }
-          end
+          @middleware[:app] = { preloader: ->{ Itsi::Server::RackInterface.for(app) }, sendfile: sendfile }
         end
 
         def rackup_file(rackup_file)
-          if @options[:app_loader]
-            raise "App has already been set. You can use only one of `run` and `rackup_file` per location"
-          end
 
           raise "Rackup file #{rackup_file} doesn't exist" unless File.exist?(rackup_file)
 
-          if @parent.nil?
-            @options[:app_loader] = -> { { "app_proc" => Itsi::Server::RackInterface.for(rackup_file) } }
-          else
-            @middleware[:app] = { app_proc: Itsi::Server::RackInterface.for(rackup_file) }
-          end
+          @middleware[:app] = { preloader: ->{ Itsi::Server::RackInterface.for(rackup_file) } }
         end
 
         def include(path)
@@ -207,6 +192,14 @@ module Itsi
           raise "Multithreaded reactor must be set at the root" unless @parent.nil?
 
           @options[:multithreaded_reactor] = !!multithreaded
+        end
+
+        def auto_reload_config!
+          if ENV["BUNDLE_BIN_PATH"]
+            watch 'Itsi.rb', [%w[bundle exec itsi restart]]
+          else
+            watch 'Itsi.rb', [%w[itsi restart]]
+          end
         end
 
         def watch(path, commands)
@@ -298,79 +291,66 @@ module Itsi
         end
 
         def controller(controller)
-          raise "`controller` must be set inside a location block" if @parent.nil?
 
           @controller = controller
         end
 
         def auth_basic(**args)
-          raise "`auth_basic` must be set inside a location block" if @parent.nil?
 
           @middleware[:auth_basic] = args
         end
 
         def redirect(**args)
-          raise "`redirect` must be set inside a location block" if @parent.nil?
 
           @middleware[:redirect] = args
         end
 
         def proxy(**args)
-          raise "`proxy` must be set inside a location block" if @parent.nil?
 
           @middleware[:proxy] = args
         end
 
         def auth_jwt(**args)
-          raise "`auth_jwt` must be set inside a location block" if @parent.nil?
 
           @middleware[:auth_jwt] = args
         end
 
         def auth_api_key(**args)
-          raise "`auth_api_key` must be set inside a location block" if @parent.nil?
 
           @middleware[:auth_api_key] = args
         end
 
         def compress(**args)
-          raise "`compress` must be set inside a location block" if @parent.nil?
 
           @middleware[:compression] = args
         end
 
         def request_headers(**args)
-          raise "`request_headers` must be set inside a location block" if @parent.nil?
 
           @middleware[:request_headers] = args
         end
 
         def response_headers(**args)
-          raise "`response_headers` must be set inside a location block" if @parent.nil?
 
           @middleware[:response_headers] = args
         end
 
         def rate_limit(**args)
-          raise "`rate_limit` must be set inside a location block" if @parent.nil?
 
           @middleware[:rate_limit] = args
         end
 
         def cache_control(**args)
-          raise "`cache_control` must be set inside a location block" if @parent.nil?
 
           @middleware[:cache_control] = args
         end
 
         def etag(**args)
-          raise "`etag` must be set inside a location block" if @parent.nil?
 
           @middleware[:etag] = args
         end
 
         def intrusion_protection(**args)
-          raise "`intrusion_protection` must be set inside a location block" if @parent.nil?
 
           args[:banned_url_patterns] = Array(args[:banned_url_patterns]).map do |pattern|
             if pattern.is_a?(Regexp)
@@ -383,13 +363,11 @@ module Itsi
         end
 
         def cors(**args)
-          raise "`cors` must be set inside a location block" if @parent.nil?
 
           @middleware[:cors] = args
         end
 
         def static_assets(**args)
-          raise "`static_assets` must be set inside a location block" if @parent.nil?
 
           root_dir = args[:root_dir] || "."
 
@@ -407,7 +385,6 @@ module Itsi
         end
 
         def file_server(**args)
-          raise "`file_server` must be set inside a location block" if @parent.nil?
 
           # Forward to static_assets for implementation
           puts "Note: file_server is an alias for static_assets"
@@ -458,7 +435,7 @@ module Itsi
             end
           end.join("|")
 
-          if parent.paths_from_parent && parent.paths_from_parent != "(?:/.*)"
+          if parent && parent.paths_from_parent && parent.paths_from_parent != "(?:/.*)"
             "#{parent.paths_from_parent}#{route_or_str != "" ? "(?:#{route_or_str})" : ""}"
           else
             route_or_str = "/#{route_or_str}" unless route_or_str.start_with?("/")
@@ -475,14 +452,19 @@ module Itsi
           chain = []
           node = self
           while node
+            if node.middleware[:app]&.[](:preloader)
+              node.middleware[:app][:app_proc] = node.middleware[:app].delete(:preloader).call
+            end
             chain << node
             node = node.parent
           end
           chain.reverse!
 
           merged = {}
+
           chain.each do |n|
             n.middleware.each do |k, v|
+
               merged[k] = v
             end
           end

@@ -139,7 +139,7 @@ impl ItsiGrpcRequest {
                 context: context.clone(),
                 start: Instant::now(),
                 parts,
-                stream: ItsiGrpcStream::new(response_channel.0, body.into_data_stream()),
+                stream: ItsiGrpcStream::new(response_channel.0, body.into_data_stream()).await,
             },
             response_channel.1,
         )

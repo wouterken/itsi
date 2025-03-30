@@ -2,7 +2,7 @@
 
 require 'bundler/gem_tasks'
 require 'minitest/test_task'
-require 'debug'
+
 # Ensure the nested gems' `lib` directories are included in the LOAD_PATH
 $LOAD_PATH.unshift(File.expand_path('scheduler/lib', __dir__))
 $LOAD_PATH.unshift(File.expand_path('server/lib', __dir__))

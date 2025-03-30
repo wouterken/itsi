@@ -6,7 +6,7 @@ use crate::{
         lifecycle_event::LifecycleEvent,
         listener::ListenerInfo,
         request_job::RequestJob,
-        signal::SIGNAL_HANDLER_CHANNEL,
+        signal::{SHUTDOWN_REQUESTED, SIGNAL_HANDLER_CHANNEL},
         thread_worker::{build_thread_workers, ThreadWorker},
     },
 };
@@ -241,6 +241,9 @@ impl SingleMode {
 
         let (shutdown_sender, _) = watch::channel(RunningPhase::Running);
         let thread = self.clone().start_monitors(thread_workers.clone());
+        if SHUTDOWN_REQUESTED.load(Ordering::SeqCst) {
+            return Ok(());
+        }
         runtime.block_on(
           async  {
               let server_params = self.server_config.server_params.read().clone();
@@ -254,6 +257,7 @@ impl SingleMode {
 
               for listener in tokio_listeners.iter() {
                   let mut lifecycle_rx = self.lifecycle_channel.subscribe();
+
                   let listener_info = Arc::new(listener.listener_info());
                   let self_ref = self.clone();
                   let listener = listener.clone();
@@ -399,7 +403,7 @@ impl SingleMode {
 
     /// Attempts to reload the config "live"
     /// Not that when running in single mode this will not unload
-    /// old code. If you need a clean restart, use the `restart` (SIGUSR2) method instead
+    /// old code. If you need a clean restart, use the `restart` (SIGHUP) method instead
     pub fn reload(&self) -> Result<()> {
         let should_reexec = self.server_config.clone().reload(false)?;
         if should_reexec {

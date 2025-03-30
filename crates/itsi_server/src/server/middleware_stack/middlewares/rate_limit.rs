@@ -92,22 +92,10 @@ impl MiddlewareLayer for RateLimit {
             let limit = self.requests;
 
             match limiter.check_limit(&rate_limit_key, limit, timeout).await {
-                Ok(_) => {
-                    // Rate limit not exceeded, allow request
-                    Ok(Either::Left(req))
-                }
-                Err(RateLimitError::RateLimitExceeded { limit, count }) => {
-                    // Rate limit exceeded, return error response
-                    tracing::info!(
-                        "Rate limit exceeded for key '{}': {}/{} requests",
-                        rate_limit_key,
-                        count,
-                        limit
-                    );
-                    Ok(Either::Right(
-                        self.error_response.to_http_response(&req).await,
-                    ))
-                }
+                Ok(_) => Ok(Either::Left(req)),
+                Err(RateLimitError::RateLimitExceeded { .. }) => Ok(Either::Right(
+                    self.error_response.to_http_response(&req).await,
+                )),
                 Err(e) => {
                     // Other error, log and allow request (fail open)
                     tracing::error!("Rate limiter error: {:?}", e);

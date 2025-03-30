@@ -28,7 +28,7 @@ module Itsi
       {
         "SERVER_SOFTWARE" => "Itsi",
         "SCRIPT_NAME" => script_name,
-        "REQUEST_METHOD" => method,
+        "REQUEST_METHOD" => request_method,
         "PATH_INFO" => path,
         "REQUEST_PATH" => path,
         "QUERY_STRING" => query_string,
@@ -49,10 +49,25 @@ module Itsi
         "rack.run_once" => false,
         "rack.hijack?" => true,
         "rack.multipart.buffer_size" => 16_384,
-        "rack.hijack" => build_hijack_proc
+        "rack.hijack" => method(:hijack)
       }.tap do |r|
         headers.each do |(k, v)|
-          r[RACK_HEADER_MAP[k]] = v
+          r[case k
+            when "content-type" then "CONTENT_TYPE"
+            when "content-length" then "CONTENT_LENGTH"
+            when "accept" then "HTTP_ACCEPT"
+            when "accept-encoding" then "HTTP_ACCEPT_ENCODING"
+            when "accept-language" then "HTTP_ACCEPT_LANGUAGE"
+            when "user-agent" then "HTTP_USER_AGENT"
+            when "referer" then "HTTP_REFERER"
+            when "origin" then "HTTP_ORIGIN"
+            when "cookie" then "HTTP_COOKIE"
+            when "authorization" then "HTTP_AUTHORIZATION"
+            when "x-forwarded-for" then "HTTP_X_FORWARDED_FOR"
+            when "x-forwarded-proto" then "HTTP_X_FORWARDED_PROTO"
+            else RACK_HEADER_MAP[k]
+            end
+          ] = v
         end
       end
     end
@@ -62,22 +77,20 @@ module Itsi
       response.respond(status: status, headers: headers, body: body, hijack: hijack, &blk)
     end
 
-    def build_hijack_proc
-      lambda do
-        self.hijacked = true
-        UNIXSocket.pair.yield_self do |(server_sock, app_sock)|
-          server_sock.autoclose = false
-          response.hijack(server_sock.fileno)
-          server_sock.sync = true
-          app_sock.sync = true
-          app_sock
-        end
+    def hijack
+      self.hijacked = true
+      UNIXSocket.pair.yield_self do |(server_sock, app_sock)|
+        server_sock.autoclose = false
+        self.response.hijack(server_sock.fileno)
+        server_sock.sync = true
+        app_sock.sync = true
+        app_sock
       end
     end
 
     def build_input_io
       case body
-      when nil then StringIO.new("")
+      when nil then EMPTY_IO
       when String then StringIO.new(body)
       when Array then File.open(body.first, "rb")
       else body
