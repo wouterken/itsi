@@ -61,6 +61,6 @@ end
 gem "itsi-scheduler", path: "../../gems/scheduler"
 gem "itsi-server", path: "../../gems/server"
 # gem "unicorn"
-# gem "iodine"
-# gem "falcon"
+gem "iodine"
+gem "falcon"
 # gem "puma"

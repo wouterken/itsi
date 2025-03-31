@@ -20,4 +20,6 @@ group :development, :test do
   gem 'rubocop', '~> 1.21'
   gem 'ruby-lsp'
   gem 'solargraph'
+  gem 'iodine'
+  gem 'falcon'
 end

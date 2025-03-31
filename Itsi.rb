@@ -11,7 +11,7 @@ env = ENV.fetch("APP_ENV") { ENV.fetch("RACK_ENV", "development") }
 # If more than 1, Itsi will be booted in Cluster mode
 workers ENV.fetch("ITSI_WORKERS") {
   require "etc"
-  env == "development" ? 1 : Etc.nprocessors
+  env == "development" ? 4 : Etc.nprocessors
 }
 
 # Number of threads to spawn per worker process
@@ -40,7 +40,8 @@ fiber_scheduler nil
 # end)
 # rackup_file "config.ru"
 
-watch "*.rb", [%w[bundle exec itsi reload]]
+auto_reload_config!
+
 location "/*" do
   get "" do |req|
     req.respond("Hello")
@@ -122,4 +123,4 @@ log_level :info
 # Log Format
 # Set this to be either :ansi or :json. If you leave it blank Itsi will try
 # and auto-detect the format based on the TTY environment.
-log_format :auto
+log_format :plain

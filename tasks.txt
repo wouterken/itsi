@@ -1,35 +1,78 @@
-Filters:
-- gRPC (Handlers).
-  - Read should be non-blocking.
-  - Support fall through and graceful routing
-  - Support gzip and compression flag
-  - Add reflection support
-  - Unary JSON support
-- Remove Github copies
-- Support all middleware at top level (And remove top-level app requirement, and gRPC can be top level app)
-
 Polish and Release (At Lake):
--- Fix server shutdown tests
--- Fix tests (Take advantage of above)
--- Config Improvements (Make ultra robust, fool proof, verbose errors). Refuse to restart or reload if config is invalid. Gather all errors before bailing.
--- Fix opaque error handling in middleware.
--- Consider switch to Anyhow where appropriate (or make own errors cleaner)
--- Implement Print routes command
--- Implement match route command.
+-- Interrupted gRPC stream can cause server hanging. Need better errors in JSON mode
+-- What can we do about:  export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
+-- Confirm headers has full set of add/remove/*append*
+-- Print routes
+-- Match route tester
+-- Static server command
 -- Offer password hash generation, and load from files for basic auth, api key, jwt.
--- Script name comes from location in hierarchy instead of params.
--- Request convenience functions (body JSON, body form-encoded)
--- Try (Again) to build rack env in Rust for perf bump
--- Nice Readme
--- New Tests for all filters
--- Revisit logging everywhere (Think long and hard about what we should and shouldn't log). Add lots of debug. Little info. Missing warnings and errors.
--- Parameterize EVERYTHING (socket params etc.)
--- No unwrap or except unless truly necessary.
--- Add notes on: PGGSSENCMODE="disable"
--- Optimize Rack hash creation
+-- Max body size. Look for other safety timeouts.
+-- Revamp error system (look at Anyhow):
+  Better internal errors (Break things on purpose. Make clear when specific middleware fails)
+
+-- Feature breakdown. For each feature make sure we have
+--- Ultra robust config.
+--- Documentation
+--- Tests.
+--- Debug Logging
+--- Parameters for everything
+--- No unwrap
+
+-- Faster/sleeker default app
+
+-- Script name comes from location in hierarchy instead of params, not a param.
+
+-- Fast:
+  - Request convenience functions (body JSON, body form-encoded, file uploads)
+  - Response convenience functions respond_json, respond_html, respond_file
+
+-- Add notes on: PGGSSENCMODE="disable" and OBJC_DISABLE_INITIALIZE_FORK_SAFETY=
+-- Better default Itsi-file
+
+-- Did you mean functionality inside config file parsing
+-- Support nil extension for static file serving
+-- Disable . for static file serving (by default)
+
+- Feature List:
+-- HTTP
+-- HTTP2
+-- TLS
+-- Websockets
+-- Hijack
+-- Callable
+-- Streaming Bodies
+-- Rate Limiter
+-- Auth JWT/Basic/API
+-- gRPC
+-- File Watcher
+-- Allow/Deny
+-- Cache control
+-- compression
+-- CORS
+-- etag
+-- Intrusion Protection
+-- Proxy
+-- Header changes (also support append, replace, remove)
+-- Endpoint
+-- Rackup
+-- Rack inline
+-- Static assets
+-- Redirect
+-- Logging
+-- Cluster
+-- Single
+-- Restart
+-- Stream body
+-- Thread high/low
+-- Unix Sockets
+-- Uneven request distribution (Retry central acceptor, core affinity)
+-- Mini apps, one-file sites.
 
 Later:
-- First class websockets
+- OTel
+- Optimize Hash creation for Rack
+- Image resizer
+- First class Rackless Websockets
 - Implement Simple Request timeout (non-fiber mode. Kill stuck threads. Default to nil)
 - Print out warning if we can detect a location block will never be hit.
 - Optimize: Avoid double encoding in compression filter if already compressed

@@ -9,7 +9,8 @@ module Itsi
 
       ITSI_DEFAULT_CONFIG_FILE = "Itsi.rb"
 
-      def self.save_argv!
+      def self.prep_exec!
+        binding.b
         @argv ||= ARGV[0...ARGV.index("--listeners")]
       end
 

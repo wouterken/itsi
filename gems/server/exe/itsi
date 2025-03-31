@@ -3,8 +3,9 @@
 
 require "itsi/server"
 require "optparse"
+require "debug"
 
-Itsi::Server::Config.save_argv!
+Itsi::Server::Config.prep_exec!
 
 options = {}
 
