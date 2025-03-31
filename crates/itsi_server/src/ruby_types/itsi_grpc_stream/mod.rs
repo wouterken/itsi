@@ -1,9 +1,4 @@
-use std::{
-    collections::HashMap,
-    os::fd::{AsRawFd, FromRawFd, IntoRawFd, OwnedFd},
-    sync::Arc,
-};
-
+use crate::prelude::*;
 use crate::server::{
     byte_frame::ByteFrame, serve_strategy::single_mode::RunningPhase, types::HttpResponse,
 };
@@ -11,7 +6,7 @@ use bytes::Bytes;
 use derive_more::Debug;
 use futures::stream::unfold;
 use http::{
-    header::{HeaderName, HeaderValue, CONTENT_TYPE},
+    header::{HeaderName, HeaderValue},
     HeaderMap, Response,
 };
 use http_body_util::{combinators::BoxBody, BodyDataStream, BodyExt, Empty, Full, StreamBody};
@@ -19,6 +14,12 @@ use hyper::body::{Frame, Incoming};
 use magnus::error::Result as MagnusResult;
 use nix::unistd::pipe;
 use parking_lot::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::{
+    collections::HashMap,
+    os::fd::{AsRawFd, FromRawFd, IntoRawFd, OwnedFd},
+    sync::Arc,
+};
 use tokio::{
     spawn,
     sync::{
@@ -27,12 +28,14 @@ use tokio::{
     },
 };
 use tokio_stream::{wrappers::ReceiverStream, StreamExt};
-use tracing::{error, info, warn};
+
+use super::itsi_grpc_call::CompressionAlgorithm;
 
 #[derive(Debug, Clone)]
 #[magnus::wrap(class = "Itsi::GrpcStream", free_immediately, size)]
 pub struct ItsiGrpcStream {
     pub inner: Arc<Mutex<ItsiGrpcStreamInner>>,
+    pub cancelled: Arc<AtomicBool>,
 }
 
 #[derive(Debug)]
@@ -41,6 +44,7 @@ pub struct ItsiGrpcStreamInner {
     pub buf: Vec<u8>,
     pub response_sender: Sender<ByteFrame>,
     pub response: Option<HttpResponse>,
+    pub response_headers: HeaderMap,
     trailer_tx: oneshot::Sender<HeaderMap>,
     trailer_rx: Option<oneshot::Receiver<HeaderMap>>,
 }
@@ -56,7 +60,7 @@ impl ItsiGrpcStreamInner {
             .map_err(|err| {
                 magnus::Error::new(
                     magnus::exception::exception(),
-                    format!("Error writing body {:?}", err),
+                    format!("Trying to write to closed stream: {:?}", err),
                 )
             })?;
         Ok(())
@@ -80,6 +84,10 @@ impl ItsiGrpcStreamInner {
                 format!("Error sending trailers {:?}", err),
             )
         })?;
+        Ok(())
+    }
+
+    pub fn close(&mut self) -> MagnusResult<()> {
         self.response_sender
             .blocking_send(ByteFrame::Empty)
             .map_err(|err| {
@@ -90,10 +98,28 @@ impl ItsiGrpcStreamInner {
             })?;
         Ok(())
     }
+
+    pub fn add_headers(&mut self, headers: HashMap<Bytes, Vec<Bytes>>) -> MagnusResult<()> {
+        for (name, values) in headers {
+            let header_name = HeaderName::from_bytes(&name).map_err(|e| {
+                itsi_error::ItsiError::InvalidInput(format!(
+                    "Invalid header name {:?}: {:?}",
+                    name, e
+                ))
+            })?;
+            for value in values {
+                let header_value = unsafe { HeaderValue::from_maybe_shared_unchecked(value) };
+                self.response_headers.insert(&header_name, header_value);
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl ItsiGrpcStream {
     pub async fn new(
+        compression_out: CompressionAlgorithm,
         response_sender: Sender<ByteFrame>,
         mut body: BodyDataStream<Incoming>,
     ) -> Self {
@@ -114,23 +140,39 @@ impl ItsiGrpcStream {
 
         let pipe_raw_fd = pipe_write.into_raw_fd();
 
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let cancelled_clone = cancelled.clone();
         spawn(async move {
             use std::io::Write;
             let mut write_end = unsafe { std::fs::File::from_raw_fd(pipe_raw_fd) };
             while let Some(Ok(body)) = body.next().await {
                 write_end.write_all(&body).unwrap();
             }
+            cancelled_clone.store(true, Ordering::SeqCst);
         });
 
+        let mut response_headers = HeaderMap::new();
+
+        match compression_out {
+            CompressionAlgorithm::None => (),
+            CompressionAlgorithm::Deflate => {
+                response_headers.insert("grpc-encoding", "deflate".parse().unwrap());
+            }
+            CompressionAlgorithm::Gzip => {
+                response_headers.insert("grpc-encoding", "gzip".parse().unwrap());
+            }
+        }
         ItsiGrpcStream {
             inner: Arc::new(Mutex::new(ItsiGrpcStreamInner {
                 buf: Vec::new(),
+                response_headers,
                 incoming_reader: Some(pipe_read),
                 response_sender,
                 response: Some(Response::new(BoxBody::new(Empty::new()))),
                 trailer_tx,
                 trailer_rx: Some(trailer_rx),
             })),
+            cancelled,
         }
     }
 
@@ -146,8 +188,20 @@ impl ItsiGrpcStream {
         self.inner.lock().flush()
     }
 
+    pub fn is_cancelled(&self) -> MagnusResult<bool> {
+        Ok(self.cancelled.load(Ordering::SeqCst))
+    }
+
     pub fn send_trailers(&self, trailers: HashMap<String, String>) -> MagnusResult<()> {
         self.inner.lock().send_trailers(trailers)
+    }
+
+    pub fn close(&self) -> MagnusResult<()> {
+        self.inner.lock().close()
+    }
+
+    pub fn add_headers(&self, headers: HashMap<Bytes, Vec<Bytes>>) -> MagnusResult<()> {
+        self.inner.lock().add_headers(headers)
     }
 
     pub async fn build_response(
@@ -158,9 +212,7 @@ impl ItsiGrpcStream {
     ) -> HttpResponse {
         let mut response = self.inner.lock().response.take().unwrap();
         let rx = self.inner.lock().trailer_rx.take().unwrap();
-        response
-            .headers_mut()
-            .append(CONTENT_TYPE, "application/grpc".parse().unwrap());
+        *response.headers_mut() = self.inner.lock().response_headers.clone();
         *response.body_mut() = if matches!(first_frame, ByteFrame::Empty) {
             BoxBody::new(Empty::new())
         } else if matches!(first_frame, ByteFrame::End(_)) {

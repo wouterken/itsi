@@ -4,7 +4,6 @@ DEFAULT_INDEX = IO.read("#{__dir__}/index.html").freeze
 DEFAULT_BINDS = ["http://0.0.0.0:3000"].freeze
 DEFAULT_APP = lambda {
   require "json"
-  require "itsi/scheduler"
   Itsi.log_warn "No config.ru or Itsi.rb app detected. Running default app."
   Itsi::Server::RackInterface.for(lambda do |env|
     headers, body = \

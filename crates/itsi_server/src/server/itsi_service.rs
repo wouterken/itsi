@@ -5,6 +5,7 @@ use super::request_job::RequestJob;
 use super::serve_strategy::single_mode::RunningPhase;
 use super::types::HttpRequest;
 use super::types::HttpResponse;
+use crate::prelude::*;
 use crate::ruby_types::itsi_server::itsi_server_config::ServerParams;
 use chrono;
 use chrono::Local;
@@ -136,6 +137,7 @@ impl Service<HttpRequest> for ItsiService {
     fn call(&self, req: HttpRequest) -> Self::Future {
         let params = self.server_params.clone();
         let self_clone = self.clone();
+        debug!("Incoming request {:?}", req.uri());
         Box::pin(async move {
             let mut req = req;
             let mut resp: Option<HttpResponse> = None;

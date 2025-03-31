@@ -1,7 +1,7 @@
 use magnus::{value::Lazy, Module, RClass, RModule};
 
 pub mod itsi_body_proxy;
-pub mod itsi_grpc_request;
+pub mod itsi_grpc_call;
 pub mod itsi_grpc_response;
 pub mod itsi_grpc_stream;
 pub mod itsi_http_request;
@@ -36,9 +36,9 @@ pub static ITSI_BODY_PROXY: Lazy<RClass> = Lazy::new(|ruby| {
         .unwrap()
 });
 
-pub static ITSI_GRPC_REQUEST: Lazy<RClass> = Lazy::new(|ruby| {
+pub static ITSI_GRPC_CALL: Lazy<RClass> = Lazy::new(|ruby| {
     ruby.get_inner(&ITSI_MODULE)
-        .define_class("GrpcRequest", ruby.class_object())
+        .define_class("GrpcCall", ruby.class_object())
         .unwrap()
 });
 

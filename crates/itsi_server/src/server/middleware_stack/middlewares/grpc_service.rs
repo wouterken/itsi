@@ -1,6 +1,6 @@
 use super::MiddlewareLayer;
 use crate::{
-    ruby_types::itsi_grpc_request::ItsiGrpcRequest,
+    ruby_types::itsi_grpc_call::ItsiGrpcRequest,
     server::{
         itsi_service::RequestContext,
         types::{HttpRequest, HttpResponse},
@@ -41,7 +41,7 @@ impl MiddlewareLayer for GrpcService {
         // Extract gRPC method and service names from the path
         let path = req.uri().path();
         let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
-        
+
         if parts.len() < 2 {
             return Ok(Either::Right(HttpResponse::new(StatusCode::BAD_REQUEST)));
         }
@@ -56,17 +56,12 @@ impl MiddlewareLayer for GrpcService {
         )?;
 
         // Create gRPC request and process it
-        let (grpc_req, _) = ItsiGrpcRequest::new(
-            req,
-            context,
-            method_name,
-            service_name,
-            rpc_desc,
-        ).await;
+        let (grpc_req, _) =
+            ItsiGrpcRequest::new(req, context, method_name, service_name, rpc_desc).await;
 
         grpc_req
             .process(context.ruby(), self.service.clone())
             .map_err(|e| e.into())
             .map(|_| Either::Right(HttpResponse::new(StatusCode::OK)))
     }
-} 
+}

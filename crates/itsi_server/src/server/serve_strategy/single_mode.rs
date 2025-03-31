@@ -313,6 +313,9 @@ impl SingleMode {
               }
 
               while let Some(_res) = listener_task_set.join_next().await {}
+              
+              // Explicitly drop all listeners to ensure file descriptors are released
+              drop(tokio_listeners);
 
               Ok::<(), ItsiError>(())
           })?;

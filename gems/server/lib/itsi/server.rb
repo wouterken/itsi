@@ -3,7 +3,8 @@
 require_relative "server/version"
 require_relative "server/itsi_server"
 require_relative "server/rack_interface"
-require_relative "server/grpc_interface"
+require_relative "server/grpc/grpc_interface"
+require_relative "server/grpc/grpc_call"
 require_relative "server/scheduler_interface"
 require_relative "server/signal_trap"
 require_relative "server/rack/handler/itsi"
@@ -22,7 +23,7 @@ module Itsi
         !!@running
       end
 
-      def start_in_background_thread(cli_params={}, itsi_file = Itsi::Server::Config.config_file_path, &blk)
+      def start_in_background_thread(cli_params = {}, itsi_file = Itsi::Server::Config.config_file_path, &blk)
         @background_thread = start(cli_params, itsi_file, background: true, &blk)
       end
 
@@ -33,6 +34,7 @@ module Itsi
           write_pid
           @running = server
           server.start
+          @running = false
           Signal.trap(:INT, previous_handler)
           server
         end
@@ -41,7 +43,6 @@ module Itsi
 
       def stop_background_thread
         @running&.stop
-        @running = nil
         @background_thread&.join
       end
 
@@ -63,7 +64,7 @@ module Itsi
       def reload
         return unless pid = get_pid
 
-        Process.kill(:USR2, pid)
+        Process.kill(:HUP, pid)
       end
 
       def restart
@@ -95,7 +96,7 @@ module Itsi
       def status
         return unless pid = get_pid
 
-        Process.kill(:INFO, pid)
+        Process.kill(:USR2, pid)
       end
     end
   end

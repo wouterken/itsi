@@ -17,7 +17,7 @@ use tokio::net::{unix, TcpStream, UnixStream};
 use tokio::sync::watch::Receiver;
 use tokio_rustls::TlsAcceptor;
 use tokio_stream::StreamExt;
-use tracing::error;
+use tracing::{debug, error};
 
 pub(crate) enum Listener {
     Tcp(TcpListener),
@@ -31,6 +31,15 @@ pub(crate) enum TokioListener {
     TcpTls(TokioTcpListener, ItsiTlsAcceptor),
     Unix(TokioUnixListener),
     UnixTls(TokioUnixListener, ItsiTlsAcceptor),
+}
+
+impl Drop for TokioListener {
+    fn drop(&mut self) {
+        // This explicit Drop implementation helps ensure that the underlying file
+        // descriptors are properly closed when a TokioListener is dropped.
+        // The actual resource cleanup is handled by the underlying Tokio types.
+        debug!("TokioListener dropped");
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -393,7 +402,6 @@ fn connect_tcp_socket(addr: IpAddr, port: u16) -> Result<TcpListener> {
     };
     let socket = Socket::new(domain, Type::STREAM, Some(Protocol::TCP))?;
     let socket_address: SocketAddr = SocketAddr::new(addr, port);
-    socket.set_reuse_port(true).ok();
     socket.set_reuse_address(true).ok();
     socket.set_nonblocking(true).ok();
     socket.set_nodelay(true).ok();

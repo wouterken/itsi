@@ -127,14 +127,28 @@ module Itsi
           end
         end
 
-        def grpc(*handlers, **)
+        def grpc(*handlers, reflection: true, **)
           if @middleware[:app] && @middleware[:app][:request_type].to_s != "grpc"
             raise "App has already been set. You can use only one of `run` and `rackup_file` or `grpc` per location"
           end
+
+          if reflection
+            grpc_reflection(handlers)
+          end
+
           handlers.each do |handler|
             location("#{handler.class.service_name}*") do
               @middleware[:app] = { preloader: ->{  Itsi::Server::GrpcInterface.for(handler) }, request_type: "grpc" }
             end
+          end
+        end
+
+        def grpc_reflection(handlers)
+          @grpc_reflected_services ||= []
+          @grpc_reflected_services.concat(handlers)
+
+          location(["grpc.reflection.v1alpha.ServerReflection/ServerReflectionInfo", "grpc.reflection.v1.ServerReflection/ServerReflectionInfo"]) do
+            @middleware[:app] = { preloader: ->{ Itsi::Server::GrpcInterface.reflection_for(handlers) }, request_type: "grpc" }
           end
         end
 

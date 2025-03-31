@@ -331,7 +331,12 @@ impl ClusterMode {
             }
           }
         });
-
+        self.server_config
+            .server_params
+            .write()
+            .listeners
+            .lock()
+            .drain(..);
         Ok(())
     }
 }

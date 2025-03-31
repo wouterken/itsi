@@ -24,7 +24,7 @@ use tokio::{runtime::Builder as RuntimeBuilder, sync::watch};
 use tracing::instrument;
 
 use crate::ruby_types::{
-    itsi_grpc_request::ItsiGrpcRequest, itsi_http_request::ItsiHttpRequest,
+    itsi_grpc_call::ItsiGrpcCall, itsi_http_request::ItsiHttpRequest,
     itsi_server::itsi_server_config::ServerParams, ITSI_SERVER,
 };
 
@@ -259,7 +259,7 @@ impl ThreadWorker {
                                     *ID_SCHEDULE,
                                     (app_proc.as_value(), request),
                                 ) {
-                                    ItsiGrpcRequest::internal_error(ruby, response, err)
+                                    ItsiGrpcCall::internal_error(ruby, response, err)
                                 }
                             }
                             RequestJob::Shutdown => return true,

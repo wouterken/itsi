@@ -23,9 +23,8 @@ OptionParser.new do |opts|
     options[:threads] = t
   end
 
-  opts.on("-mtr", "--multithreaded-reactor true/false", String,
-          "Use a multithreaded reactor (default: true)") do |mtr|
-    options[:multithreaded_reactor] = mtr.to_s == "true"
+  opts.on("--[no-]multithreaded-reactor", "Use a multithreaded reactor") do |mtr|
+    options[:multithreaded_reactor] = mtr
   end
 
   opts.on("-r", "--rackup_file FILE", String, "Rackup file to use (default: config.ru)") do |rf|
@@ -118,7 +117,6 @@ OptionParser.new do |opts|
     options[:listeners] = listeners
   end
 end.parse!
-
 
 case (command = ARGV.pop)
 when "init"
