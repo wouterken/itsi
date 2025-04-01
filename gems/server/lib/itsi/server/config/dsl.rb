@@ -57,7 +57,6 @@ module Itsi
           instance_exec(&block)
         end
 
-
         def workers(workers)
           raise "Workers must be set at the root" unless @parent.nil?
 
@@ -123,22 +122,21 @@ module Itsi
           app_proc ||= blk
 
           location(route, methods: [method]) do
-            @middleware[:app] = { preloader: ->{ app_proc } }
+            @middleware[:app] = { preloader: -> { app_proc } }
           end
         end
 
-        def grpc(*handlers, reflection: true, **)
+        def grpc(*handlers, reflection: true, **, &blk)
           if @middleware[:app] && @middleware[:app][:request_type].to_s != "grpc"
             raise "App has already been set. You can use only one of `run` and `rackup_file` or `grpc` per location"
           end
 
-          if reflection
-            grpc_reflection(handlers)
-          end
+          grpc_reflection(handlers) if reflection
 
           handlers.each do |handler|
-            location("#{handler.class.service_name}*") do
-              @middleware[:app] = { preloader: ->{  Itsi::Server::GrpcInterface.for(handler) }, request_type: "grpc" }
+            location(Regexp.new("#{Regexp.escape(handler.class.service_name)}/(?:#{handler.class.rpc_descs.keys.map(&:to_s).join("|")})")) do
+              @middleware[:app] = { preloader: -> { Itsi::Server::GrpcInterface.for(handler) }, request_type: "grpc" }
+              instance_exec(&blk)
             end
           end
         end
@@ -147,20 +145,22 @@ module Itsi
           @grpc_reflected_services ||= []
           @grpc_reflected_services.concat(handlers)
 
-          location(["grpc.reflection.v1alpha.ServerReflection/ServerReflectionInfo", "grpc.reflection.v1.ServerReflection/ServerReflectionInfo"]) do
-            @middleware[:app] = { preloader: ->{ Itsi::Server::GrpcInterface.reflection_for(handlers) }, request_type: "grpc" }
+          location(["grpc.reflection.v1alpha.ServerReflection/ServerReflectionInfo",
+                    "grpc.reflection.v1.ServerReflection/ServerReflectionInfo"]) do
+            @middleware[:app] = { preloader: lambda {
+              Itsi::Server::GrpcInterface.reflection_for(handlers)
+            }, request_type: "grpc" }
           end
         end
 
         def run(app, sendfile: true)
-          @middleware[:app] = { preloader: ->{ Itsi::Server::RackInterface.for(app) }, sendfile: sendfile }
+          @middleware[:app] = { preloader: -> { Itsi::Server::RackInterface.for(app) }, sendfile: sendfile }
         end
 
         def rackup_file(rackup_file)
-
           raise "Rackup file #{rackup_file} doesn't exist" unless File.exist?(rackup_file)
 
-          @middleware[:app] = { preloader: ->{ Itsi::Server::RackInterface.for(rackup_file) } }
+          @middleware[:app] = { preloader: -> { Itsi::Server::RackInterface.for(rackup_file) } }
         end
 
         def include(path)
@@ -210,9 +210,9 @@ module Itsi
 
         def auto_reload_config!
           if ENV["BUNDLE_BIN_PATH"]
-            watch 'Itsi.rb', [%w[bundle exec itsi restart]]
+            watch "Itsi.rb", [%w[bundle exec itsi restart]]
           else
-            watch 'Itsi.rb', [%w[itsi restart]]
+            watch "Itsi.rb", [%w[itsi restart]]
           end
         end
 
@@ -305,67 +305,54 @@ module Itsi
         end
 
         def controller(controller)
-
           @controller = controller
         end
 
         def auth_basic(**args)
-
           @middleware[:auth_basic] = args
         end
 
         def redirect(**args)
-
           @middleware[:redirect] = args
         end
 
         def proxy(**args)
-
           @middleware[:proxy] = args
         end
 
         def auth_jwt(**args)
-
           @middleware[:auth_jwt] = args
         end
 
         def auth_api_key(**args)
-
           @middleware[:auth_api_key] = args
         end
 
         def compress(**args)
-
           @middleware[:compression] = args
         end
 
         def request_headers(**args)
-
           @middleware[:request_headers] = args
         end
 
         def response_headers(**args)
-
           @middleware[:response_headers] = args
         end
 
         def rate_limit(**args)
-
           @middleware[:rate_limit] = args
         end
 
         def cache_control(**args)
-
           @middleware[:cache_control] = args
         end
 
         def etag(**args)
-
           @middleware[:etag] = args
         end
 
         def intrusion_protection(**args)
-
           args[:banned_url_patterns] = Array(args[:banned_url_patterns]).map do |pattern|
             if pattern.is_a?(Regexp)
               pattern.source
@@ -377,12 +364,10 @@ module Itsi
         end
 
         def cors(**args)
-
           @middleware[:cors] = args
         end
 
         def static_assets(**args)
-
           root_dir = args[:root_dir] || "."
 
           if !File.exist?(root_dir)
@@ -399,7 +384,6 @@ module Itsi
         end
 
         def file_server(**args)
-
           # Forward to static_assets for implementation
           puts "Note: file_server is an alias for static_assets"
           static_assets(**args)
@@ -478,7 +462,6 @@ module Itsi
 
           chain.each do |n|
             n.middleware.each do |k, v|
-
               merged[k] = v
             end
           end

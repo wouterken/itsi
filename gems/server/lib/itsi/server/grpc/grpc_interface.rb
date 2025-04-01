@@ -29,32 +29,43 @@ module Itsi
       end
 
       def handle_request(active_call)
-        active_call.rpc_desc = service_class.rpc_descs[active_call.method_name]
+        unless (active_call.rpc_desc = service_class.rpc_descs[active_call.method_name])
+          active_call.stream.write("\n")
+          active_call.send_status(13, "Method not found")
+          active_call.close
+          return
+        end
 
         active_call.send_initial_metadata(
           {
             "grpc-accept-encoding" => "gzip, deflate, identity",
             "content-type" => active_call.json? ? "application/json" : "application/grpc"
-          })
+          }
+        )
 
-        if active_call.bidi_streamer?
-          handle_bidi_streaming(active_call)
-        elsif active_call.client_streamer?
-          handle_client_streaming(active_call)
-        elsif active_call.server_streamer?
-          handle_server_streaming(active_call)
-        elsif active_call.request_response?
-          handle_unary(active_call)
+        begin
+          if active_call.bidi_streamer?
+            handle_bidi_streaming(active_call)
+          elsif active_call.client_streamer?
+            handle_client_streaming(active_call)
+          elsif active_call.server_streamer?
+            handle_server_streaming(active_call)
+          elsif active_call.request_response?
+            handle_unary(active_call)
+          end
+          active_call.send_status(0, "Success")
+        rescue Google::Protobuf::ParseError => e
+          active_call.send_empty
+          active_call.send_status(3, e.message)
+        rescue DeadlineExceeded => e
+          active_call.send_empty
+          active_call.send_status(4, e.message)
+        rescue StandardError => e
+          active_call.send_empty
+          active_call.send_status(13, e.message)
         end
-        active_call.send_status(0, "Success")
-      rescue Google::Protobuf::ParseError => e
-        active_call.send_status(3, e.message)
-      rescue DeadlineExceeded => e
-        active_call.send_status(4, e.message)
       rescue StandardError => e
-        puts e.message
-        puts e.backtrace
-        active_call.send_status(13, e.message)
+        Itsi.log_warn("Unhandled error in grpc_interface: #{e.message}")
       ensure
         active_call.close
       end

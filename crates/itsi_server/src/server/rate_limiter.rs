@@ -17,7 +17,6 @@ pub enum RateLimitError {
     RateLimitExceeded { limit: u64, count: u64 },
     LockError,
     ConnectionTimeout,
-    // Other error variants as needed.
 }
 
 impl From<RedisError> for RateLimitError {

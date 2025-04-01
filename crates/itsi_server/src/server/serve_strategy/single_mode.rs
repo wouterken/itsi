@@ -234,7 +234,6 @@ impl SingleMode {
         })?;
 
         info!(
-            pid = format!("{}", Pid::this()),
             threads = thread_workers.len(),
             binds = format!("{:?}", self.server_config.server_params.read().binds)
         );
@@ -313,7 +312,7 @@ impl SingleMode {
               }
 
               while let Some(_res) = listener_task_set.join_next().await {}
-              
+
               // Explicitly drop all listeners to ensure file descriptors are released
               drop(tokio_listeners);
 

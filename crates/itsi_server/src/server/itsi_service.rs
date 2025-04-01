@@ -133,7 +133,6 @@ impl Service<HttpRequest> for ItsiService {
     type Error = ItsiError;
     type Future = Pin<Box<dyn Future<Output = itsi_error::Result<HttpResponse>> + Send>>;
 
-    // This is called once per incoming Request.
     fn call(&self, req: HttpRequest) -> Self::Future {
         let params = self.server_params.clone();
         let self_clone = self.clone();

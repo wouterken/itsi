@@ -161,7 +161,7 @@ impl ServerParams {
             let bind_to_fd_map: HashMap<String, i32> = serde_json::from_str(&preexisting_listeners)
                 .map_err(|e| {
                     magnus::Error::new(
-                        magnus::exception::exception(),
+                        magnus::exception::standard_error(),
                         format!("Invalid listener info: {}", e),
                     )
                 })?;
@@ -316,13 +316,13 @@ impl ItsiServerConfig {
             .map(|(str, fd)| {
                 let dupped_fd = dup(*fd).map_err(|errno| {
                     magnus::Error::new(
-                        magnus::exception::exception(),
+                        magnus::exception::standard_error(),
                         format!("Errno {} while trying to dup {}", errno, fd),
                     )
                 })?;
                 Self::clear_cloexec(dupped_fd).map_err(|e| {
                     magnus::Error::new(
-                        magnus::exception::exception(),
+                        magnus::exception::standard_error(),
                         format!("Failed to clear cloexec flag for fd {}: {}", dupped_fd, e),
                     )
                 })?;
@@ -345,7 +345,7 @@ impl ItsiServerConfig {
             serde_json::to_string(&self.server_params.read().listener_info.lock().clone())
                 .map_err(|e| {
                     magnus::Error::new(
-                        magnus::exception::exception(),
+                        magnus::exception::standard_error(),
                         format!("Invalid listener info: {}", e),
                     )
                 })?;

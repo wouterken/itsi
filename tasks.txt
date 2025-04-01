@@ -1,43 +1,36 @@
 Polish and Release (At Lake):
--- Interrupted gRPC stream can cause server hanging. Need better errors in JSON mode
--- What can we do about:  export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
--- Confirm headers has full set of add/remove/*append*
--- Print routes
--- Match route tester
--- Static server command
+-- Use route enum instead of regexp matches
+-- Disable . files for static file serving (by default). Allow via option
+-- CLI auto-completions
+-- Special case, .html route match, also matches nil if try_html_extension == true)
+-- Default error pages (Useful for proxy and SSR, consider if we can allow app to use these too?)
+-- Static server command (has sane and safe defaults)
 -- Offer password hash generation, and load from files for basic auth, api key, jwt.
--- Max body size. Look for other safety timeouts.
+-- Script name derived from location in hierarchy instead of a static param.
+-- Max body size. Optional timeout for itsi service. Optional force kill of thread.
 -- Revamp error system (look at Anyhow):
-  Better internal errors (Break things on purpose. Make clear when specific middleware fails)
+   Better internal errors (Break things on purpose and see how quickly we can detect where. Make clear when specific middleware fails)
+-- Establish pattern for separate files for dsl feature, and accumulated errors. "Did you mean" function.
+-- Faster/slicker default app, and static file serve page.
+-- Performant Request convenience functions (body JSON, body form-encoded, file uploads)-- Performant Response convenience functions respond_json, respond_html, respond_file
 
 -- Feature breakdown. For each feature make sure we have
---- Ultra robust config.
---- Documentation
+--- Clean Code
+--- Ultra robust config, with sane and safe defaults.
+--- Complete Documentation (Readme + Blog)
 --- Tests.
 --- Debug Logging
 --- Parameters for everything
 --- No unwrap
+--- Beautiful LSP and did you mean integration
 
--- Faster/sleeker default app
-
--- Script name comes from location in hierarchy instead of params, not a param.
-
--- Fast:
-  - Request convenience functions (body JSON, body form-encoded, file uploads)
-  - Response convenience functions respond_json, respond_html, respond_file
-
--- Add notes on: PGGSSENCMODE="disable" and OBJC_DISABLE_INITIALIZE_FORK_SAFETY=
--- Better default Itsi-file
-
--- Did you mean functionality inside config file parsing
--- Support nil extension for static file serving
--- Disable . for static file serving (by default)
 
 - Feature List:
 -- HTTP
 -- HTTP2
 -- TLS
 -- Websockets
+-- Headers (Replace is equal to remove plus append)
 -- Hijack
 -- Callable
 -- Streaming Bodies
@@ -67,6 +60,10 @@ Polish and Release (At Lake):
 -- Unix Sockets
 -- Uneven request distribution (Retry central acceptor, core affinity)
 -- Mini apps, one-file sites.
+-- Lsp and Did you mean
+-- Author Final default Itsi-file
+-- Add notes on: PGGSSENCMODE="disable" and OBJC_DISABLE_INITIALIZE_FORK_SAFETY=
+
 
 Later:
 - OTel

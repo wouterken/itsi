@@ -5,7 +5,7 @@ require "itsi/server"
 require "optparse"
 require "debug"
 
-Itsi::Server::Config.prep_exec!
+Itsi::Server::Config.prep_reexec!
 
 options = {}
 
@@ -119,12 +119,19 @@ OptionParser.new do |opts|
   end
 end.parse!
 
-case (command = ARGV.pop)
+case (command = ARGV.shift)
 when "init"
   Itsi::Server::Config.write_default
   exit(0)
-when "reload", "restart", "down", "up", "add_worker", "remove_worker", "status"
-  Itsi::Server.send(command)
+when "reload", "restart", "down", "up", "add_worker", "remove_worker", "status", "routes"
+  method = Itsi::Server.method(command)
+  if method.arity == 1
+    Itsi::Server.send(command)
+  else
+    Itsi::Server.send(command, options)
+  end
+when "test_route"
+  Itsi::Server.test_route(ARGV.shift, options)
 when nil, "start", "serve"
   Itsi::Server.start(options)
 else

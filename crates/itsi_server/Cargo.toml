@@ -89,9 +89,3 @@ tracing = "0.1.41"
 url = "2.5.4"
 uuid = "1.16.0"
 md5 = "0.7.0"
-
-
-[profile.release]
-opt-level = 3
-codegen-units = 1
-lto = "fat"

@@ -7,6 +7,7 @@ require_relative "server/grpc/grpc_interface"
 require_relative "server/grpc/grpc_call"
 require_relative "server/scheduler_interface"
 require_relative "server/signal_trap"
+require_relative "server/route_tester"
 require_relative "server/rack/handler/itsi"
 require_relative "server/config"
 require_relative "standard_headers"
@@ -17,13 +18,15 @@ module Itsi
   class Server
     extend RackInterface
     extend SchedulerInterface
+    extend RouteTester
 
     class << self
       def running?
         !!@running
       end
 
-      def start_in_background_thread(cli_params = {}, itsi_file = Itsi::Server::Config.config_file_path, &blk)
+      def start_in_background_thread(cli_params = {},
+                                     itsi_file = Itsi::Server::Config.config_file_path(cli_params[:config_file]), &blk)
         @background_thread = start(cli_params, itsi_file, background: true, &blk)
       end
 
@@ -97,6 +100,33 @@ module Itsi
         return unless pid = get_pid
 
         Process.kill(:USR2, pid)
+      end
+
+      def load_route_middleware_stack(cli_params)
+        Config.build_config(cli_params, Itsi::Server::Config.config_file_path(cli_params[:config_file_path]))[
+          "middleware_loader"
+          ][]
+      end
+
+      def test_route(route_str, cli_params = {})
+        matched_route = load_route_middleware_stack(cli_params).find do |route|
+          route["route"] =~ route_str
+        end
+        if matched_route
+          print_route(route_str, matched_route)
+        else
+          puts "No matching route found"
+        end
+      end
+
+      def routes(cli_params = {})
+        load_route_middleware_stack(cli_params).each do |stack|
+          routes = explode_route_pattern(stack["route"].source)
+          routes.each do |route|
+            print_route(route, stack)
+          end
+        end
+        puts "─" * 76
       end
     end
   end

@@ -65,7 +65,7 @@ impl ItsiScheduler {
     pub fn wake(&self) -> MagnusResult<()> {
         self.waker.lock().wake().map_err(|_| {
             magnus::Error::new(
-                magnus::exception::exception(),
+                magnus::exception::standard_error(),
                 "Failed to wake the scheduler",
             )
         })?;

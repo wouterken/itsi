@@ -1,4 +1,4 @@
-use super::itsi_grpc_stream::ItsiGrpcStream;
+use super::itsi_grpc_response_stream::ItsiGrpcResponseStream;
 use crate::prelude::*;
 use crate::server::{
     byte_frame::ByteFrame,
@@ -45,7 +45,7 @@ pub struct ItsiGrpcCall {
     #[debug(skip)]
     pub context: RequestContext,
     #[debug(skip)]
-    pub stream: ItsiGrpcStream,
+    pub stream: ItsiGrpcResponseStream,
 }
 
 #[derive(Debug, Clone)]
@@ -63,14 +63,14 @@ impl ItsiGrpcCall {
 
     pub fn method_name(&self) -> MagnusResult<Symbol> {
         let path = self.parts.uri.path();
-        let method_name = path.split('/').nth_back(0).unwrap().to_string();
+        let method_name = path.split('/').nth_back(0).unwrap();
         let snake_case_method_name = METHOD_NAME_REGEX
-            .replace_all(&method_name, "${1}_${2}")
+            .replace_all(method_name, "${1}_${2}")
             .to_lowercase();
         Ok(Symbol::new(snake_case_method_name))
     }
 
-    pub fn stream(&self) -> MagnusResult<ItsiGrpcStream> {
+    pub fn stream(&self) -> MagnusResult<ItsiGrpcResponseStream> {
         Ok(self.stream.clone())
     }
 
@@ -113,7 +113,7 @@ impl ItsiGrpcCall {
         Ok(())
     }
 
-    pub fn internal_error(_ruby: &Ruby, stream: ItsiGrpcStream, err: Error) {
+    pub fn internal_error(_ruby: &Ruby, stream: ItsiGrpcResponseStream, err: Error) {
         if let Some(rb_err) = err.value() {
             print_rb_backtrace(rb_err);
             stream.internal_server_error(err.to_string());
@@ -211,7 +211,6 @@ impl ItsiGrpcCall {
     }
 
     fn decompress_gzip(input: Bytes) -> MagnusResult<Bytes> {
-        info!("Decompressing gzip input {:?}", input);
         let cursor = Cursor::new(input);
         let mut decoder = GzipDecoder::new(cursor);
 
@@ -231,11 +230,11 @@ impl ItsiGrpcCall {
     }
 
     fn compress_gzip(input: Bytes) -> MagnusResult<Bytes> {
+        let mut output = Vec::with_capacity(input.len() / 2);
         let cursor = Cursor::new(input);
         let mut encoder = GzipEncoder::new(cursor);
 
         let result = block_on(async {
-            let mut output = Vec::new();
             encoder.read_to_end(&mut output).await?;
             Ok::<Bytes, std::io::Error>(output.into())
         })
@@ -250,11 +249,11 @@ impl ItsiGrpcCall {
     }
 
     fn compress_deflate(input: Bytes) -> MagnusResult<Bytes> {
+        let mut output = Vec::with_capacity(input.len() / 2);
         let cursor = Cursor::new(input);
         let mut encoder = ZlibEncoder::new(cursor);
 
         let result = block_on(async {
-            let mut output = Vec::new();
             encoder.read_to_end(&mut output).await?;
             Ok::<Bytes, std::io::Error>(output.into())
         })
@@ -310,7 +309,7 @@ impl ItsiGrpcCall {
                 compression_out: compression_out.clone(),
                 compression_in,
                 parts,
-                stream: ItsiGrpcStream::new(
+                stream: ItsiGrpcResponseStream::new(
                     compression_out,
                     response_channel.0,
                     body.into_data_stream(),
@@ -323,18 +322,11 @@ impl ItsiGrpcCall {
 }
 
 fn parse_grpc_timeout(timeout_str: &str) -> Result<f64, &'static str> {
-    // Must have at least 2 characters (1 digit + 1 unit)
     if timeout_str.len() < 2 {
         return Err("Timeout string too short");
     }
-
-    // Last character is the unit
     let (value_str, unit) = timeout_str.split_at(timeout_str.len() - 1);
-
-    // Parse the numeric part
     let value: u64 = value_str.parse().map_err(|_| "Invalid timeout value")?;
-
-    // Convert to seconds based on unit
     let duration_secs = match unit {
         "n" => value as f64 / 1_000_000_000.0, // nanoseconds
         "u" => value as f64 / 1_000_000.0,     // microseconds

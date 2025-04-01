@@ -50,7 +50,7 @@ impl ItsiBodyProxy {
             if let Some(chunk) = block_on(stream.next()) {
                 let chunk = chunk.map_err(|err| {
                     magnus::Error::new(
-                        magnus::exception::exception(),
+                        magnus::exception::standard_error(),
                         format!("Error reading body {:?}", err),
                     )
                 })?;
@@ -82,7 +82,7 @@ impl ItsiBodyProxy {
             if let Some(chunk) = block_on(stream.next()) {
                 let chunk = chunk.map_err(|err| {
                     magnus::Error::new(
-                        magnus::exception::exception(),
+                        magnus::exception::standard_error(),
                         format!("Error reading body {:?}", err),
                     )
                 })?;
@@ -107,7 +107,7 @@ impl ItsiBodyProxy {
         while let Some(chunk) = block_on(stream.next()) {
             let chunk = chunk.map_err(|err| {
                 magnus::Error::new(
-                    magnus::exception::exception(),
+                    magnus::exception::standard_error(),
                     format!("Error reading body {:?}", err),
                 )
             })?;
@@ -129,7 +129,7 @@ impl ItsiBodyProxy {
     fn verify_open(&self) -> MagnusResult<()> {
         if self.closed.load(atomic::Ordering::SeqCst) {
             return Err(magnus::Error::new(
-                magnus::exception::exception(),
+                magnus::exception::standard_error(),
                 "Body stream is closed",
             ));
         }

@@ -9,16 +9,30 @@ module Itsi
 
       ITSI_DEFAULT_CONFIG_FILE = "Itsi.rb"
 
-      def self.prep_exec!
-        binding.b
+      def self.prep_reexec!
         @argv ||= ARGV[0...ARGV.index("--listeners")]
+
+        auto_suppress_fork_darwin_fork_safety_warnings = [
+          ENV["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"].nil? || ENV["PGGSSENCMODE"].nil?,
+          RUBY_PLATFORM =~ /darwin/,
+          !ENV.key?("ITSI_DISABLE_AUTO_DISABLE_DARWIN_FORK_SAFETY_WARNINGS"),
+          $PROGRAM_NAME =~ /itsi$/
+        ].all?
+        return unless auto_suppress_fork_darwin_fork_safety_warnings
+
+        env = ENV.to_h.merge("OBJC_DISABLE_INITIALIZE_FORK_SAFETY" => "YES", "PGGSSENCMODE" => "YES")
+        if ENV["BUNDLE_BIN_PATH"]
+          exec env, "bundle", "exec", $PROGRAM_NAME, *@argv
+        else
+          exec env, $PROGRAM_NAME, *@argv
+        end
       end
 
       # The configuration used when launching the Itsi server are evaluated in the following precedence:
       # 1. CLI Args.
       # 2. Itsi.rb file.
       # 3. Default values.
-      def self.build_config(args, config_file_path, builder_proc)
+      def self.build_config(args, config_file_path, builder_proc = nil)
         args.transform_keys!(&:to_sym)
 
         itsifile_config = \

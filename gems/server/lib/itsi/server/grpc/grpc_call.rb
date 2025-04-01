@@ -1,17 +1,17 @@
 # frozen_string_literal: true
 
-require 'stringio'
+require "stringio"
 
 module Itsi
   class GrpcCall
     attr_accessor :rpc_desc
 
     def input_stream?
-      @input_stream ||= @rpc_desc.input.is_a?(GRPC::RpcDesc::Stream) || false
+      @input_stream ||= @rpc_desc&.input&.is_a?(GRPC::RpcDesc::Stream) || false
     end
 
     def output_stream?
-      @output_stream ||= @rpc_desc.output.is_a?(GRPC::RpcDesc::Stream) || false
+      @output_stream ||= @rpc_desc&.output&.is_a?(GRPC::RpcDesc::Stream) || false
     end
 
     def input_type
@@ -28,7 +28,7 @@ module Itsi
 
     def close
       if output_stream? && content_type == "application/json"
-        stream.write("[") if !@opened
+        stream.write("[") unless @opened
         stream.write("]")
       end
 
@@ -45,79 +45,76 @@ module Itsi
 
     def parse_from_json_stream(json_stream)
       first_char = nil
-       loop do
-         char = json_stream.read(1)
-         break if char.nil?
-         if char =~ /\s/
-           next
-         elsif char == '[' || char == ','
-           first_char = char
-           break
-         elsif char == ']'
-           return nil
-         else
-           # If the first non-whitespace character is not '[' or comma, return nil.
-           return nil
-         end
-       end
+      loop do
+        char = json_stream.read(1)
+        break if char.nil?
+        if char =~ /\s/
+          next
+        elsif ["[", ","].include?(char)
+          first_char = char
+          break
+        elsif char == "]"
+          return nil
+        else
+          # If the first non-whitespace character is not '[' or comma, return nil.
+          return nil
+        end
+      end
 
-       return nil if first_char.nil?
+      return nil if first_char.nil?
 
-       # Step 2: Process objects until we hit the end of the JSON stream or array.
-       loop do
-         # Skip any whitespace or commas preceding an object.
-         char = nil
-         loop do
-           char = json_stream.read(1)
-           break if char.nil?
-           if char =~ /\s/
-             next
-           else
-             break
-           end
-         end
+      # Step 2: Process objects until we hit the end of the JSON stream or array.
+      loop do
+        # Skip any whitespace or commas preceding an object.
+        char = nil
+        loop do
+          char = json_stream.read(1)
+          break if char.nil?
+          next if char =~ /\s/
 
-         # The next non-whitespace, non-comma character should be the start of an object.
-         return nil unless char == '{'
+          break
+        end
 
-         # Step 3: Start buffering the JSON object.
-         buffer = "{".dup
-         stack = ["{"]
-         in_string = false
-         escape = false
+        # The next non-whitespace, non-comma character should be the start of an object.
+        return nil unless char == "{"
 
-         while stack.any?
-           ch = json_stream.read(1)
-           return nil if ch.nil?  # premature end of stream
+        # Step 3: Start buffering the JSON object.
+        buffer = "{".dup
+        stack = ["{"]
+        in_string = false
+        escape = false
 
-           buffer << ch
+        while stack.any?
+          ch = json_stream.read(1)
+          return nil if ch.nil? # premature end of stream
 
-           if in_string
-             if escape
-               escape = false
-               next
-             end
-             if ch == '\\'
-               escape = true
-             elsif ch == '"'
-               in_string = false
-             end
-           else
-             if ch == '"'
-               in_string = true
-             elsif ch == '{' || ch == '['
-               stack.push(ch)
-             elsif ch == '}' || ch == ']'
-               expected = (ch == '}' ? '{' : '[')
-               # Check for matching bracket.
-               return nil unless stack.last == expected
-               stack.pop
-             end
-           end
-         end
-         # Yield the complete JSON object (as a string).
-         return buffer
-       end
+          buffer << ch
+
+          if in_string
+            if escape
+              escape = false
+              next
+            end
+            if ch == "\\"
+              escape = true
+            elsif ch == '"'
+              in_string = false
+            end
+          elsif ch == '"'
+            in_string = true
+          elsif ["{", "["].include?(ch)
+            stack.push(ch)
+          elsif ["}", "]"].include?(ch)
+            expected = (ch == "}" ? "{" : "[")
+            # Check for matching bracket.
+            return nil unless stack.last == expected
+
+            stack.pop
+          end
+        end
+        # Yield the complete JSON object (as a string).
+        return buffer
+      end
     end
 
     def remote_read
@@ -139,9 +136,7 @@ module Itsi
         data = reader.read(length)
         return nil if data.nil?
 
-        if compressed
-          data = decompress_input(data)
-        end
+        data = decompress_input(data) if compressed
 
         input_type.decode(data)
       end
@@ -153,8 +148,8 @@ module Itsi
           if @opened
             stream.write(",\n")
           else
-          stream.write("[")
-          @opened = true
+            stream.write("[")
+            @opened = true
           end
         end
         message_data = output_type.encode_json(message_data)
@@ -162,6 +157,7 @@ module Itsi
       else
         message_data = output_type.encode(message_data)
         should_compress = compressed.nil? ? should_compress_output?(message_data.bytesize) : compressed
+
         if should_compress
           message_data = compress_output(message_data)
           compressed_flag = 1
@@ -169,12 +165,13 @@ module Itsi
           compressed_flag = 0
         end
 
-        header = [compressed_flag, message_data.bytesize].pack("CN")
+        message = [compressed_flag, message_data.bytesize].pack("CN") << message_data
+        stream.write(message)
 
-        stream.write(header)
-        stream.write(message_data)
-        stream.flush
+        @body_written = true
       end
+    rescue IOError
+      close
     end
 
     def remote_send(response)
@@ -188,14 +185,9 @@ module Itsi
     def each_remote_read
       return enum_for(:each_remote_read) unless block_given?
 
-      begin
-        while (resp = remote_read) || !cancelled?
+      while (resp = remote_read) || !cancelled?
 
-          yield resp
-        end
-      rescue => e
-        # Log error but don't crash the stream
-        puts "Error reading from stream: #{e.message}"
+        yield resp
       end
     end
 
@@ -219,6 +211,10 @@ module Itsi
       add_headers(kv_pairs.transform_values { |v| Array(v) })
     end
 
+    def send_empty
+      remote_send(output_type.new) unless @body_written
+    end
+
     def send_status(status_code, status_details, trailing_metadata = {})
       trailers = {
         "grpc-status" => status_code.to_s
@@ -240,14 +236,11 @@ module Itsi
           end
       end
 
-      # Send all trailers
       send_trailers(trailers)
     end
 
     def send_trailers(trailers)
       stream.send_trailers(trailers)
     end
-
-
   end
 end

@@ -4,8 +4,9 @@ source 'https://rubygems.org'
 
 # gem "rails"
 
-gem 'itsi-scheduler', path: '../../gems/scheduler'
-gem 'itsi-server', path: '../../gems/server'
-
 gem 'debug'
 gem 'grpc'
+gem 'itsi-scheduler', path: '../../gems/scheduler'
+gem 'itsi-server', path: '../../gems/server'
+gem 'rubocop'
+gem 'ruby-lsp'

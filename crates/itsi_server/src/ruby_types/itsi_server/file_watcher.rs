@@ -71,7 +71,7 @@ const DEBOUNCE_DURATION: Duration = Duration::from_millis(500);
 pub fn watch_groups(pattern_groups: Vec<(String, Vec<Vec<String>>)>) -> Result<Option<OwnedFd>> {
     let (r_fd, w_fd): (OwnedFd, OwnedFd) = pipe().map_err(|e| {
         magnus::Error::new(
-            magnus::exception::exception(),
+            magnus::exception::standard_error(),
             format!("Failed to create watcher pipe: {}", e),
         )
     })?;
@@ -79,7 +79,7 @@ pub fn watch_groups(pattern_groups: Vec<(String, Vec<Vec<String>>)>) -> Result<O
     let fork_result = unsafe {
         fork().map_err(|e| {
             magnus::Error::new(
-                magnus::exception::exception(),
+                magnus::exception::standard_error(),
                 format!("Failed to fork file watcher: {}", e),
             )
         })
@@ -107,13 +107,13 @@ pub fn watch_groups(pattern_groups: Vec<(String, Vec<Vec<String>>)>) -> Result<O
             let base_dir = extract_and_canonicalize_base_dir(&pattern);
             let glob = Glob::new(&pattern).map_err(|e| {
                 magnus::Error::new(
-                    magnus::exception::exception(),
+                    magnus::exception::standard_error(),
                     format!("Failed to create watch glob: {}", e),
                 )
             })?;
             let glob_set = GlobSetBuilder::new().add(glob).build().map_err(|e| {
                 magnus::Error::new(
-                    magnus::exception::exception(),
+                    magnus::exception::standard_error(),
                     format!("Failed to create watch glob set: {}", e),
                 )
             })?;

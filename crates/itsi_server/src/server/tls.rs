@@ -3,7 +3,7 @@ use itsi_error::Result;
 use itsi_tracing::info;
 use locked_dir_cache::LockedDirCache;
 use rcgen::{
-    generate_simple_self_signed, CertificateParams, CertifiedKey, DnType, KeyPair, SanType,
+    BasicConstraints, CertificateParams, DistinguishedName, DnType, IsCa, KeyPair, SanType,
 };
 use rustls::{
     pki_types::{CertificateDer, PrivateKeyDer},
@@ -253,9 +253,13 @@ fn get_or_create_local_dev_ca() -> Result<(String, String)> {
         Ok((key_pem, cert_pem))
     } else {
         let subject_alt_names = vec!["dev.itsi.fyi".to_string(), "localhost".to_string()];
-
-        let CertifiedKey { cert, key_pair } =
-            generate_simple_self_signed(subject_alt_names).unwrap();
+        let mut params = CertificateParams::new(subject_alt_names)?;
+        let mut distinguished_name = DistinguishedName::new();
+        distinguished_name.push(DnType::CommonName, "Itsi Development CA");
+        params.distinguished_name = distinguished_name;
+        params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
+        let key_pair = KeyPair::generate()?;
+        let cert = params.self_signed(&key_pair)?;
 
         fs::write(&key_path, key_pair.serialize_pem())?;
         fs::write(&cert_path, cert.pem())?;

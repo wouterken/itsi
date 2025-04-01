@@ -128,7 +128,7 @@ impl MiddlewareLayer for Proxy {
             )
             .map_err(|_e| {
                 magnus::Error::new(
-                    magnus::exception::exception(),
+                    magnus::exception::standard_error(),
                     "Failed to save resolver backends",
                 )
             })?;

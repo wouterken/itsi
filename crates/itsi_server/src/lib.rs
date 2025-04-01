@@ -1,16 +1,17 @@
-use magnus::{error::Result, function, method, Module, Object, Ruby};
-use ruby_types::{
-    itsi_body_proxy::ItsiBodyProxy, itsi_grpc_call::ItsiGrpcCall, itsi_grpc_stream::ItsiGrpcStream,
-    itsi_http_request::ItsiHttpRequest, itsi_http_response::ItsiHttpResponse,
-    itsi_server::ItsiServer, ITSI_BODY_PROXY, ITSI_GRPC_CALL, ITSI_GRPC_RESPONSE, ITSI_GRPC_STREAM,
-    ITSI_MODULE, ITSI_REQUEST, ITSI_RESPONSE, ITSI_SERVER,
-};
-use server::signal::reset_signal_handlers;
-use tracing::*;
 pub mod env;
 pub mod prelude;
 pub mod ruby_types;
 pub mod server;
+use magnus::{error::Result, function, method, Module, Object, Ruby};
+use prelude::*;
+use ruby_types::{
+    itsi_body_proxy::ItsiBodyProxy, itsi_grpc_call::ItsiGrpcCall,
+    itsi_grpc_response_stream::ItsiGrpcResponseStream, itsi_http_request::ItsiHttpRequest,
+    itsi_http_response::ItsiHttpResponse, itsi_server::ItsiServer, ITSI_BODY_PROXY, ITSI_GRPC_CALL,
+    ITSI_GRPC_RESPONSE_STREAM, ITSI_MODULE, ITSI_REQUEST, ITSI_RESPONSE, ITSI_SERVER,
+};
+use server::signal::reset_signal_handlers;
+
 #[magnus::init]
 fn init(ruby: &Ruby) -> Result<()> {
     itsi_tracing::init();
@@ -84,25 +85,26 @@ fn init(ruby: &Ruby) -> Result<()> {
     grpc_call.define_method("timeout", method!(ItsiGrpcCall::timeout, 0))?;
     grpc_call.define_method("cancelled?", method!(ItsiGrpcCall::is_cancelled, 0))?;
     grpc_call.define_method("add_headers", method!(ItsiGrpcCall::add_headers, 1))?;
-
+    grpc_call.define_method("compress_output", method!(ItsiGrpcCall::compress_output, 1))?;
     grpc_call.define_method(
         "decompress_input",
         method!(ItsiGrpcCall::decompress_input, 1),
     )?;
-    grpc_call.define_method("compress_output", method!(ItsiGrpcCall::compress_output, 1))?;
     grpc_call.define_method(
         "should_compress_output?",
         method!(ItsiGrpcCall::should_compress_output, 1),
     )?;
 
-    let grpc_stream = ruby.get_inner(&ITSI_GRPC_STREAM);
-    grpc_stream.define_method("reader_fileno", method!(ItsiGrpcStream::reader, 0))?;
-    grpc_stream.define_method("write", method!(ItsiGrpcStream::write, 1))?;
-    grpc_stream.define_method("flush", method!(ItsiGrpcStream::flush, 0))?;
-    grpc_stream.define_method("send_trailers", method!(ItsiGrpcStream::send_trailers, 1))?;
-    grpc_stream.define_method("close", method!(ItsiGrpcStream::close, 0))?;
-
-    let _grpc_response = ruby.get_inner(&ITSI_GRPC_RESPONSE);
+    let grpc_response_stream = ruby.get_inner(&ITSI_GRPC_RESPONSE_STREAM);
+    grpc_response_stream
+        .define_method("reader_fileno", method!(ItsiGrpcResponseStream::reader, 0))?;
+    grpc_response_stream.define_method("write", method!(ItsiGrpcResponseStream::write, 1))?;
+    grpc_response_stream.define_method("flush", method!(ItsiGrpcResponseStream::flush, 0))?;
+    grpc_response_stream.define_method(
+        "send_trailers",
+        method!(ItsiGrpcResponseStream::send_trailers, 1),
+    )?;
+    grpc_response_stream.define_method("close", method!(ItsiGrpcResponseStream::close, 0))?;
 
     Ok(())
 }

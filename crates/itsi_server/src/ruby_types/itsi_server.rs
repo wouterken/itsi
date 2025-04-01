@@ -1,6 +1,7 @@
 use crate::server::{
+    lifecycle_event::LifecycleEvent,
     serve_strategy::{cluster_mode::ClusterMode, single_mode::SingleMode, ServeStrategy},
-    signal::{clear_signal_handlers, reset_signal_handlers, send_shutdown_event},
+    signal::{clear_signal_handlers, reset_signal_handlers, send_lifecycle_event},
 };
 use itsi_rb_helpers::{call_without_gvl, print_rb_backtrace};
 use itsi_server_config::ItsiServerConfig;
@@ -35,7 +36,7 @@ impl ItsiServer {
     }
 
     pub fn stop(&self) -> Result<()> {
-        send_shutdown_event();
+        send_lifecycle_event(LifecycleEvent::Shutdown);
         Ok(())
     }
 

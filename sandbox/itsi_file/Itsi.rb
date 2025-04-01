@@ -9,24 +9,35 @@ bind 'http://0.0.0.0:8000'
 shutdown_timeout 3
 
 auto_reload_config!
-
 log_target :stdout
-log_level :info
 log_format :plain
-etag type: 'weak', algorithm: 'md5', min_body_size: 0
+log_level :info
 
-require_relative "echo_service/echo_service_impl"
+require_relative 'echo_service/echo_service_impl'
 
-compress algorithms: ['zstd'], min_size: 0, compress_streams: true, mime_types: ['all'], level: 'fastest'
-grpc EchoServiceImpl.new
-# location "/" do
-#   grpc EchoServiceImpl.new
-# end
+grpc EchoServiceImpl.new do
+  rate_limit requests: 5, seconds: 5, key: 'address',
+             store_config: { redis: { connection_url: 'redis://localhost:6379/0' } }, error_response: { plaintext: 'no way', code: 429, default: 'plaintext' }
+end
 
+foo_bar(1)
+
+location '/' do
+  # compress algorithms: ['zstd'], min_size: 0, compress_streams: true, mime_types: ['all'], level: 'fastest'
+  get '/' do |req|
+    req.respond('Foo')
+  end
+  etag type: 'weak', algorithm: 'md5', min_body_size: 0
+  post '/' do |req|
+    req.respond('Foo')
+  end
+end
+
+location '/' do
+end
 # rate_limit requests: 5, seconds: 5, key: 'address', store_config: { redis: { connection_url: 'redis://localhost:6379/0' } }, error_response: { plaintext: 'no way', code: 429, default: 'plaintext' }
 
 #
-
 
 # static_assets\
 #   relative_path: true,
@@ -52,7 +63,7 @@ grpc EchoServiceImpl.new
 #     'X-Content-Type-Options' => 'nosniff'
 #   }
 
-run(->(env){
+run(lambda  { |env|
   [200, {}, ["I'm a fallback"]]
 })
 
@@ -85,7 +96,6 @@ run(->(env){
 #   end
 # end
 
-
 # location "/cached-with-etag" do
 #   # Set up caching parameters
 #   cache_control max_age: 3600, public: true, vary: ['Accept-Encoding']
@@ -97,7 +107,6 @@ run(->(env){
 #     req.respond("This response will have both cache headers and an ETag.")
 #   end
 # end
-
 
 # location "/" do
 #   intrusion_protection banned_time_seconds: 5, banned_url_patterns: [/\/admin/, /\/secret/], store_config: { redis: { connection_url: 'redis://localhost:6379/0' } }, error_response: { plaintext: 'no way', code: 403, default: 'plaintext' }
@@ -143,7 +152,6 @@ run(->(env){
 #     end
 #   end
 
-
 #   location "/jwt" do
 #     auth_jwt token_source: { header: { name: 'Authorization', prefix: 'Bearer ' } },
 #       verifiers: {
@@ -166,8 +174,6 @@ run(->(env){
 #   end
 
 # end
-
-
 
 # # For an assets example
 # location "/assets" do
@@ -288,7 +294,6 @@ run(->(env){
 # #   req.respond("This is a test")
 # # end
 
-
 # # location '*', protocols: :http do
 # #   location 'foo' do
 # #     redirect to: 'https://{host}:3001{path}'
@@ -330,6 +335,5 @@ run(->(env){
 # # end
 
 # # Example with both caching and ETags
-
 
 # # Simple ETag test endpoint with predictable content

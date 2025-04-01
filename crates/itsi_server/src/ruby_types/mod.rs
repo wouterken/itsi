@@ -2,8 +2,7 @@ use magnus::{value::Lazy, Module, RClass, RModule};
 
 pub mod itsi_body_proxy;
 pub mod itsi_grpc_call;
-pub mod itsi_grpc_response;
-pub mod itsi_grpc_stream;
+pub mod itsi_grpc_response_stream;
 pub mod itsi_http_request;
 pub mod itsi_http_response;
 pub mod itsi_server;
@@ -42,14 +41,8 @@ pub static ITSI_GRPC_CALL: Lazy<RClass> = Lazy::new(|ruby| {
         .unwrap()
 });
 
-pub static ITSI_GRPC_STREAM: Lazy<RClass> = Lazy::new(|ruby| {
+pub static ITSI_GRPC_RESPONSE_STREAM: Lazy<RClass> = Lazy::new(|ruby| {
     ruby.get_inner(&ITSI_MODULE)
-        .define_class("GrpcStream", ruby.class_object())
-        .unwrap()
-});
-
-pub static ITSI_GRPC_RESPONSE: Lazy<RClass> = Lazy::new(|ruby| {
-    ruby.get_inner(&ITSI_MODULE)
-        .define_class("GrpcResponse", ruby.class_object())
+        .define_class("GrpcResponseStream", ruby.class_object())
         .unwrap()
 });

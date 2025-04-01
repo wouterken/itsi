@@ -8,64 +8,41 @@ use tokio::sync::{self, broadcast};
 
 use super::lifecycle_event::LifecycleEvent;
 
+pub static SIGINT_COUNT: AtomicI8 = AtomicI8::new(0);
 pub static SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
 pub static SIGNAL_HANDLER_CHANNEL: LazyLock<(
     broadcast::Sender<LifecycleEvent>,
     broadcast::Receiver<LifecycleEvent>,
 )> = LazyLock::new(|| sync::broadcast::channel(5));
 
-pub fn send_shutdown_event() {
-    SIGNAL_HANDLER_CHANNEL.0.send(LifecycleEvent::Shutdown).ok();
+pub fn send_lifecycle_event(event: LifecycleEvent) {
+    SIGNAL_HANDLER_CHANNEL.0.send(event).ok();
 }
 
-pub static SIGINT_COUNT: AtomicI8 = AtomicI8::new(0);
 fn receive_signal(signum: i32, _: sighandler_t) {
     SIGINT_COUNT.fetch_add(-1, std::sync::atomic::Ordering::SeqCst);
-    match signum {
+    let event = match signum {
         libc::SIGTERM | libc::SIGINT => {
             SHUTDOWN_REQUESTED.store(true, std::sync::atomic::Ordering::SeqCst);
             SIGINT_COUNT.fetch_add(2, std::sync::atomic::Ordering::SeqCst);
             if SIGINT_COUNT.load(std::sync::atomic::Ordering::SeqCst) < 2 {
-                SIGNAL_HANDLER_CHANNEL.0.send(LifecycleEvent::Shutdown).ok();
+                Some(LifecycleEvent::Shutdown)
             } else {
                 // Not messing about. Force shutdown.
-                SIGNAL_HANDLER_CHANNEL
-                    .0
-                    .send(LifecycleEvent::ForceShutdown)
-                    .ok();
+                Some(LifecycleEvent::ForceShutdown)
             }
         }
-        libc::SIGUSR2 => {
-            SIGNAL_HANDLER_CHANNEL
-                .0
-                .send(LifecycleEvent::PrintInfo)
-                .ok();
-        }
-        libc::SIGUSR1 => {
-            SIGNAL_HANDLER_CHANNEL.0.send(LifecycleEvent::Restart).ok();
-        }
-        libc::SIGHUP => {
-            SIGNAL_HANDLER_CHANNEL.0.send(LifecycleEvent::Reload).ok();
-        }
-        libc::SIGTTIN => {
-            SIGNAL_HANDLER_CHANNEL
-                .0
-                .send(LifecycleEvent::IncreaseWorkers)
-                .ok();
-        }
-        libc::SIGTTOU => {
-            SIGNAL_HANDLER_CHANNEL
-                .0
-                .send(LifecycleEvent::DecreaseWorkers)
-                .ok();
-        }
-        libc::SIGCHLD => {
-            SIGNAL_HANDLER_CHANNEL
-                .0
-                .send(LifecycleEvent::ChildTerminated)
-                .ok();
-        }
-        _ => {}
+        libc::SIGUSR2 => Some(LifecycleEvent::PrintInfo),
+        libc::SIGUSR1 => Some(LifecycleEvent::Restart),
+        libc::SIGHUP => Some(LifecycleEvent::Reload),
+        libc::SIGTTIN => Some(LifecycleEvent::IncreaseWorkers),
+        libc::SIGTTOU => Some(LifecycleEvent::DecreaseWorkers),
+        libc::SIGCHLD => Some(LifecycleEvent::ChildTerminated),
+        _ => None,
+    };
+
+    if let Some(event) = event {
+        send_lifecycle_event(event);
     }
 }
 

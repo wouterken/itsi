@@ -65,7 +65,7 @@ impl Redirect {
             "Location",
             self.to.rewrite_request(req, context).parse().map_err(|e| {
                 magnus::Error::new(
-                    magnus::exception::exception(),
+                    magnus::exception::standard_error(),
                     format!("Invalid Rewrite String: {:?}: {}", self.to, e),
                 )
             })?,
