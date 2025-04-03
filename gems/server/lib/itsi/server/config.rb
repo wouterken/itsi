@@ -34,17 +34,41 @@ module Itsi
       # 3. Default values.
       def self.build_config(args, config_file_path, builder_proc = nil)
         args.transform_keys!(&:to_sym)
-
         itsifile_config = \
           if builder_proc
             DSL.evaluate(&builder_proc)
+          elsif args[:static]
+            DSL.evaluate do
+              location "/" do
+                etag type: 'strong', algorithm: 'sha256'
+                compress min_size: 1024 * 1024, level: 'fastest', algorithms: %w[zstd gzip brotli deflate], mime_types: %w[all], compress_streams: true
+                log_requests before: { level: "INFO", format: "[{request_id}] {method} {path_and_query} - {addr} " }, after: { level: "INFO", format: "[{request_id}] └─ {status} in {response_time}" }
+                static_assets \
+                  relative_path: true,
+                  allowed_extensions: [],
+                  root_dir: '.',
+                  not_found_behavior: 'fallthrough',
+                  auto_index: true,
+                  try_html_extension: true,
+                  max_file_size_in_memory: 1024 * 1024, # 1MB
+                  max_files_in_memory: 1000,
+                  file_check_interval: 1,
+                  serve_dot_files: true,
+                  headers: {
+                    'Cache-Control' => 'public, max-age=86400',
+                    'X-Content-Type-Options' => 'nosniff'
+                  }
+              end
+            end
           elsif File.exist?(config_file_path.to_s)
             DSL.evaluate(config_file_path)
-          else
+          elsif File.exist?("./config.ru")
             DSL.evaluate do
               preload true
               rackup_file args.fetch(:rackup_file, "./config.ru")
             end
+          else
+            DSL.evaluate{}
           end
 
         itsifile_config.transform_keys!(&:to_sym)

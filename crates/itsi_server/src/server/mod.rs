@@ -7,6 +7,7 @@ pub mod itsi_service;
 pub mod lifecycle_event;
 pub mod listener;
 pub mod middleware_stack;
+pub mod mime_types;
 pub mod process_worker;
 pub mod rate_limiter;
 pub mod request_job;

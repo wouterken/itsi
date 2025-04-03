@@ -13,6 +13,7 @@ require_relative "server/config"
 require_relative "standard_headers"
 require_relative "http_request"
 require_relative "http_response"
+require_relative "../shell_completions/completions"
 
 module Itsi
   class Server
@@ -21,16 +22,17 @@ module Itsi
     extend RouteTester
 
     class << self
+
       def running?
         !!@running
       end
 
-      def start_in_background_thread(cli_params = {},
-                                     itsi_file = Itsi::Server::Config.config_file_path(cli_params[:config_file]), &blk)
-        @background_thread = start(cli_params, itsi_file, background: true, &blk)
+      def start_in_background_thread(cli_params = {}, &blk)
+        @background_thread = start(cli_params, background: true, &blk)
       end
 
-      def start(cli_params, itsi_file = Itsi::Server::Config.config_file_path, background: false, &blk)
+      def start(cli_params, background: false, &blk)
+        itsi_file = Itsi::Server::Config.config_file_path(cli_params[:config_file])
         server = new(cli_params, itsi_file, blk)
         previous_handler = Signal.trap(:INT, :DEFAULT)
         run = lambda do
@@ -42,6 +44,15 @@ module Itsi
           server
         end
         background ? Thread.new(&run) : run[]
+      end
+
+      def static(cli_params)
+        start(cli_params.merge(static: true))
+      end
+
+      def stop
+        return unless pid = get_pid
+        Process.kill(:INT, pid)
       end
 
       def stop_background_thread
@@ -58,10 +69,16 @@ module Itsi
         if Process.kill(0, pid)
           pid
         else
+          puts "No server running"
           nil
         end
       rescue StandardError
+        puts "No server running"
         nil
+      end
+
+      def init
+        Config.write_default
       end
 
       def reload
@@ -108,7 +125,7 @@ module Itsi
           ][]
       end
 
-      def test_route(route_str, cli_params = {})
+      def test_route(cli_params = {}, route_str)
         matched_route = load_route_middleware_stack(cli_params).find do |route|
           route["route"] =~ route_str
         end
@@ -128,6 +145,9 @@ module Itsi
         end
         puts "─" * 76
       end
+
+      alias serve start
+
     end
   end
 end

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Service Unavailable</title>
+    <style>
+      :root {
+        --bg-color: #f0f2f5;
+        --text-color: #333;
+        --accent-color: #0052cc;
+        --link-color: #0052cc;
+      }
+      body {
+        margin: 0;
+        font-family: "Helvetica Neue", Arial, sans-serif;
+        background: var(--bg-color);
+        color: var(--text-color);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        padding: 2rem;
+      }
+      .error-container {
+        text-align: center;
+        max-width: 800px;
+        width: 100%;
+      }
+      h1 {
+        font-size: 5rem;
+        font-weight: 300;
+        margin-bottom: 0.5rem;
+      }
+      p {
+        font-size: 1.5rem;
+        line-height: 1.6;
+        margin-bottom: 2rem;
+      }
+      a {
+        font-size: 1rem;
+        text-decoration: none;
+        color: var(--link-color);
+        border-bottom: 1px solid transparent;
+        transition: border-color 0.2s ease-in-out;
+      }
+      a:hover {
+        border-color: var(--link-color);
+      }
+      @media (max-width: 480px) {
+        h1 {
+          font-size: 3.5rem;
+        }
+        p {
+          font-size: 1.2rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="error-container">
+      <h1>503</h1>
+      <p>The service is currently unavailable. Please try again later.</p>
+      <p><a href="/">Return Home</a></p>
+    </div>
+  </body>
+</html>

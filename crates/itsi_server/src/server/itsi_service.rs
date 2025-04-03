@@ -60,7 +60,7 @@ impl Deref for RequestContextInner {
 }
 
 pub struct RequestContextInner {
-    pub request_id: i128,
+    pub request_id: u128,
     pub service: ItsiService,
     pub matching_pattern: Option<Arc<Regex>>,
     pub compression_method: OnceLock<CompressionAlgorithm>,
@@ -76,7 +76,7 @@ impl RequestContext {
     fn new(service: ItsiService, matching_pattern: Option<Arc<Regex>>) -> Self {
         RequestContext {
             inner: Arc::new(RequestContextInner {
-                request_id: rand::random::<i128>(),
+                request_id: rand::random::<u128>(),
                 service,
                 matching_pattern,
                 compression_method: OnceLock::new(),
@@ -106,8 +106,12 @@ impl RequestContext {
         self.inner.if_none_match.get().cloned().flatten()
     }
 
+    pub fn short_request_id(&self) -> String {
+        format!("{:016x}", self.inner.request_id & 0xffff_ffff_ffff_ffff)
+    }
+
     pub fn request_id(&self) -> String {
-        self.inner.request_id.to_string()
+        format!("{:016x}", self.inner.request_id)
     }
 
     pub fn track_start_time(&self) {

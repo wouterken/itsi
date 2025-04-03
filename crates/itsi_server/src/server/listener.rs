@@ -403,6 +403,7 @@ fn connect_tcp_socket(addr: IpAddr, port: u16) -> Result<TcpListener> {
     let socket = Socket::new(domain, Type::STREAM, Some(Protocol::TCP))?;
     let socket_address: SocketAddr = SocketAddr::new(addr, port);
     socket.set_reuse_address(true).ok();
+    socket.set_reuse_port(true).ok();
     socket.set_nonblocking(true).ok();
     socket.set_nodelay(true).ok();
     socket.set_recv_buffer_size(262_144).ok();

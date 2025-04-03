@@ -25,7 +25,9 @@ pub struct StaticAssets {
     pub max_files_in_memory: u64,
     pub file_check_interval: u64,
     pub headers: Option<HashMap<String, String>>,
+    pub allowed_extensions: Vec<String>,
     pub relative_path: bool,
+    pub serve_dot_files: bool,
     #[serde(skip)]
     file_server: OnceLock<StaticFileServer>,
 }
@@ -55,6 +57,8 @@ impl MiddlewareLayer for StaticAssets {
                 try_html_extension: self.try_html_extension,
                 max_file_size: self.max_file_size_in_memory,
                 recheck_interval: Duration::from_secs(self.file_check_interval),
+                serve_dot_files: self.serve_dot_files,
+                allowed_extensions: self.allowed_extensions.clone(),
             }))
             .map_err(ItsiError::default)?;
         Ok(())

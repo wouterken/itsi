@@ -94,26 +94,26 @@ module Itsi
         end
 
         def get(route, app_proc = nil, &blk)
-          endpoint(route, :get, app_proc, &blk)
+          endpoint(route, [:get], app_proc, &blk)
         end
 
         def post(route, app_proc = nil, &blk)
-          endpoint(route, :post, app_proc, &blk)
+          endpoint(route, [:post], app_proc, &blk)
         end
 
         def put(route, app_proc = nil, &blk)
-          endpoint(route, :put, app_proc, &blk)
+          endpoint(route, [:put], app_proc, &blk)
         end
 
         def delete(route, app_proc = nil, &blk)
-          endpoint(route, :delete, app_proc, &blk)
+          endpoint(route, [:delete], app_proc, &blk)
         end
 
         def patch(route, app_proc = nil, &blk)
-          endpoint(route, :patch, app_proc, &blk)
+          endpoint(route, [:patch], app_proc, &blk)
         end
 
-        def endpoint(route, method, app_proc = nil, &blk)
+        def endpoint(route="/", methods=[], app_proc = nil, &blk)
           raise "You can't use both a block and an explicit handler in the same endpoint" if blk && app_proc
           raise "You must provide either a block or an explicit handler for the endpoint" if app_proc.nil? && blk.nil?
 
@@ -121,7 +121,7 @@ module Itsi
 
           app_proc ||= blk
 
-          location(route, methods: [method]) do
+          location(route, methods: methods) do
             @middleware[:app] = { preloader: -> { app_proc } }
           end
         end
@@ -378,7 +378,13 @@ module Itsi
 
           args[:relative_path] = true unless args.key?(:relative_path)
 
-          location(/(?<path_suffix>.*)/, extensions: args[:allowed_extensions] || []) do
+          args[:allowed_extensions] ||= []
+
+          if (args[:allowed_extensions].include?("html") || args[:allowed_extensions].include?(:html)) && args[:try_html_extension]
+            args[:allowed_extensions] << ""
+          end
+
+          location(/(?<path_suffix>.*)/, extensions: args[:allowed_extensions]) do
             @middleware[:static_assets] = args
           end
         end

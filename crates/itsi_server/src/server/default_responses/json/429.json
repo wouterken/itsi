@@ -1,0 +1,6 @@
+{
+  "error": "Too Many Requests",
+  "message": "Too many requests within a limited time frame.",
+  "code": 429,
+  "status": "error"
+}

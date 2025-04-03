@@ -1,7 +1,9 @@
 use super::{
     middleware_stack::ErrorResponse,
+    mime_types::get_mime_type,
     types::{HttpRequest, HttpResponse},
 };
+use crate::prelude::*;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use http::{header, Response, StatusCode};
@@ -10,6 +12,7 @@ use itsi_error::Result;
 use moka::sync::Cache;
 use serde::Deserialize;
 use std::{
+    borrow::Cow,
     collections::HashMap,
     convert::Infallible,
     fs::Metadata,
@@ -19,7 +22,6 @@ use std::{
 };
 use tokio::sync::Mutex;
 use tokio::{fs::File, io::AsyncReadExt};
-use tracing::{info, warn};
 
 pub static ROOT_STATIC_FILE_SERVER: LazyLock<StaticFileServer> = LazyLock::new(|| {
     StaticFileServer::new(StaticFileServerConfig {
@@ -30,6 +32,8 @@ pub static ROOT_STATIC_FILE_SERVER: LazyLock<StaticFileServer> = LazyLock::new(|
         try_html_extension: true,
         auto_index: true,
         not_found_behavior: NotFoundBehavior::Error(ErrorResponse::default()),
+        serve_dot_files: false,
+        allowed_extensions: vec!["html".to_string(), "css".to_string(), "js".to_string()],
     })
 });
 
@@ -61,6 +65,8 @@ pub struct StaticFileServerConfig {
     pub try_html_extension: bool,
     pub auto_index: bool,
     pub not_found_behavior: NotFoundBehavior,
+    pub serve_dot_files: bool,
+    pub allowed_extensions: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -93,8 +99,8 @@ impl CacheEntry {
         })
     }
 
-    async fn new_virtual_listing(path: PathBuf, root_dir: &Path) -> Self {
-        let directory_listing: Bytes = generate_directory_listing(path.parent().unwrap(), root_dir)
+    async fn new_virtual_listing(path: PathBuf, config: &StaticFileServerConfig) -> Self {
+        let directory_listing: Bytes = generate_directory_listing(path.parent().unwrap(), config)
             .await
             .unwrap_or("".to_owned())
             .into();
@@ -291,6 +297,17 @@ impl StaticFileServer {
 
         // No valid cached entry, resolve the key to a file path
         let normalized_path = normalize_path(key).ok_or(NotFoundBehavior::InternalServerError)?;
+
+        if !self.config.serve_dot_files
+            && normalized_path
+                .file_name()
+                .and_then(|f| f.to_str())
+                .unwrap_or("")
+                .starts_with('.')
+        {
+            return Err(self.config.not_found_behavior.clone());
+        }
+
         let mut full_path = self.config.root_dir.clone();
         full_path.push(normalized_path);
         // Check if path exists and is a file
@@ -373,11 +390,9 @@ impl StaticFileServer {
                         // Create a virtual path for the directory listing
                         let virtual_path = full_path.join(".directory_listing.dir_list");
 
-                        let cache_entry = CacheEntry::new_virtual_listing(
-                            virtual_path.clone(),
-                            &self.config.root_dir,
-                        )
-                        .await;
+                        let cache_entry =
+                            CacheEntry::new_virtual_listing(virtual_path.clone(), &self.config)
+                                .await;
                         self.key_to_path
                             .lock()
                             .await
@@ -732,36 +747,6 @@ fn build_ok_body(bytes: Arc<Bytes>) -> BoxBody<Bytes, Infallible> {
     BoxBody::new(Full::new(bytes.as_ref().clone()))
 }
 
-// Helper for mime type mapping from file extension
-fn get_mime_type(path: &Path) -> &'static str {
-    match path.extension().and_then(|e| e.to_str()) {
-        Some("html") | Some("htm") => "text/html",
-        Some("css") => "text/css",
-        Some("js") => "application/javascript",
-        Some("json") => "application/json",
-        Some("txt") => "text/plain",
-        Some("png") => "image/png",
-        Some("jpg") | Some("jpeg") => "image/jpeg",
-        Some("gif") => "image/gif",
-        Some("svg") => "image/svg+xml",
-        Some("ico") => "image/x-icon",
-        Some("webp") => "image/webp",
-        Some("pdf") => "application/pdf",
-        Some("xml") => "application/xml",
-        Some("zip") => "application/zip",
-        Some("gz") => "application/gzip",
-        Some("mp3") => "audio/mpeg",
-        Some("mp4") => "video/mp4",
-        Some("webm") => "video/webm",
-        Some("woff") => "font/woff",
-        Some("woff2") => "font/woff2",
-        Some("ttf") => "font/ttf",
-        Some("otf") => "font/otf",
-        Some("dir_list") => "text/html",
-        _ => "application/octet-stream",
-    }
-}
-
 // Helper function to handle not modified responses
 fn build_not_modified_response() -> http::Response<BoxBody<Bytes, Infallible>> {
     Response::builder()
@@ -850,107 +835,94 @@ impl Default for StaticFileServer {
             try_html_extension: true,
             auto_index: true,
             not_found_behavior: NotFoundBehavior::Error(ErrorResponse::default()),
+            serve_dot_files: false,
+            allowed_extensions: vec!["html".to_string(), "css".to_string(), "js".to_string()],
         };
         Self::new(config)
     }
 }
 
-async fn generate_directory_listing(dir_path: &Path, root_dir: &Path) -> std::io::Result<String> {
-    let mut html = String::new();
+async fn generate_directory_listing(
+    dir_path: &Path,
+    config: &StaticFileServerConfig,
+) -> std::io::Result<String> {
+    // Load our static HTML template.
+    let template = include_str!("default_responses/html/index.html");
 
-    html.push_str("<!DOCTYPE html>\n<html>\n<head>\n");
-    html.push_str("<title>Directory listing for ");
-    html.push_str(
-        dir_path
-            .strip_prefix(root_dir)
+    // Compute the displayable directory string.
+
+    let directory_display = {
+        let display = dir_path
+            .strip_prefix(&config.root_dir)
             .unwrap_or(Path::new(""))
-            .to_str()
-            .unwrap_or(""),
-    );
-    html.push_str("</title>\n");
-    html.push_str("<meta charset=\"UTF-8\">\n");
-    html.push_str("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n");
-    html.push_str("<style>\n");
-    html.push_str("  body { font-family: sans-serif; margin: 0; padding: 20px; }\n");
-    html.push_str("  h1 { border-bottom: 1px solid #ccc; margin-top: 0; padding-bottom: 5px; }\n");
-    html.push_str("  table { border-collapse: collapse; width: 100%; }\n");
-    html.push_str("  th, td { text-align: left; padding: 8px; }\n");
-    html.push_str("  tr:nth-child(even) { background-color: #f2f2f2; }\n");
-    html.push_str("  th { background-color: #4CAF50; color: white; }\n");
-    html.push_str("  a { text-decoration: none; color: #0366d6; }\n");
-    html.push_str("  a:hover { text-decoration: underline; }\n");
-    html.push_str("  .size { text-align: right; }\n");
-    html.push_str("  .date { white-space: nowrap; }\n");
-    html.push_str("</style>\n");
-    html.push_str("</head>\n<body>\n");
+            .to_string_lossy();
+        if display.is_empty() {
+            Cow::Borrowed(".")
+        } else {
+            display
+        }
+    };
 
-    html.push_str("<h1>Directory listing for ");
-    html.push_str(&dir_path.display().to_string());
-    html.push_str("</h1>\n");
+    // Generate the inner table rows dynamically.
+    let mut rows = String::new();
 
-    html.push_str("<table>\n");
-    html.push_str("<tr><th>Name</th><th>Size</th><th>Last Modified</th></tr>\n");
-
-    // Add parent directory link if not in root
-
-    if dir_path != root_dir {
-        info!("{} != {}", dir_path.display(), root_dir.display());
-        html.push_str("<tr><td><a href=\"..\">..</a></td><td class=\"size\">-</td><td class=\"date\">-</td></tr>\n");
+    // Add a parent directory link if not at the root.
+    if dir_path != config.root_dir {
+        rows.push_str(
+            r#"<tr><td><a href="..">..</a></td><td class="size">-</td><td class="date">-</td></tr>"#,
+        );
+        rows.push('\n');
     }
 
-    // Read the directory entries
-    let mut entries = tokio::fs::read_dir(dir_path).await.unwrap();
-    let mut files = Vec::new();
+    // Read directory entries.
+    let mut entries = tokio::fs::read_dir(dir_path).await?;
     let mut dirs = Vec::new();
+    let mut files = Vec::new();
 
     while let Some(entry) = entries.next_entry().await? {
         let entry_path = entry.path();
         let metadata = entry.metadata().await?;
-        let name = entry_path.file_name().unwrap().to_string_lossy();
+        let name = entry_path
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+
+        if !config.serve_dot_files && name.starts_with('.') {
+            continue;
+        }
+
+        let ext = entry_path
+            .extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or("");
 
         if metadata.is_dir() {
-            dirs.push((name.to_string(), metadata));
-        } else {
-            files.push((name.to_string(), metadata));
+            dirs.push((name, metadata));
+        } else if config.allowed_extensions.is_empty()
+            || config.allowed_extensions.iter().any(|e| e == ext)
+        {
+            files.push((name, metadata));
         }
     }
 
-    // Sort directories and files
+    // Sort directories and files alphabetically.
     dirs.sort_by(|a, b| a.0.cmp(&b.0));
     files.sort_by(|a, b| a.0.cmp(&b.0));
 
-    // Add directories to HTML
+    // Generate rows for directories.
     for (name, metadata) in dirs {
-        html.push_str("<tr>");
-        html.push_str("<td><a href=\"");
-        html.push_str(&name);
-        html.push_str("/\">");
-        html.push_str(&name);
-        html.push_str("/</a></td>");
-        html.push_str("<td class=\"size\">-</td>");
-
-        if let Ok(modified) = metadata.modified() {
-            let formatted_time = DateTime::<Utc>::from(modified)
-                .format("%Y-%m-%d %H:%M:%S")
-                .to_string();
-            html.push_str(&format!("<td class=\"date\">{}</td>", formatted_time));
-        } else {
-            html.push_str("<td class=\"date\">-</td>");
-        }
-
-        html.push_str("</tr>\n");
+        rows.push_str(&format!(
+            r#"<tr><td><a href="{0}/">{0}/</a></td><td class="size">-</td><td class="date">{1}</td></tr>"#,
+            name,
+            metadata.modified().ok().map(|m| DateTime::<Utc>::from(m).format("%Y-%m-%d %H:%M:%S").to_string())
+                .unwrap_or_else(|| "-".to_string())
+        ));
+        rows.push('\n');
     }
 
-    // Add files to HTML
+    // Generate rows for files.
     for (name, metadata) in files {
-        html.push_str("<tr>");
-        html.push_str("<td><a href=\"");
-        html.push_str(&name);
-        html.push_str("\">");
-        html.push_str(&name);
-        html.push_str("</a></td>");
-
-        // Format file size
         let file_size = metadata.len();
         let formatted_size = if file_size < 1024 {
             format!("{} B", file_size)
@@ -962,23 +934,31 @@ async fn generate_directory_listing(dir_path: &Path, root_dir: &Path) -> std::io
             format!("{:.1} GB", file_size as f64 / (1024.0 * 1024.0 * 1024.0))
         };
 
-        html.push_str(&format!("<td class=\"size\">{}</td>", formatted_size));
+        let modified_str = metadata
+            .modified()
+            .ok()
+            .map(|m| {
+                DateTime::<Utc>::from(m)
+                    .format("%Y-%m-%d %H:%M:%S")
+                    .to_string()
+            })
+            .unwrap_or_else(|| "-".to_string());
 
-        if let Ok(modified) = metadata.modified() {
-            let formatted_time = DateTime::<Utc>::from(modified)
-                .format("%Y-%m-%d %H:%M:%S")
-                .to_string();
-            html.push_str(&format!("<td class=\"date\">{}</td>", formatted_time));
-        } else {
-            html.push_str("<td class=\"date\">-</td>");
-        }
-
-        html.push_str("</tr>\n");
+        rows.push_str(&format!(
+            r#"<tr><td><a href="{0}">{0}</a></td><td class="size">{1}</td><td class="date">{2}</td></tr>"#,
+            name, formatted_size, modified_str
+        ));
+        rows.push('\n');
     }
 
-    html.push_str("</table>\n");
-    html.push_str("<hr><p>Served by Itsi Static Assets</p>\n");
-    html.push_str("</body>\n</html>");
+    // Replace the placeholders in our template.
+    let html = template
+        .replace(
+            "{{title}}",
+            &format!("Directory listing for {}", directory_display),
+        )
+        .replace("{{directory}}", &directory_display)
+        .replace("{{rows}}", &rows);
 
     Ok(html)
 }

@@ -91,7 +91,10 @@ impl MiddlewareStack {
         }
 
         if let Some(extensions) = &self.extensions {
-            let extension = request.uri().path().split('.').next_back().unwrap_or("");
+            let path = request.uri().path();
+            let segment = path.split('/').next_back().unwrap_or("");
+            let extension = segment.split('.').next_back().unwrap_or("");
+            let extension = if segment != extension { extension } else { "" };
             if !extensions.iter().any(|e| e.matches(extension)) {
                 return false;
             }

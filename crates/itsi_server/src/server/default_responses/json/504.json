@@ -1,0 +1,6 @@
+{
+  "error": "Gateway Timeout",
+  "message": "The server did not respond in time.",
+  "code": 504,
+  "status": "error"
+}

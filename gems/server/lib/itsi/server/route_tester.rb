@@ -1,6 +1,10 @@
 module Itsi
   class Server
     module RouteTester
+
+      require "set"
+      require "strscan"
+
       def print_route(route_str, stack)
         filters = %w[methods ports protocols extensions].map do |key|
           val = stack[key]
@@ -19,13 +23,9 @@ module Itsi
         end
       end
 
-      require "set"
-      require "strscan"
-
       def explode_route_pattern(pattern)
-        pattern = pattern.gsub(/^\^|\$$/, "") # strip anchors
-        pattern = pattern.gsub("\\", "")      # unescape backslashes
-
+        pattern = pattern.gsub(/^\^|\$$/, "")
+        pattern = pattern.gsub("\\", "")
         tokens = parse_expression(StringScanner.new(pattern))
         expand_tokens(tokens)
       end
@@ -76,9 +76,7 @@ module Itsi
         { alt: options }
       end
 
-      # Expands parsed tokens into full strings
       def expand_tokens(tokens)
-        # Normalize all elements into arrays
         parts = tokens.map do |token|
           if token.is_a?(String)
             [token]

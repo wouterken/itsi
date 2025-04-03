@@ -5,12 +5,27 @@ require "itsi/server"
 require "optparse"
 require "debug"
 
+COMMANDS = {
+  "init" => "Initialize a new Itsi.rb server configuration file",
+  "status" => "Show the status of the server",
+  "start" => "Start the Isti server",
+  "serve" => "Start the Isti server",
+  "stop" => "Stop the server",
+  "reload" => "Reload the server",
+  "restart" => "Restart the server",
+  "add_worker" => "Add a new worker to the server cluster",
+  "remove_worker" => "Remove a worker from the server cluster",
+  "routes" => "Print the routes of the server",
+  "test_route" => "Test which route a request will be routed to",
+  "static" => "Serve static assets in the given directory"
+}
+
 Itsi::Server::Config.prep_reexec!
 
 options = {}
 
-OptionParser.new do |opts|
-  opts.banner = "Usage: itsi [options]"
+parser = OptionParser.new do |opts|
+  opts.banner = "Usage: itsi [COMMAND] [options]"
 
   opts.on("-C", "--config CONFIG_FILE", String, "Itsi Configuration file to use (default: Itsi.rb)") do |config_file|
     options[:config_file] = config_file
@@ -107,6 +122,10 @@ OptionParser.new do |opts|
 
   opts.on("-h", "--help", "Show this help message") do
     puts opts
+    puts "COMMAND: "
+    COMMANDS.each do |command, description|
+      puts "    #{command} - #{description}"
+    end
     exit
   end
 
@@ -117,23 +136,28 @@ OptionParser.new do |opts|
   opts.on("--listeners LISTENERS", String, "Listeners for reexec") do |listeners|
     options[:listeners] = listeners
   end
-end.parse!
+end
+
+if ENV['COMP_LINE'] || ARGV.include?('--completion')
+  puts COMMANDS.keys
+  exit
+end
+
+parser.parse!
 
 case (command = ARGV.shift)
-when "init"
-  Itsi::Server::Config.write_default
-  exit(0)
-when "reload", "restart", "down", "up", "add_worker", "remove_worker", "status", "routes"
-  method = Itsi::Server.method(command)
-  if method.arity == 1
-    Itsi::Server.send(command)
-  else
-    Itsi::Server.send(command, options)
+when *COMMANDS.keys
+  case Itsi::Server.method(command).parameters.first&.length || 1
+  when 1 then Itsi::Server.send(command)
+  when 2 then Itsi::Server.send(command, options)
+  when 3 then Itsi::Server.send(command, options, ARGV.shift)
   end
-when "test_route"
-  Itsi::Server.test_route(ARGV.shift, options)
-when nil, "start", "serve"
+when nil
   Itsi::Server.start(options)
 else
-  puts "Invalid command #{command}"
+  puts "Invalid command #{command}.\n"
+  puts "COMMAND: "
+  COMMANDS.each do |command, description|
+    puts "    #{command} - #{description}"
+  end
 end

@@ -29,18 +29,6 @@ threads ENV.fetch("ITSI_THREADS", 3)
 # `fiber_scheduler "Async::Scheduler"` - Bring your own scheduler!
 fiber_scheduler nil
 
-# By default Itsi will run the Rack app from config.ru.
-# You can provide an alternative Rack app file name here
-# Or you can inline the app directly inside Itsi.rb.
-# Only one of `run` and `rackup_file` can be used.
-# E.g.
-# require 'rack'
-# run(Rack::Builder.app do
-#   use Rack::CommonLogger
-#   run ->(env) { [200, { 'content-type' => 'text/plain' }, ['OK']] }
-# end)
-rackup_file "config.ru"
-
 # If you bind to https, without specifying a certificate, Itsi will use a self-signed certificate.
 # The self-signed certificate will use a CA generated for your host and stored inside `ITSI_LOCAL_CA_DIR` (Defaults to ~/.itsi)
 # bind "https://localhost:3000"

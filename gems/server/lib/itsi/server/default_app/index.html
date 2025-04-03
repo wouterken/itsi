@@ -1,91 +1,115 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <title>Itsi - Default</title>
-  <style>
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-    body {
-      font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      background-color: #f4f4f4;
-      color: #333;
-      line-height: 1.6;
-    }
-    .container {
-      max-width: 700px;
-      margin: 3rem auto;
-      background: #fff;
-      border-radius: 8px;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-      padding: 2rem;
-    }
-    h1 {
-      font-size: 1.8rem;
-      margin-bottom: 1rem;
-      text-align: center;
-      color: #444;
-    }
-    p {
-      margin-bottom: 1rem;
-      text-align: center;
-      color: #666;
-    }
-    ul.fields {
-      list-style: none;
-      margin-top: 1.5rem;
-      padding: 0;
-    }
-    ul.fields li {
-      background: #fafafa;
-      border: 1px solid #eee;
-      border-radius: 5px;
-      padding: 0.75rem;
-      margin-bottom: 0.75rem;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .label {
-      font-weight: bold;
-      margin-right: 1rem;
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h1>You're running on Itsi!</h1>
-    <p>RACK environment:</p>
-
-    <ul class="fields">
-      <li>
-        <span class="label">REQUEST_METHOD:</span>
-        <span>%{REQUEST_METHOD}</span>
-      </li>
-      <li>
-        <span class="label">PATH_INFO:</span>
-        <span>%{PATH_INFO}</span>
-      </li>
-      <li>
-        <span class="label">SERVER_NAME:</span>
-        <span>%{SERVER_NAME}</span>
-      </li>
-      <li>
-        <span class="label">SERVER_PORT:</span>
-        <span>%{SERVER_PORT}</span>
-      </li>
-      <li>
-        <span class="label">REMOTE_ADDR:</span>
-        <span>%{REMOTE_ADDR}</span>
-      </li>
-      <li>
-        <span class="label">HTTP_USER_AGENT:</span>
-        <span>%{HTTP_USER_AGENT}</span>
-      </li>
-    </ul>
-  </div>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Itsi - Default</title>
+    <style>
+      :root {
+        --bg-color: #f0f2f5;
+        --text-color: #333;
+        --link-color: #0052cc;
+      }
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family: "Helvetica Neue", Arial, sans-serif;
+        background: var(--bg-color);
+        color: var(--text-color);
+        line-height: 1.6;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 3rem 1rem;
+      }
+      header {
+        text-align: center;
+        margin-bottom: 2rem;
+      }
+      h1 {
+        font-size: 3rem;
+        margin-bottom: 0.5rem;
+      }
+      p {
+        font-size: 1.5rem;
+        margin-bottom: 2rem;
+        color: #555;
+      }
+      ul.fields {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        max-width: 100%%;
+        width: 100%%;
+      }
+      ul.fields li {
+        display: flex;
+        justify-content: space-between;
+        padding: 1rem;
+        border-bottom: 1px solid #ddd;
+      }
+      ul.fields li:last-child {
+        border-bottom: none;
+      }
+      .label {
+        font-weight: bold;
+        margin-right: 1rem;
+      }
+      /* Make it expansive: let content use more horizontal space on larger screens */
+      main {
+        max-width: 1200px;
+        width: 100%%;
+      }
+      /* Responsive adjustments for small devices */
+      @media (max-width: 480px) {
+        h1 {
+          font-size: 2.5rem;
+        }
+        p {
+          font-size: 1.2rem;
+        }
+        ul.fields li {
+          padding: 0.75rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>You're running on Itsi!</h1>
+        <p>RACK environment:</p>
+      </header>
+      <ul class="fields">
+        <li>
+          <span class="label">REQUEST_METHOD:</span>
+          <span>%{REQUEST_METHOD}</span>
+        </li>
+        <li>
+          <span class="label">PATH_INFO:</span>
+          <span>%{PATH_INFO}</span>
+        </li>
+        <li>
+          <span class="label">SERVER_NAME:</span>
+          <span>%{SERVER_NAME}</span>
+        </li>
+        <li>
+          <span class="label">SERVER_PORT:</span>
+          <span>%{SERVER_PORT}</span>
+        </li>
+        <li>
+          <span class="label">REMOTE_ADDR:</span>
+          <span>%{REMOTE_ADDR}</span>
+        </li>
+        <li>
+          <span class="label">HTTP_USER_AGENT:</span>
+          <span>%{HTTP_USER_AGENT}</span>
+        </li>
+      </ul>
+    </main>
+  </body>
 </html>

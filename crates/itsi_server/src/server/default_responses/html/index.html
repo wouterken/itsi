@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{title}}</title>
+    <style>
+      :root {
+        --bg-color: #f0f2f5;
+        --text-color: #333;
+        --link-color: #0052cc;
+        --accent-color: #0052cc;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family: "Helvetica Neue", Arial, sans-serif;
+        background: var(--bg-color);
+        color: var(--text-color);
+        padding: 2rem;
+      }
+      h1 {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+        text-align: center;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 1rem;
+      }
+      th,
+      td {
+        padding: 0.5rem;
+        text-align: left;
+      }
+      tr:nth-child(even) {
+        background-color: #e9ecef;
+      }
+      th {
+        border-bottom: 2px solid #ccc;
+        position: relative;
+        cursor: pointer;
+      }
+      /* Sorted header arrow */
+      th .sort-arrow {
+        font-size: 0.8rem;
+        display: none;
+      }
+      th.sorted .sort-arrow {
+        display: inline;
+      }
+      a {
+        color: var(--link-color);
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+      .size {
+        text-align: right;
+      }
+      .date {
+        white-space: nowrap;
+      }
+      footer {
+        margin-top: 2rem;
+        text-align: center;
+        font-size: 0.9rem;
+        color: #555;
+      }
+      th.name-header > span {
+        display: inline-block;
+        width: 100%;
+      }
+      th.name-header input {
+        margin-top: 0.3rem;
+        font-size: 0.8rem;
+        width: 100%;
+        max-width: 200px;
+        border: 1px solid #ccc;
+        background: none;
+        border-radius: 12px;
+        padding: 5px 15px;
+      }
+      /* Responsive adjustments */
+      @media (max-width: 480px) {
+        h1 {
+          font-size: 2.5rem;
+        }
+        th,
+        td {
+          padding: 0.4rem;
+        }
+        th {
+          vertical-align: top;
+        }
+        th.name-header input {
+          max-width: 150px;
+          font-size: 0.75rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Directory listing for {{directory}}</h1>
+    <table data-sort-asc="true" data-sorted-column="0">
+      <thead>
+        <tr>
+          <th data-type="text" data-column="0" class="name-header">
+            <span>Name <span class="sort-arrow">▲</span></span>
+            <input type="text" id="nameFilter" placeholder="Filter names" />
+          </th>
+          <th data-type="size" data-column="1">
+            Size <span class="sort-arrow"></span>
+          </th>
+          <th data-type="text" data-column="2">
+            Last Modified <span class="sort-arrow"></span>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {{rows}}
+      </tbody>
+    </table>
+    <footer>
+      <p>Served by Itsi Static Assets</p>
+    </footer>
+    <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        const table = document.querySelector("table");
+        const headers = table.querySelectorAll("th");
+        const nameFilter = document.getElementById("nameFilter");
+        let currentSortedColumn = 0;
+        let ascending = true;
+
+        // Add sorting listeners
+        headers.forEach((header, index) => {
+          header.addEventListener("click", function (e) {
+            // Prevent clicks on the filter input from triggering a sort.
+            if (e.target.tagName.toLowerCase() === "input") return;
+            sortTable(index);
+            updateSortArrows(index, ascending);
+          });
+        });
+
+        // Filter rows as the user types.
+        nameFilter.addEventListener("input", function () {
+          filterTable(this.value);
+        });
+
+        function sortTable(columnIndex) {
+          const tbody = table.querySelector("tbody");
+          let rows = Array.from(tbody.querySelectorAll("tr"));
+
+          // If sorting on a new column, default to ascending.
+          if (currentSortedColumn !== columnIndex) {
+            ascending = true;
+            currentSortedColumn = columnIndex;
+          } else {
+            ascending = !ascending;
+          }
+
+          rows.sort((a, b) => {
+            let aText = a.cells[columnIndex].textContent.trim().toLowerCase();
+            let bText = b.cells[columnIndex].textContent.trim().toLowerCase();
+
+            // If sorting the file size column, convert sizes to bytes.
+            if (headers[columnIndex].getAttribute("data-type") === "size") {
+              aText = parseSize(aText);
+              bText = parseSize(bText);
+            }
+
+            if (aText < bText) return ascending ? -1 : 1;
+            if (aText > bText) return ascending ? 1 : -1;
+            return 0;
+          });
+
+          rows.forEach((row) => tbody.appendChild(row));
+          table.setAttribute("data-sort-asc", ascending.toString());
+          table.setAttribute("data-sorted-column", columnIndex.toString());
+        }
+
+        function updateSortArrows(sortedIndex, ascending) {
+          headers.forEach((header, index) => {
+            header.classList.remove("sorted");
+            const arrow = header.querySelector(".sort-arrow");
+            if (index === sortedIndex) {
+              header.classList.add("sorted");
+              arrow.textContent = ascending ? "▲" : "▼";
+            } else {
+              arrow.textContent = "";
+            }
+          });
+        }
+
+        function filterTable(filterValue) {
+          const tbody = table.querySelector("tbody");
+          const rows = Array.from(tbody.querySelectorAll("tr"));
+          const lowerFilter = filterValue.toLowerCase();
+
+          rows.forEach((row) => {
+            const nameCell = row.cells[0];
+            row.style.display = nameCell.textContent
+              .toLowerCase()
+              .includes(lowerFilter)
+              ? ""
+              : "none";
+          });
+        }
+
+        // Parse file size string (e.g., "12.3 KB") into a number (bytes)
+        function parseSize(sizeStr) {
+          sizeStr = sizeStr.trim();
+          if (sizeStr === "-" || sizeStr === "") return 0;
+          const parts = sizeStr.split(" ");
+          if (parts.length < 2) return parseFloat(parts[0]);
+          const value = parseFloat(parts[0]);
+          const unit = parts[1].toLowerCase();
+          switch (unit) {
+            case "b":
+              return value;
+            case "kb":
+              return value * 1024;
+            case "mb":
+              return value * 1024 * 1024;
+            case "gb":
+              return value * 1024 * 1024 * 1024;
+            default:
+              return value;
+          }
+        }
+      });
+    </script>
+  </body>
+</html>

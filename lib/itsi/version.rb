@@ -1,3 +1,3 @@
 module Itsi
-  VERSION = '0.1.14'
+  VERSION = '0.1.16'
 end

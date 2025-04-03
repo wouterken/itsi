@@ -1,18 +1,39 @@
+- Give opportunity to route to default error pages
+
+- Allow List/Deny List/Intrusion Protection
+  - Default error response:
+    403 (HTML + JSON). Supports override
+
+- Auth API key/Basic/JWT
+  - Default error response:
+    401 (HTML + JSON). Supports override
+
+- Rate Limiter
+  - Default error response:
+    429 (HTML + JSON). Supports override
+
+- Max Body Size Filter
+  - Default error response:
+    413 (HTML + JSON). Supports override
+
+- Proxy:
+  - All of them.
+    - 502, 503, 504 AND add cycling through backends on failures.
+
+
 Polish and Release (At Lake):
--- Use route enum instead of regexp matches
--- Disable . files for static file serving (by default). Allow via option
--- CLI auto-completions
--- Special case, .html route match, also matches nil if try_html_extension == true)
--- Default error pages (Useful for proxy and SSR, consider if we can allow app to use these too?)
--- Static server command (has sane and safe defaults)
--- Offer password hash generation, and load from files for basic auth, api key, jwt.
--- Script name derived from location in hierarchy instead of a static param.
--- Max body size. Optional timeout for itsi service. Optional force kill of thread.
--- Revamp error system (look at Anyhow):
-   Better internal errors (Break things on purpose and see how quickly we can detect where. Make clear when specific middleware fails)
--- Establish pattern for separate files for dsl feature, and accumulated errors. "Did you mean" function.
--- Faster/slicker default app, and static file serve page.
--- Performant Request convenience functions (body JSON, body form-encoded, file uploads)-- Performant Response convenience functions respond_json, respond_html, respond_file
+  - Add Itsi mascott to all pages (default app, error pages)
+  - Offer password hash generation, and load from files for basic auth, api key, jwt.
+  - Script name derived from location in hierarchy instead of a static param.
+  - Optional timeout for itsi service. Optional force kill of thread.
+  - Revamp error system (look at Anyhow):
+     Better internal errors (Break things on purpose and see how quickly we can detect where. Make clear when specific middleware fails)
+  - Establish pattern for separate files for dsl feature, accumulated errors, ruby-dsl and "Did you mean" function.
+  - Faster/slicker default app, and static file serve page.
+  - Performant Request convenience functions (body JSON, body form-encoded, file uploads)-- Performant Response convenience functions respond_json, respond_html, respond_file
+  - Optimize static file server
+
+Feature complete!
 
 -- Feature breakdown. For each feature make sure we have
 --- Clean Code
@@ -23,7 +44,6 @@ Polish and Release (At Lake):
 --- Parameters for everything
 --- No unwrap
 --- Beautiful LSP and did you mean integration
-
 
 - Feature List:
 -- HTTP
@@ -50,7 +70,7 @@ Polish and Release (At Lake):
 -- Rackup
 -- Rack inline
 -- Static assets
--- Redirect
+-- Redirect (HTTP to HTTPS!)
 -- Logging
 -- Cluster
 -- Single
@@ -70,11 +90,10 @@ Later:
 - Optimize Hash creation for Rack
 - Image resizer
 - First class Rackless Websockets
-- Implement Simple Request timeout (non-fiber mode. Kill stuck threads. Default to nil)
-- Print out warning if we can detect a location block will never be hit.
+- Implement better Request timeouts (non-fiber mode. Kill stuck threads. Default to nil)
+- Print out warning if we can detect that a location block will never be hit.
 - Optimize: Avoid double encoding in compression filter if already compressed
-- Built in dashboard + Stats
-- Support Request timeout in Fiber scheduler mode
+- Built in obs Dashboard + Stats
 - Support UDP
 - Support unix socket proxy
 -- Hunt down sporradic bad file desc during tests

@@ -65,9 +65,11 @@ impl StringRewrite {
                 Segment::Literal(text) => result.push_str(text),
                 Segment::Placeholder(placeholder) => {
                     let replacement = match placeholder.as_str() {
-                        "request_id" => context.request_id(),
+                        "request_id" => context.short_request_id(),
+                        "request_id_full" => context.request_id(),
                         "method" => req.method().as_str().to_string(),
                         "path" => req.uri().path().to_string(),
+                        "addr" => context.addr.to_owned(),
                         "host" => req.uri().host().unwrap_or("localhost").to_string(),
                         "path_and_query" => req
                             .uri()
@@ -127,8 +129,10 @@ impl StringRewrite {
                 Segment::Literal(text) => result.push_str(text),
                 Segment::Placeholder(placeholder) => {
                     let replacement = match placeholder.as_str() {
-                        "request_id" => context.request_id(),
+                        "request_id" => context.short_request_id(),
+                        "request_id_full" => context.request_id(),
                         "status" => resp.status().as_str().to_string(),
+                        "addr" => context.addr.to_owned(),
                         "response_time" => {
                             if let Some(response_time) = context.get_response_time() {
                                 if let Some(microseconds) = response_time.num_microseconds() {

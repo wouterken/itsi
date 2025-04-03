@@ -4,7 +4,12 @@ DEFAULT_INDEX = IO.read("#{__dir__}/index.html").freeze
 DEFAULT_BINDS = ["http://0.0.0.0:3000"].freeze
 DEFAULT_APP = lambda {
   require "json"
-  Itsi.log_warn "No config.ru or Itsi.rb app detected. Running default app."
+  if File.exist?("./Itsi.rb")
+    Itsi.log_warn "No Ruby app registered in Itsi.rb. Running default app."
+  else
+    Itsi.log_warn "No rack or Isti apps detected. Running default app."
+  end
+
   Itsi::Server::RackInterface.for(lambda do |env|
     headers, body = \
       if env["itsi.response"].json?

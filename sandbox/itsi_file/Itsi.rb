@@ -20,8 +20,6 @@ grpc EchoServiceImpl.new do
              store_config: { redis: { connection_url: 'redis://localhost:6379/0' } }, error_response: { plaintext: 'no way', code: 429, default: 'plaintext' }
 end
 
-foo_bar(1)
-
 location '/' do
   # compress algorithms: ['zstd'], min_size: 0, compress_streams: true, mime_types: ['all'], level: 'fastest'
   get '/' do |req|

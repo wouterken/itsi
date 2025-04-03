@@ -1,0 +1,6 @@
+{
+  "error": "Bad Gateway",
+  "message": "The server was acting as a gateway or proxy and received an invalid response from the upstream server.",
+  "code": 502,
+  "status": "error"
+}
