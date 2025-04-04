@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Rate Limit Exceeded</title>
+    <title>Internal Server Error</title>
     <style>
       :root {
         --bg-color: #f0f2f5;
@@ -59,8 +59,11 @@
   </head>
   <body>
     <div class="error-container">
-      <h1>429</h1>
-      <p>Slow down! You've exceeded your rate limit.</p>
+      <h1>500</h1>
+      <p>
+        The server encountered an unexpected error that prevented it from
+        fulfilling the request.
+      </p>
       <p><a href="/">Return Home</a></p>
       <p><a href="javascript:history.back()">Go Back</a></p>
     </div>

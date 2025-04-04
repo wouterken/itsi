@@ -1,6 +1,6 @@
 {
   "error": "Service Unavailable",
-  "message": "The server is currently unable to handle the request due.",
+  "message": "The server is currently unable to handle the request.",
   "code": 503,
   "status": "error"
 }

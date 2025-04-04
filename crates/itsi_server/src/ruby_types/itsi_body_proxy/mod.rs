@@ -12,10 +12,12 @@ use std::sync::{
 };
 use tokio_stream::StreamExt;
 
+use crate::server::size_limited_incoming::SizeLimitedIncoming;
+
 #[magnus::wrap(class = "Itsi::BodyProxy", free_immediately, size)]
 #[derive(Debug, Clone)]
 pub struct ItsiBodyProxy {
-    pub incoming: Arc<Mutex<BodyDataStream<Incoming>>>,
+    pub incoming: Arc<Mutex<BodyDataStream<SizeLimitedIncoming<Incoming>>>>,
     pub closed: Arc<AtomicBool>,
     pub buf: Arc<Mutex<Vec<u8>>>,
 }
@@ -34,7 +36,7 @@ impl ItsiBody {
     }
 }
 impl ItsiBodyProxy {
-    pub fn new(incoming: Incoming) -> Self {
+    pub fn new(incoming: SizeLimitedIncoming<Incoming>) -> Self {
         ItsiBodyProxy {
             incoming: Arc::new(Mutex::new(incoming.into_data_stream())),
             closed: Arc::new(AtomicBool::new(false)),

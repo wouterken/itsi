@@ -336,6 +336,10 @@ module Itsi
           @middleware[:request_headers] = args
         end
 
+        def max_body(**args)
+          @middleware[:max_body] = args
+        end
+
         def response_headers(**args)
           @middleware[:response_headers] = args
         end

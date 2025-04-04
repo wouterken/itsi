@@ -1,7 +1,7 @@
 use super::{
     middleware_stack::ErrorResponse,
     mime_types::get_mime_type,
-    types::{HttpRequest, HttpResponse},
+    types::{HttpRequest, HttpResponse, RequestExt},
 };
 use crate::prelude::*;
 use bytes::Bytes;
@@ -10,9 +10,11 @@ use http::{header, Response, StatusCode};
 use http_body_util::{combinators::BoxBody, Full};
 use itsi_error::Result;
 use moka::sync::Cache;
+use percent_encoding::{percent_decode_str, utf8_percent_encode, NON_ALPHANUMERIC};
 use serde::Deserialize;
 use std::{
     borrow::Cow,
+    cmp::Ordering,
     collections::HashMap,
     convert::Infallible,
     fs::Metadata,
@@ -31,7 +33,7 @@ pub static ROOT_STATIC_FILE_SERVER: LazyLock<StaticFileServer> = LazyLock::new(|
         recheck_interval: Duration::from_secs(1),
         try_html_extension: true,
         auto_index: true,
-        not_found_behavior: NotFoundBehavior::Error(ErrorResponse::default()),
+        not_found_behavior: NotFoundBehavior::Error(ErrorResponse::not_found()),
         serve_dot_files: false,
         allowed_extensions: vec!["html".to_string(), "css".to_string(), "js".to_string()],
     })
@@ -190,7 +192,9 @@ impl StaticFileServer {
                 .unwrap(),
             Err(not_found_behavior) => match not_found_behavior {
                 NotFoundBehavior::Error(error_response) => {
-                    error_response.to_http_response(request).await
+                    error_response
+                        .to_http_response(request.accept().into())
+                        .await
                 }
                 NotFoundBehavior::FallThrough => return None,
                 NotFoundBehavior::IndexFile(index_file) => {
@@ -296,7 +300,9 @@ impl StaticFileServer {
         }
 
         // No valid cached entry, resolve the key to a file path
-        let normalized_path = normalize_path(key).ok_or(NotFoundBehavior::InternalServerError)?;
+        let decoded_key = percent_decode_str(key).decode_utf8_lossy();
+        let normalized_path =
+            normalize_path(decoded_key).ok_or(NotFoundBehavior::InternalServerError)?;
 
         if !self.config.serve_dot_files
             && normalized_path
@@ -787,7 +793,7 @@ fn is_not_modified(last_modified: SystemTime, if_modified_since: Option<SystemTi
     false
 }
 
-fn normalize_path(path: &str) -> Option<PathBuf> {
+fn normalize_path(path: Cow<'_, str>) -> Option<PathBuf> {
     let mut normalized = PathBuf::new();
     let path = path.trim_start_matches('/');
 
@@ -834,7 +840,7 @@ impl Default for StaticFileServer {
             recheck_interval: Duration::from_secs(60),
             try_html_extension: true,
             auto_index: true,
-            not_found_behavior: NotFoundBehavior::Error(ErrorResponse::default()),
+            not_found_behavior: NotFoundBehavior::Error(ErrorResponse::not_found()),
             serve_dot_files: false,
             allowed_extensions: vec!["html".to_string(), "css".to_string(), "js".to_string()],
         };
@@ -907,13 +913,42 @@ async fn generate_directory_listing(
     }
 
     // Sort directories and files alphabetically.
-    dirs.sort_by(|a, b| a.0.cmp(&b.0));
-    files.sort_by(|a, b| a.0.cmp(&b.0));
+    dirs.sort_by(|(name_a, _), (name_b, _)| {
+        let a_is_dot = name_a.starts_with('.');
+        let b_is_dot = name_b.starts_with('.');
+        if a_is_dot != b_is_dot {
+            if a_is_dot {
+                Ordering::Greater
+            } else {
+                Ordering::Less
+            }
+        } else {
+            name_a.cmp(name_b)
+        }
+    });
+
+    // Sort files so that dot files are at the bottom.
+    files.sort_by(|(name_a, _), (name_b, _)| {
+        let a_is_dot = name_a.starts_with('.');
+        let b_is_dot = name_b.starts_with('.');
+        if a_is_dot != b_is_dot {
+            if a_is_dot {
+                Ordering::Greater
+            } else {
+                Ordering::Less
+            }
+        } else {
+            name_a.cmp(name_b)
+        }
+    });
 
     // Generate rows for directories.
     for (name, metadata) in dirs {
+        let encoded = utf8_percent_encode(&name, NON_ALPHANUMERIC).to_string();
+
         rows.push_str(&format!(
-            r#"<tr><td><a href="{0}/">{0}/</a></td><td class="size">-</td><td class="date">{1}</td></tr>"#,
+            r#"<tr><td><a href="{0}/">{1}/</a></td><td class="size">-</td><td class="date">{2}</td></tr>"#,
+            encoded,
             name,
             metadata.modified().ok().map(|m| DateTime::<Utc>::from(m).format("%Y-%m-%d %H:%M:%S").to_string())
                 .unwrap_or_else(|| "-".to_string())
@@ -923,6 +958,8 @@ async fn generate_directory_listing(
 
     // Generate rows for files.
     for (name, metadata) in files {
+        let encoded = utf8_percent_encode(&name, NON_ALPHANUMERIC).to_string();
+
         let file_size = metadata.len();
         let formatted_size = if file_size < 1024 {
             format!("{} B", file_size)
@@ -945,8 +982,8 @@ async fn generate_directory_listing(
             .unwrap_or_else(|| "-".to_string());
 
         rows.push_str(&format!(
-            r#"<tr><td><a href="{0}">{0}</a></td><td class="size">{1}</td><td class="date">{2}</td></tr>"#,
-            name, formatted_size, modified_str
+            r#"<tr><td><a href="{0}">{1}</a></td><td class="size">{2}</td><td class="date">{3}</td></tr>"#,
+            encoded, name, formatted_size, modified_str
         ));
         rows.push('\n');
     }

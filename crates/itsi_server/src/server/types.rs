@@ -5,14 +5,46 @@ use http::{Request, Response};
 use http_body_util::combinators::BoxBody;
 use hyper::body::Incoming;
 
+use super::size_limited_incoming::SizeLimitedIncoming;
+
 pub type HttpResponse = Response<BoxBody<Bytes, Infallible>>;
-pub type HttpRequest = Request<Incoming>;
+pub type HttpRequest = Request<SizeLimitedIncoming<Incoming>>;
+
+pub trait ConversionExt {
+    fn limit(self) -> HttpRequest;
+}
+
+impl ConversionExt for Request<Incoming> {
+    fn limit(self) -> HttpRequest {
+        let (parts, body) = self.into_parts();
+        Request::from_parts(parts, SizeLimitedIncoming::new(body))
+    }
+}
 
 pub trait RequestExt {
     fn content_type(&self) -> Option<&str>;
     fn accept(&self) -> Option<&str>;
     fn header(&self, header_name: &str) -> Option<&str>;
     fn query_param(&self, query_name: &str) -> Option<&str>;
+}
+
+#[derive(Debug, Clone)]
+pub enum ResponseFormat {
+    JSON,
+    HTML,
+    TEXT,
+    UNKNOWN,
+}
+
+impl From<Option<&str>> for ResponseFormat {
+    fn from(value: Option<&str>) -> Self {
+        match value {
+            Some("application/json") => ResponseFormat::JSON,
+            Some("text/html") => ResponseFormat::HTML,
+            Some("text/plain") => ResponseFormat::TEXT,
+            _ => ResponseFormat::UNKNOWN,
+        }
+    }
 }
 
 impl RequestExt for HttpRequest {

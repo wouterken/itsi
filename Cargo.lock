@@ -1393,6 +1393,7 @@ dependencies = [
  "notify",
  "num_cpus",
  "parking_lot",
+ "percent-encoding",
  "pin-project",
  "rand 0.9.0",
  "rb-sys",

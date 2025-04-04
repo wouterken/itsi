@@ -4,7 +4,7 @@ source 'https://rubygems.org'
 
 # gem "rails"
 
-gem 'debug'
+# gem 'debug'
 gem 'grpc'
 gem 'itsi-scheduler', path: '../../gems/scheduler'
 gem 'itsi-server', path: '../../gems/server'

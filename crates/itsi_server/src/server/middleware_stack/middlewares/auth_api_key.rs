@@ -18,7 +18,12 @@ use serde::Deserialize;
 pub struct AuthAPIKey {
     pub valid_keys: Vec<String>,
     pub token_source: TokenSource,
+    #[serde(default = "unauthorized_error_response")]
     pub error_response: ErrorResponse,
+}
+
+fn unauthorized_error_response() -> ErrorResponse {
+    ErrorResponse::unauthorized()
 }
 
 #[async_trait]
@@ -48,7 +53,9 @@ impl MiddlewareLayer for AuthAPIKey {
             .any(|key| submitted_value.is_some_and(|sv| sv == key))
         {
             Ok(Either::Right(
-                self.error_response.to_http_response(&req).await,
+                self.error_response
+                    .to_http_response(req.accept().into())
+                    .await,
             ))
         } else {
             Ok(Either::Left(req))

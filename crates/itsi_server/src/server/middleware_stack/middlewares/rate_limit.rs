@@ -21,7 +21,12 @@ pub struct RateLimit {
     #[serde(skip_deserializing)]
     pub rate_limiter: OnceLock<Arc<dyn RateLimiter>>,
     pub store_config: RateLimiterConfig,
+    #[serde(default = "too_many_requests_error_response")]
     pub error_response: ErrorResponse,
+}
+
+fn too_many_requests_error_response() -> ErrorResponse {
+    ErrorResponse::too_many_requests()
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -94,7 +99,9 @@ impl MiddlewareLayer for RateLimit {
             match limiter.check_limit(&rate_limit_key, limit, timeout).await {
                 Ok(_) => Ok(Either::Left(req)),
                 Err(RateLimitError::RateLimitExceeded { .. }) => Ok(Either::Right(
-                    self.error_response.to_http_response(&req).await,
+                    self.error_response
+                        .to_http_response(req.accept().into())
+                        .await,
                 )),
                 Err(e) => {
                     // Other error, log and allow request (fail open)

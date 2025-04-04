@@ -273,6 +273,7 @@ impl MiddlewareSet {
                 "intrusion_protection" => Ok({
                     Middleware::IntrusionProtection(IntrusionProtection::from_value(parameters)?)
                 }),
+                "max_body" => Ok(Middleware::MaxBody(MaxBody::from_value(parameters)?)),
                 "rate_limit" => Ok(Middleware::RateLimit(RateLimit::from_value(parameters)?)),
                 "cors" => Ok(Middleware::Cors(Box::new(Cors::from_value(parameters)?))),
                 "request_headers" => Ok(Middleware::RequestHeaders(RequestHeaders::from_value(

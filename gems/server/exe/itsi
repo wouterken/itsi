@@ -3,7 +3,7 @@
 
 require "itsi/server"
 require "optparse"
-require "debug"
+
 
 COMMANDS = {
   "init" => "Initialize a new Itsi.rb server configuration file",
@@ -31,8 +31,12 @@ parser = OptionParser.new do |opts|
     options[:config_file] = config_file
   end
 
-  opts.on("-w", "--workers WORKERS", Integer, "Number of workers (default: #{Etc.nprocessors})") do |w|
+  opts.on("-w", "--workers WORKERS", Integer, "Number of workers") do |w|
     options[:workers] = w
+  end
+
+  opts.on("-d", "--daemonize", "Run the process as a daemon") do
+    options[:daemonize] = true
   end
 
   opts.on("-t", "--threads THREADS", Integer, "Number of threads (default: 1)") do |t|
@@ -144,6 +148,10 @@ if ENV['COMP_LINE'] || ARGV.include?('--completion')
 end
 
 parser.parse!
+
+if options[:daemonize]
+  Process.daemon(true)
+end
 
 case (command = ARGV.shift)
 when *COMMANDS.keys

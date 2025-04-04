@@ -371,7 +371,7 @@ impl SingleMode {
         };
         let mut serve = Box::pin(
             binding
-                .timer(TokioTimer::new()) // your existing timer
+                .timer(TokioTimer::new())
                 .header_read_timeout(Duration::from_secs(1))
                 .serve_connection_with_upgrades(io, service),
         );

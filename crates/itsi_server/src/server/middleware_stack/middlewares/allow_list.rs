@@ -1,7 +1,7 @@
 use super::{ErrorResponse, FromValue, MiddlewareLayer};
 use crate::server::{
     itsi_service::RequestContext,
-    types::{HttpRequest, HttpResponse},
+    types::{HttpRequest, HttpResponse, RequestExt},
 };
 use async_trait::async_trait;
 use either::Either;
@@ -16,7 +16,12 @@ pub struct AllowList {
     #[serde(skip_deserializing)]
     pub allowed_ips: OnceLock<RegexSet>,
     pub allowed_patterns: Vec<String>,
+    #[serde(default = "forbidden_error_response")]
     pub error_response: ErrorResponse,
+}
+
+fn forbidden_error_response() -> ErrorResponse {
+    ErrorResponse::forbidden()
 }
 
 #[async_trait]
@@ -37,7 +42,9 @@ impl MiddlewareLayer for AllowList {
         if let Some(allowed_ips) = self.allowed_ips.get() {
             if !allowed_ips.is_match(&context.addr) {
                 return Ok(Either::Right(
-                    self.error_response.to_http_response(&req).await,
+                    self.error_response
+                        .to_http_response(req.accept().into())
+                        .await,
                 ));
             }
         }

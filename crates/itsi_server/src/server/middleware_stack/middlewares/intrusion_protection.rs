@@ -32,7 +32,12 @@ pub struct IntrusionProtection {
     #[serde(skip_deserializing)]
     pub ban_manager: OnceLock<BanManager>,
     pub store_config: RateLimiterConfig,
+    #[serde(default = "forbidden_error_response")]
     pub error_response: ErrorResponse,
+}
+
+fn forbidden_error_response() -> ErrorResponse {
+    ErrorResponse::forbidden()
 }
 
 #[async_trait]
@@ -100,7 +105,9 @@ impl MiddlewareLayer for IntrusionProtection {
                 Ok(Some(reason)) => {
                     info!("Request from banned IP {}: {}", client_ip, reason);
                     return Ok(Either::Right(
-                        self.error_response.to_http_response(&req).await,
+                        self.error_response
+                            .to_http_response(req.accept().into())
+                            .await,
                     ));
                 }
                 Err(e) => {
@@ -142,7 +149,9 @@ impl MiddlewareLayer for IntrusionProtection {
 
                 // Always return the error response even if banning failed
                 return Ok(Either::Right(
-                    self.error_response.to_http_response(&req).await,
+                    self.error_response
+                        .to_http_response(req.accept().into())
+                        .await,
                 ));
             }
         }
@@ -180,7 +189,9 @@ impl MiddlewareLayer for IntrusionProtection {
 
                         // Always return the error response even if banning failed
                         return Ok(Either::Right(
-                            self.error_response.to_http_response(&req).await,
+                            self.error_response
+                                .to_http_response(req.accept().into())
+                                .await,
                         ));
                     }
                 }

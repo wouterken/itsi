@@ -1,5 +1,6 @@
 use super::itsi_grpc_call::CompressionAlgorithm;
 use crate::prelude::*;
+use crate::server::size_limited_incoming::SizeLimitedIncoming;
 use crate::server::{
     byte_frame::ByteFrame, serve_strategy::single_mode::RunningPhase, types::HttpResponse,
 };
@@ -114,7 +115,7 @@ impl ItsiGrpcResponseStream {
     pub async fn new(
         compression_out: CompressionAlgorithm,
         response_sender: Sender<ByteFrame>,
-        mut body: BodyDataStream<Incoming>,
+        mut body: BodyDataStream<SizeLimitedIncoming<Incoming>>,
     ) -> Self {
         let (trailer_tx, trailer_rx) = oneshot::channel::<HeaderMap>();
         let (pipe_read, pipe_write) = pipe().unwrap();

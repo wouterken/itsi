@@ -1,127 +1,141 @@
 use crate::server::static_file_server::ROOT_STATIC_FILE_SERVER;
-use crate::server::types::RequestExt;
-use crate::server::{
-    itsi_service::RequestContext,
-    types::{HttpRequest, HttpResponse},
-};
+use crate::server::types::HttpResponse;
+use crate::server::types::ResponseFormat;
 
 use bytes::Bytes;
-use either::Either;
 use http::Response;
 use http_body_util::{combinators::BoxBody, Full};
-use itsi_error::ItsiError;
-use serde::Deserialize;
-use std::path::{Path, PathBuf};
+use serde::{Deserialize, Deserializer};
+use std::convert::Infallible;
+use std::path::PathBuf;
+mod default_responses;
 
 #[derive(Debug, Clone, Deserialize)]
-/// Filters can each have a customizable error response.
-/// They can:
-/// * Return Plain-text
-/// * Return HTML
-/// * Return JSON
-pub struct ErrorResponse {
-    code: u16,
-    plaintext: Option<String>,
-    html: Option<PathBuf>,
-    json: Option<serde_json::Value>,
-    default: ErrorFormat,
+pub enum ContentSource {
+    #[serde(rename(deserialize = "inline"))]
+    Inline(String),
+    #[serde(rename(deserialize = "file"))]
+    File(PathBuf),
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
-enum ErrorFormat {
-    #[default]
+pub enum DefaultFormat {
     #[serde(rename(deserialize = "plaintext"))]
     Plaintext,
+    #[default]
     #[serde(rename(deserialize = "html"))]
     Html,
     #[serde(rename(deserialize = "json"))]
     Json,
 }
 
-impl Default for ErrorResponse {
-    fn default() -> Self {
-        ErrorResponse {
-            code: 500,
-            plaintext: Some("Error".to_owned()),
-            html: None,
-            json: None,
-            default: ErrorFormat::Plaintext,
+#[derive(Debug, Clone)]
+pub struct ErrorResponse {
+    pub code: u16,
+    pub plaintext: Option<ContentSource>,
+    pub html: Option<ContentSource>,
+    pub json: Option<ContentSource>,
+    pub default: DefaultFormat, // must match one of the provided fields
+}
+
+impl<'de> Deserialize<'de> for ErrorResponse {
+    fn deserialize<D>(deserializer: D) -> Result<ErrorResponse, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let def = ErrorResponseDef::deserialize(deserializer)?;
+        Ok(def.into())
+    }
+}
+
+/// An untagged enum to support two input formats:
+/// - A detailed struct with all fields.
+/// - A string with the name of a default error response.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum ErrorResponseDef {
+    Detailed {
+        code: u16,
+        plaintext: Option<ContentSource>,
+        html: Option<ContentSource>,
+        json: Option<ContentSource>,
+        default: DefaultFormat,
+    },
+    Named(String),
+}
+
+impl From<ErrorResponseDef> for ErrorResponse {
+    fn from(def: ErrorResponseDef) -> Self {
+        match def {
+            ErrorResponseDef::Detailed {
+                code,
+                plaintext,
+                html,
+                json,
+                default,
+            } => ErrorResponse {
+                code,
+                plaintext,
+                html,
+                json,
+                default,
+            },
+            ErrorResponseDef::Named(name) => match name.as_str() {
+                "internal_server_error" => ErrorResponse::internal_server_error(),
+                "not_found" => ErrorResponse::not_found(),
+                "unauthorized" => ErrorResponse::unauthorized(),
+                "forbidden" => ErrorResponse::forbidden(),
+                "payload_too_large" => ErrorResponse::payload_too_large(),
+                "too_many_requests" => ErrorResponse::too_many_requests(),
+                "bad_gateway" => ErrorResponse::bad_gateway(),
+                "service_unavailable" => ErrorResponse::service_unavailable(),
+                "gateway_timeout" => ErrorResponse::gateway_timeout(),
+                _ => panic!("Unknown error response name: {}", name),
+            },
         }
     }
 }
 
 impl ErrorResponse {
-    pub(crate) async fn to_http_response(&self, request: &HttpRequest) -> HttpResponse {
-        let accept = request.accept();
+    pub(crate) async fn to_http_response(&self, accept: ResponseFormat) -> HttpResponse {
         let body = match accept {
-            Some(accept) if accept.contains("text/plain") => BoxBody::new(Full::new(Bytes::from(
-                self.plaintext.clone().unwrap_or_else(|| "Error".to_owned()),
-            ))),
-            Some(accept) if accept.contains("text/html") => {
-                if let Some(path) = &self.html {
-                    let path = path.to_str().unwrap();
-                    let response = ROOT_STATIC_FILE_SERVER.serve_single(path).await;
-
-                    if response.status().is_success() {
-                        response.into_body()
-                    } else {
-                        BoxBody::new(Full::new(Bytes::from("Error")))
-                    }
-                } else {
-                    BoxBody::new(Full::new(Bytes::from("Error")))
-                }
+            ResponseFormat::TEXT => {
+                Self::get_response_body(self.code, &self.plaintext, accept).await
             }
-            Some(accept) if accept.contains("application/json") => {
-                BoxBody::new(Full::new(Bytes::from(
-                    self.json
-                        .as_ref()
-                        .map(|json| json.to_string())
-                        .unwrap_or_else(|| "Error".to_owned()),
-                )))
-            }
-            _ => match self.default {
-                ErrorFormat::Plaintext => BoxBody::new(Full::new(Bytes::from(
-                    self.plaintext.clone().unwrap_or_else(|| "Error".to_owned()),
-                ))),
-                ErrorFormat::Html => {
-                    if let Some(path) = &self.html {
-                        let path = path.to_str().unwrap();
-                        let response = ROOT_STATIC_FILE_SERVER.serve_single(path).await;
-
-                        if response.status().is_success() {
-                            response.into_body()
-                        } else {
-                            BoxBody::new(Full::new(Bytes::from("Error")))
-                        }
-                    } else {
-                        BoxBody::new(Full::new(Bytes::from("Error")))
-                    }
+            ResponseFormat::HTML => Self::get_response_body(self.code, &self.html, accept).await,
+            ResponseFormat::JSON => Self::get_response_body(self.code, &self.json, accept).await,
+            ResponseFormat::UNKNOWN => match self.default {
+                DefaultFormat::Plaintext => {
+                    Self::get_response_body(self.code, &self.plaintext, accept).await
                 }
-                ErrorFormat::Json => BoxBody::new(Full::new(Bytes::from(
-                    self.json
-                        .as_ref()
-                        .map(|json| json.to_string())
-                        .unwrap_or_else(|| "Error".to_owned()),
-                ))),
+                DefaultFormat::Html => Self::get_response_body(self.code, &self.html, accept).await,
+                DefaultFormat::Json => Self::get_response_body(self.code, &self.json, accept).await,
             },
         };
 
         Response::builder().status(self.code).body(body).unwrap()
     }
 
-    pub async fn before(
-        &self,
-        req: HttpRequest,
-        _context: &mut RequestContext,
-    ) -> Result<Either<HttpRequest, HttpResponse>, ItsiError> {
-        if let Some(path) = req.uri().path().strip_prefix("/error/") {
-            let path = Path::new(path);
-            if path.exists() {
-                let path = path.to_str().unwrap();
-                let response = ROOT_STATIC_FILE_SERVER.serve_single(path).await;
-                return Ok(Either::Right(response));
+    async fn get_response_body(
+        code: u16,
+        source: &Option<ContentSource>,
+        accept: ResponseFormat,
+    ) -> BoxBody<Bytes, Infallible> {
+        match source {
+            Some(ContentSource::Inline(text)) => {
+                return BoxBody::new(Full::new(Bytes::from(text.clone())));
             }
+            Some(ContentSource::File(path)) => {
+                // Convert the PathBuf to a &str (assumes valid UTF-8).
+                if let Some(path_str) = path.to_str() {
+                    let response = ROOT_STATIC_FILE_SERVER.serve_single(path_str).await;
+                    if response.status().is_success() {
+                        return response.into_body();
+                    }
+                }
+            }
+            None => {}
         }
-        Ok(Either::Left(req))
+        ErrorResponse::fallback_body_for(code, accept)
     }
 }

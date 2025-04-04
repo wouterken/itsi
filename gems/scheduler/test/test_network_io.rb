@@ -2,7 +2,7 @@
 
 require "socket"
 require "timeout"
-require "debug"
+
 
 class TestNetworkIO < Minitest::Test
   include Itsi::Scheduler::TestHelper

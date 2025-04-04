@@ -1,0 +1,6 @@
+{
+  "error": "Forbidden",
+  "message": "You are forbidden to access this resource.",
+  "code": 403,
+  "status": "error"
+}

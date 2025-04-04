@@ -3,13 +3,16 @@ use super::middleware_stack::CompressionAlgorithm;
 use super::middleware_stack::MiddlewareLayer;
 use super::request_job::RequestJob;
 use super::serve_strategy::single_mode::RunningPhase;
-use super::types::HttpRequest;
+use super::types::ConversionExt;
 use super::types::HttpResponse;
-use crate::prelude::*;
+use super::types::ResponseFormat;
+
 use crate::ruby_types::itsi_server::itsi_server_config::ServerParams;
 use chrono;
 use chrono::Local;
 use either::Either;
+use http::Request;
+use hyper::body::Incoming;
 use hyper::service::Service;
 use itsi_error::ItsiError;
 use regex::Regex;
@@ -65,8 +68,9 @@ pub struct RequestContextInner {
     pub matching_pattern: Option<Arc<Regex>>,
     pub compression_method: OnceLock<CompressionAlgorithm>,
     pub origin: OnceLock<Option<String>>,
+    pub response_format: OnceLock<ResponseFormat>,
     pub start_time: chrono::DateTime<chrono::Utc>,
-    pub request: Option<Arc<HttpRequest>>,
+    pub request: Option<Arc<Request<Incoming>>>,
     pub request_start_time: OnceLock<chrono::DateTime<Local>>,
     pub if_none_match: OnceLock<Option<String>>,
     pub etag_value: OnceLock<Option<String>>,
@@ -81,6 +85,7 @@ impl RequestContext {
                 matching_pattern,
                 compression_method: OnceLock::new(),
                 origin: OnceLock::new(),
+                response_format: OnceLock::new(),
                 start_time: chrono::Utc::now(),
                 request: None,
                 request_start_time: OnceLock::new(),
@@ -130,23 +135,32 @@ impl RequestContext {
             .get()
             .map(|instant| Local::now() - instant)
     }
+
+    pub fn set_response_format(&self, format: ResponseFormat) {
+        self.inner.response_format.set(format).unwrap()
+    }
+
+    pub fn response_format(&self) -> &ResponseFormat {
+        self.inner.response_format.get().unwrap()
+    }
 }
 
-impl Service<HttpRequest> for ItsiService {
+impl Service<Request<Incoming>> for ItsiService {
     type Response = HttpResponse;
     type Error = ItsiError;
     type Future = Pin<Box<dyn Future<Output = itsi_error::Result<HttpResponse>> + Send>>;
 
-    fn call(&self, req: HttpRequest) -> Self::Future {
+    fn call(&self, req: Request<Incoming>) -> Self::Future {
         let params = self.server_params.clone();
         let self_clone = self.clone();
-        debug!("Incoming request {:?}", req.uri());
+
         Box::pin(async move {
-            let mut req = req;
+            let mut req = req.limit();
             let mut resp: Option<HttpResponse> = None;
             let (stack, matching_pattern) = params.middleware.get().unwrap().stack_for(&req)?;
             let mut context = RequestContext::new(self_clone, matching_pattern);
             let mut depth = 0;
+
             for (index, elm) in stack.iter().enumerate() {
                 match elm.before(req, &mut context).await {
                     Ok(Either::Left(r)) => req = r,

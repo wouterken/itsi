@@ -32,7 +32,12 @@ pub struct AuthJwt {
     pub subjects: Option<HashSet<String>>,
     pub issuers: Option<HashSet<String>>,
     pub leeway: Option<u64>,
+    #[serde(default = "unauthorized_error_response")]
     pub error_response: ErrorResponse,
+}
+
+fn unauthorized_error_response() -> ErrorResponse {
+    ErrorResponse::unauthorized()
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq, Hash)]
@@ -173,7 +178,9 @@ impl MiddlewareLayer for AuthJwt {
         info!("Token str is {:?}", token_str);
         if token_str.is_none() {
             return Ok(Either::Right(
-                self.error_response.to_http_response(&req).await,
+                self.error_response
+                    .to_http_response(req.accept().into())
+                    .await,
             ));
         }
         let token_str = token_str.unwrap();
@@ -187,7 +194,9 @@ impl MiddlewareLayer for AuthJwt {
 
         if !self.verifiers.contains_key(&alg) {
             return Ok(Either::Right(
-                self.error_response.to_http_response(&req).await,
+                self.error_response
+                    .to_http_response(req.accept().into())
+                    .await,
             ));
         }
         let keys = self.keys.get().unwrap().get(&alg).unwrap();
@@ -228,7 +237,9 @@ impl MiddlewareLayer for AuthJwt {
             data
         } else {
             return Ok(Either::Right(
-                self.error_response.to_http_response(&req).await,
+                self.error_response
+                    .to_http_response(req.accept().into())
+                    .await,
             ));
         };
 
@@ -245,7 +256,9 @@ impl MiddlewareLayer for AuthJwt {
                 };
                 if expected_audiences.is_disjoint(&token_auds) {
                     return Ok(Either::Right(
-                        self.error_response.to_http_response(&req).await,
+                        self.error_response
+                            .to_http_response(req.accept().into())
+                            .await,
                     ));
                 }
             }
@@ -256,7 +269,9 @@ impl MiddlewareLayer for AuthJwt {
             if let Some(sub) = &claims.sub {
                 if !expected_subjects.contains(sub) {
                     return Ok(Either::Right(
-                        self.error_response.to_http_response(&req).await,
+                        self.error_response
+                            .to_http_response(req.accept().into())
+                            .await,
                     ));
                 }
             }
@@ -267,7 +282,9 @@ impl MiddlewareLayer for AuthJwt {
             if let Some(iss) = &claims.iss {
                 if !expected_issuers.contains(iss) {
                     return Ok(Either::Right(
-                        self.error_response.to_http_response(&req).await,
+                        self.error_response
+                            .to_http_response(req.accept().into())
+                            .await,
                     ));
                 }
             }

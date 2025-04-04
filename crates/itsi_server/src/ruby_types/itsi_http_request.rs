@@ -25,6 +25,7 @@ use crate::server::{
     byte_frame::ByteFrame,
     itsi_service::RequestContext,
     request_job::RequestJob,
+    size_limited_incoming::MaxBodySizeReached,
     types::{HttpRequest, HttpResponse},
 };
 
@@ -119,35 +120,39 @@ impl ItsiHttpRequest {
         hyper_request: HttpRequest,
         context: &RequestContext,
     ) -> itsi_error::Result<HttpResponse> {
-        let (request, mut receiver) = ItsiHttpRequest::new(hyper_request, context).await;
-        let shutdown_channel = context.service.shutdown_channel.clone();
-        let response = request.response.clone();
-        match context
-            .sender
-            .send(RequestJob::ProcessHttpRequest(request, app))
-            .await
-        {
-            Err(err) => {
-                error!("Error occurred: {}", err);
-                let mut response = Response::new(BoxBody::new(Empty::new()));
-                *response.status_mut() = StatusCode::BAD_REQUEST;
-                Ok(response)
+        match ItsiHttpRequest::new(hyper_request, context).await {
+            Ok((request, mut receiver)) => {
+                let shutdown_channel = context.service.shutdown_channel.clone();
+                let response = request.response.clone();
+                match context
+                    .sender
+                    .send(RequestJob::ProcessHttpRequest(request, app))
+                    .await
+                {
+                    Err(err) => {
+                        error!("Error occurred: {}", err);
+                        let mut response = Response::new(BoxBody::new(Empty::new()));
+                        *response.status_mut() = StatusCode::BAD_REQUEST;
+                        Ok(response)
+                    }
+                    _ => match receiver.recv().await {
+                        Some(first_frame) => Ok(response
+                            .build(first_frame, receiver, shutdown_channel)
+                            .await),
+                        None => Ok(response
+                            .build(ByteFrame::Empty, receiver, shutdown_channel)
+                            .await),
+                    },
+                }
             }
-            _ => match receiver.recv().await {
-                Some(first_frame) => Ok(response
-                    .build(first_frame, receiver, shutdown_channel)
-                    .await),
-                None => Ok(response
-                    .build(ByteFrame::Empty, receiver, shutdown_channel)
-                    .await),
-            },
+            Err(err_resp) => Ok(err_resp),
         }
     }
 
     pub(crate) async fn new(
         request: HttpRequest,
         context: &RequestContext,
-    ) -> (ItsiHttpRequest, mpsc::Receiver<ByteFrame>) {
+    ) -> Result<(ItsiHttpRequest, mpsc::Receiver<ByteFrame>), HttpResponse> {
         let (parts, body) = request.into_parts();
         let body = if context.server_params.streamable_body {
             ItsiBody::Stream(ItsiBodyProxy::new(body))
@@ -155,13 +160,21 @@ impl ItsiHttpRequest {
             let mut body_bytes = BigBytes::new();
             let mut stream = body.into_data_stream();
             while let Some(chunk) = stream.next().await {
-                let byte_array = chunk.unwrap().to_vec();
-                body_bytes.write_all(&byte_array).unwrap();
+                match chunk {
+                    Ok(byte_array) => body_bytes.write_all(&byte_array).unwrap(),
+                    Err(e) => {
+                        let mut err_resp = Response::new(BoxBody::new(Empty::new()));
+                        if e.downcast_ref::<MaxBodySizeReached>().is_some() {
+                            *err_resp.status_mut() = StatusCode::PAYLOAD_TOO_LARGE;
+                        }
+                        return Err(err_resp);
+                    }
+                }
             }
             ItsiBody::Buffered(body_bytes)
         };
         let response_channel = mpsc::channel::<ByteFrame>(100);
-        (
+        Ok((
             Self {
                 context: context.clone(),
                 version: parts.version,
@@ -171,7 +184,7 @@ impl ItsiHttpRequest {
                 parts,
             },
             response_channel.1,
-        )
+        ))
     }
 
     pub(crate) fn path(&self) -> MagnusResult<&str> {

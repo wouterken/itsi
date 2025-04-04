@@ -5,7 +5,6 @@ module Itsi
     module Config
       require_relative "config/dsl"
       require_relative "default_app/default_app"
-      require "debug"
 
       ITSI_DEFAULT_CONFIG_FILE = "Itsi.rb"
 
@@ -40,14 +39,16 @@ module Itsi
           elsif args[:static]
             DSL.evaluate do
               location "/" do
-                etag type: 'strong', algorithm: 'sha256'
+                allow_list allowed_patterns: ['127.0.0.1']
+                rate_limit key: 'address', store_config: 'in_memory', requests: 2, seconds: 5
+                etag type: 'strong', algorithm: 'md5', min_body_size: 1024 * 1024
                 compress min_size: 1024 * 1024, level: 'fastest', algorithms: %w[zstd gzip brotli deflate], mime_types: %w[all], compress_streams: true
                 log_requests before: { level: "INFO", format: "[{request_id}] {method} {path_and_query} - {addr} " }, after: { level: "INFO", format: "[{request_id}] └─ {status} in {response_time}" }
                 static_assets \
                   relative_path: true,
                   allowed_extensions: [],
                   root_dir: '.',
-                  not_found_behavior: 'fallthrough',
+                  not_found_behavior: {error: 'not_found'},
                   auto_index: true,
                   try_html_extension: true,
                   max_file_size_in_memory: 1024 * 1024, # 1MB
@@ -87,7 +88,7 @@ module Itsi
           Bundler.require(preload)
         end
         {
-          workers: args.fetch(:workers) { itsifile_config.fetch(:workers, Etc.nprocessors) },
+          workers: args.fetch(:workers) { itsifile_config.fetch(:workers, 1) },
           worker_memory_limit: args.fetch(:worker_memory_limit) { itsifile_config.fetch(:worker_memory_limit, nil) },
           silence: args.fetch(:silence) { itsifile_config.fetch(:silence, false) },
           shutdown_timeout: args.fetch(:shutdown_timeout) { itsifile_config.fetch(:shutdown_timeout, 5) },

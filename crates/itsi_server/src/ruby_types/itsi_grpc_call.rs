@@ -149,6 +149,7 @@ impl ItsiGrpcCall {
             },
         }
     }
+
     pub fn is_connection_closed_err(ruby: &Ruby, err: &Error) -> bool {
         match err.error_type() {
             ErrorType::Jump(_) => false,

@@ -1,5 +1,4 @@
 # frozen_string_literal: true
-require 'debug'
 
 class TestAddressResolve < Minitest::Test
   include Itsi::Scheduler::TestHelper

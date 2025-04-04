@@ -13,6 +13,7 @@ pub mod rate_limiter;
 pub mod request_job;
 pub mod serve_strategy;
 pub mod signal;
+pub mod size_limited_incoming;
 pub mod static_file_server;
 pub mod thread_worker;
 pub mod tls;
