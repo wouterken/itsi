@@ -117,9 +117,6 @@ parser = OptionParser.new do |opts|
     options[:shutdown_timeout] = shutdown_timeout
   end
 
-  opts.on("--script_name SCRIPT_NAME", String, "Script name to inject into Rack ENV") do |script_name|
-    options[:script_name] = script_name
-  end
 
   opts.on("--stream-body", TrueClass, "Stream body frames (default: false for best compatibility)") do |stream_body|
     options[:stream_body] = stream_body
@@ -145,6 +142,10 @@ parser = OptionParser.new do |opts|
   opts.on("--passfile PASSFILE", String, "Passfile") do |passfile|
     options[:passfile] = passfile
   end
+
+  opts.on("--algorithm ALGORITHM", String, "Algorithm for password hashing") do |algorithm|
+    options[:algorithm] = algorithm
+  end
 end
 
 if ENV['COMP_LINE'] || ARGV.include?('--completion')
@@ -160,7 +161,6 @@ end
 
 case (command = ARGV.shift)
 when *COMMANDS.keys
-  require 'debug'
   required_arity = Itsi::Server.method(command).parameters&.select{|c| c.first == :req }&.length&.succ || 2
   case required_arity
   when 1 then Itsi::Server.send(command)
@@ -170,7 +170,6 @@ when *COMMANDS.keys
       puts "Expecting #{required_arity - 2} args. Got #{ARGV.length} "
       exit(0)
     end
-    binding.b
     Itsi::Server.send(command, options, *ARGV)
   end
 when nil

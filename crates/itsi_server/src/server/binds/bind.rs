@@ -2,6 +2,7 @@ use super::{
     bind_protocol::BindProtocol,
     tls::{configure_tls, ItsiTlsAcceptor},
 };
+use crate::prelude::*;
 use itsi_error::ItsiError;
 use std::{
     collections::HashMap,
@@ -28,7 +29,19 @@ pub struct Bind {
     pub address: BindAddress,
     pub port: Option<u16>, // None for Unix Sockets
     pub protocol: BindProtocol,
-    pub tls_config: Option<ItsiTlsAcceptor>,
+    pub tls_config: Option<TlsOptions>,
+}
+
+#[derive(Default, Clone)]
+pub struct TlsOptions {
+    pub host: String,
+    pub options: HashMap<String, String>,
+}
+
+impl TlsOptions {
+    pub fn build_acceptor(&self) -> Result<ItsiTlsAcceptor> {
+        configure_tls(&self.host, &self.options)
+    }
 }
 
 impl Bind {
@@ -73,7 +86,7 @@ impl std::fmt::Debug for Bind {
 impl FromStr for Bind {
     type Err = ItsiError;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         let (protocol, remainder) = if let Some((proto, rest)) = s.split_once("://") {
             (proto.parse::<BindProtocol>()?, rest)
         } else {
@@ -138,9 +151,15 @@ impl FromStr for Bind {
 
         let tls_config = match protocol {
             BindProtocol::Http => None,
-            BindProtocol::Https => Some(configure_tls(host, &options)?),
+            BindProtocol::Https => Some(TlsOptions {
+                host: host.to_owned(),
+                options,
+            }),
             BindProtocol::Unix => None,
-            BindProtocol::Unixs => Some(configure_tls(host, &options)?),
+            BindProtocol::Unixs => Some(TlsOptions {
+                host: host.to_owned(),
+                options,
+            }),
         };
         let bind = Self {
             address,

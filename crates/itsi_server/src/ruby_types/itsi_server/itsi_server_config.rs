@@ -53,7 +53,6 @@ pub struct ServerParams {
     pub notify_watchers: Option<Vec<(String, Vec<Vec<String>>)>>,
     /// Worker params
     pub threads: u8,
-    pub script_name: String,
     pub streamable_body: bool,
     pub multithreaded_reactor: bool,
     pub scheduler_class: Option<String>,
@@ -129,7 +128,6 @@ impl ServerParams {
         let notify_watchers: Option<Vec<(String, Vec<Vec<String>>)>> =
             rb_param_hash.fetch("notify_watchers")?;
         let threads: u8 = rb_param_hash.fetch("threads")?;
-        let script_name: String = rb_param_hash.fetch("script_name")?;
         let streamable_body: bool = rb_param_hash.fetch("streamable_body")?;
         let scheduler_class: Option<String> = rb_param_hash.fetch("scheduler_class")?;
         let oob_gc_responses_threshold: Option<u64> =
@@ -211,7 +209,6 @@ impl ServerParams {
             preload,
             notify_watchers,
             threads,
-            script_name,
             streamable_body,
             scheduler_class,
             oob_gc_responses_threshold,

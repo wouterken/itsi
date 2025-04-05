@@ -1,3 +1,4 @@
+use crate::prelude::*;
 use crate::server::io_stream::IoStream;
 use crate::server::serve_strategy::single_mode::RunningPhase;
 
@@ -19,7 +20,6 @@ use tokio::net::{unix, TcpStream, UnixStream};
 use tokio::sync::watch::Receiver;
 use tokio_rustls::TlsAcceptor;
 use tokio_stream::StreamExt;
-use tracing::{debug, error};
 
 pub(crate) enum Listener {
     Tcp(TcpListener),
@@ -33,15 +33,6 @@ pub(crate) enum TokioListener {
     TcpTls(TokioTcpListener, ItsiTlsAcceptor),
     Unix(TokioUnixListener),
     UnixTls(TokioUnixListener, ItsiTlsAcceptor),
-}
-
-impl Drop for TokioListener {
-    fn drop(&mut self) {
-        // This explicit Drop implementation helps ensure that the underlying file
-        // descriptors are properly closed when a TokioListener is dropped.
-        // The actual resource cleanup is handled by the underlying Tokio types.
-        debug!("TokioListener dropped");
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -341,12 +332,18 @@ impl Listener {
                 BindProtocol::Http => Listener::Tcp(revive_tcp_socket(fd)?),
                 BindProtocol::Https => {
                     let tcp_listener = revive_tcp_socket(fd)?;
-                    Listener::TcpTls((tcp_listener, bind.tls_config.unwrap()))
+                    Listener::TcpTls((
+                        tcp_listener,
+                        bind.tls_config.unwrap().build_acceptor().unwrap(),
+                    ))
                 }
                 _ => unreachable!(),
             },
             BindAddress::UnixSocket(_) => match bind.tls_config {
-                Some(tls_config) => Listener::UnixTls((revive_unix_socket(fd)?, tls_config)),
+                Some(tls_config) => Listener::UnixTls((
+                    revive_unix_socket(fd)?,
+                    tls_config.build_acceptor().unwrap(),
+                )),
                 None => Listener::Unix(revive_unix_socket(fd)?),
             },
         };
@@ -363,12 +360,18 @@ impl TryFrom<Bind> for Listener {
                 BindProtocol::Http => Listener::Tcp(connect_tcp_socket(addr, bind.port.unwrap())?),
                 BindProtocol::Https => {
                     let tcp_listener = connect_tcp_socket(addr, bind.port.unwrap())?;
-                    Listener::TcpTls((tcp_listener, bind.tls_config.unwrap()))
+                    Listener::TcpTls((
+                        tcp_listener,
+                        bind.tls_config.unwrap().build_acceptor().unwrap(),
+                    ))
                 }
                 _ => unreachable!(),
             },
             BindAddress::UnixSocket(path) => match bind.tls_config {
-                Some(tls_config) => Listener::UnixTls((connect_unix_socket(&path)?, tls_config)),
+                Some(tls_config) => Listener::UnixTls((
+                    connect_unix_socket(&path)?,
+                    tls_config.build_acceptor().unwrap(),
+                )),
                 None => Listener::Unix(connect_unix_socket(&path)?),
             },
         };

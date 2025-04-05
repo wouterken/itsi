@@ -65,10 +65,22 @@ impl MiddlewareLayer for RubyApp {
         context: &mut HttpRequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
         match self.request_type {
-            RequestType::Http => ItsiHttpRequest::process_request(self.app.clone(), req, context)
-                .await
-                .map_err(|e| e.into())
-                .map(Either::Right),
+            RequestType::Http => {
+                let path = req.uri().path();
+                let suffix = context
+                    .matching_pattern
+                    .as_ref()
+                    .and_then(|pattern| pattern.captures(path))
+                    .and_then(|captures| captures.name("path_suffix"))
+                    .map(|m| m.as_str())
+                    .unwrap_or("");
+                let script_name = path.strip_suffix(suffix).unwrap_or("").to_owned();
+
+                ItsiHttpRequest::process_request(self.app.clone(), req, context, script_name)
+                    .await
+                    .map_err(|e| e.into())
+                    .map(Either::Right)
+            }
             RequestType::Grpc => ItsiGrpcCall::process_request(self.app.clone(), req, context)
                 .await
                 .map_err(|e| e.into())

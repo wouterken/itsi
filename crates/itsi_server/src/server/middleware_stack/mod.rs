@@ -214,6 +214,7 @@ impl MiddlewareSet {
     ) -> Result<(&Vec<Middleware>, Option<Arc<Regex>>)> {
         let binding = self.route_set.matches(request.uri().path());
         let matches = binding.iter();
+
         for index in matches {
             let matching_pattern = self.patterns.get(index).cloned();
             if let Some(stack) = self.stacks.get(&index) {

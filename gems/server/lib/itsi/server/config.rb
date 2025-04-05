@@ -96,7 +96,6 @@ module Itsi
           preload: !!preload,
           notify_watchers: itsifile_config.fetch(:notify_watchers, nil),
           threads: args.fetch(:threads) { itsifile_config.fetch(:threads, 1) },
-          script_name: args.fetch(:script_name) { itsifile_config.fetch(:script_name, "") },
           streamable_body: args.fetch(:streamable_body) { itsifile_config.fetch(:streamable_body, false) },
           multithreaded_reactor: args.fetch(:multithreaded_reactor) do
             itsifile_config.fetch(:multithreaded_reactor, nil)

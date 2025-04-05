@@ -18,7 +18,7 @@ use std::{
     collections::{HashMap, HashSet},
     sync::OnceLock,
 };
-use tracing::{error, info};
+use tracing::error;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct AuthJwt {
@@ -176,7 +176,6 @@ impl MiddlewareLayer for AuthJwt {
             TokenSource::Query(query_name) => req.query_param(query_name),
         };
 
-        info!("Token str is {:?}", token_str);
         if token_str.is_none() {
             return Ok(Either::Right(
                 self.error_response
@@ -185,12 +184,8 @@ impl MiddlewareLayer for AuthJwt {
             ));
         }
         let token_str = token_str.unwrap();
-
-        info!("Token str is {:?}", token_str);
-        // Use jsonwebtoken's decode_header to inspect the token and determine its algorithm.
         let header =
             decode_header(token_str).map_err(|_| ItsiError::new("Invalid token header"))?;
-        info!("Header is {:?}", header);
         let alg: JwtAlgorithm = header.alg.into();
 
         if !self.verifiers.contains_key(&alg) {
@@ -217,14 +212,10 @@ impl MiddlewareLayer for AuthJwt {
             JwtAlgorithm::Ps512 => JwtAlg::PS512,
         });
 
-        info!("Validation is {:?}", validation);
         if let Some(leeway) = self.leeway {
             validation.leeway = leeway;
         }
-        // (Optional) You could set expected issuer or audience on `validation` here.
 
-        info!("Keys are {:?}", keys.len());
-        // Try verifying the token using each key until one succeeds.
         let token_data: Option<TokenData<Claims>> =
             keys.iter()
                 .find_map(|key| match decode::<Claims>(token_str, key, &validation) {
@@ -244,11 +235,8 @@ impl MiddlewareLayer for AuthJwt {
             ));
         };
 
-        info!("Got past token verification");
-
         let claims = token_data.claims;
 
-        // Verify expected audiences.
         if let Some(expected_audiences) = &self.audiences {
             if let Some(aud) = &claims.aud {
                 let token_auds: HashSet<String> = match aud {
@@ -265,7 +253,6 @@ impl MiddlewareLayer for AuthJwt {
             }
         }
 
-        // Verify expected subject.
         if let Some(expected_subjects) = &self.subjects {
             if let Some(sub) = &claims.sub {
                 if !expected_subjects.contains(sub) {

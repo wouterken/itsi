@@ -103,10 +103,6 @@ impl SingleMode {
         );
 
         println!(
-            "    ─ script_name: {:?}",
-            self.server_config.server_params.read().script_name
-        );
-        println!(
             "    ─ streaming body: {:?}",
             self.server_config.server_params.read().streamable_body
         );

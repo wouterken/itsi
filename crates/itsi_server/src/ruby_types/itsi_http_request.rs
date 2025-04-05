@@ -44,6 +44,7 @@ pub struct ItsiHttpRequest {
     pub start: Instant,
     #[debug(skip)]
     pub context: HttpRequestContext,
+    pub script_name: String,
 }
 
 impl fmt::Display for ItsiHttpRequest {
@@ -121,8 +122,9 @@ impl ItsiHttpRequest {
         app: Arc<HeapValue<Proc>>,
         hyper_request: HttpRequest,
         context: &HttpRequestContext,
+        script_name: String,
     ) -> itsi_error::Result<HttpResponse> {
-        match ItsiHttpRequest::new(hyper_request, context).await {
+        match ItsiHttpRequest::new(hyper_request, context, script_name).await {
             Ok((request, mut receiver)) => {
                 let shutdown_channel = context.service.shutdown_channel.clone();
                 let response = request.response.clone();
@@ -154,6 +156,7 @@ impl ItsiHttpRequest {
     pub(crate) async fn new(
         request: HttpRequest,
         context: &HttpRequestContext,
+        script_name: String,
     ) -> Result<(ItsiHttpRequest, mpsc::Receiver<ByteFrame>), HttpResponse> {
         let (parts, body) = request.into_parts();
         let body = if context.server_params.streamable_body {
@@ -182,6 +185,7 @@ impl ItsiHttpRequest {
                 version: parts.version,
                 response: ItsiHttpResponse::new(parts.clone(), response_channel.0),
                 start: Instant::now(),
+                script_name,
                 body,
                 parts,
             },
@@ -194,12 +198,12 @@ impl ItsiHttpRequest {
             .parts
             .uri
             .path()
-            .strip_prefix(&self.context.server_params.script_name)
+            .strip_prefix(&self.script_name)
             .unwrap_or(self.parts.uri.path()))
     }
 
     pub(crate) fn script_name(&self) -> MagnusResult<&str> {
-        Ok(&self.context.server_params.script_name)
+        Ok(&self.script_name)
     }
 
     pub(crate) fn query_string(&self) -> MagnusResult<&str> {

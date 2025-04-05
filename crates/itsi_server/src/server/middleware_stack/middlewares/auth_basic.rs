@@ -11,16 +11,18 @@ use std::str;
 
 use crate::{
     server::http_message_types::{HttpRequest, HttpResponse, RequestExt},
-    services::itsi_http_service::HttpRequestContext,
+    services::{itsi_http_service::HttpRequestContext, password_hasher::verify_password_hash},
 };
 
 use super::{FromValue, MiddlewareLayer};
+
+type PasswordHash = String;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthBasic {
     pub realm: String,
     /// Maps usernames to passwords.
-    pub credential_pairs: HashMap<String, String>,
+    pub credential_pairs: HashMap<String, PasswordHash>,
 }
 
 impl AuthBasic {
@@ -69,12 +71,14 @@ impl MiddlewareLayer for AuthBasic {
         let mut parts = decoded_str.splitn(2, ':');
         let username = parts.next().unwrap_or("");
         let password = parts.next().unwrap_or("");
-
         match self.credential_pairs.get(username) {
-            Some(expected_password) if expected_password == password => Ok(Either::Left(req)),
-            _ => {
-                return Ok(Either::Right(self.basic_auth_failed_response()));
+            Some(expected_password_hash) => {
+                match verify_password_hash(password, expected_password_hash) {
+                    Ok(true) => Ok(Either::Left(req)),
+                    _ => Ok(Either::Right(self.basic_auth_failed_response())),
+                }
             }
+            None => Ok(Either::Right(self.basic_auth_failed_response())),
         }
     }
 }

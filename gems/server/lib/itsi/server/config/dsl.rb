@@ -154,13 +154,16 @@ module Itsi
         end
 
         def run(app, sendfile: true)
-          @middleware[:app] = { preloader: -> { Itsi::Server::RackInterface.for(app) }, sendfile: sendfile }
+          location(/(?<path_suffix>.*)/) do
+            @middleware[:app] = { preloader: -> { Itsi::Server::RackInterface.for(app) }, sendfile: sendfile }
+          end
         end
 
         def rackup_file(rackup_file)
           raise "Rackup file #{rackup_file} doesn't exist" unless File.exist?(rackup_file)
-
-          @middleware[:app] = { preloader: -> { Itsi::Server::RackInterface.for(rackup_file) } }
+          location(/(?<path_suffix>.*)/) do
+            @middleware[:app] = { preloader: -> { Itsi::Server::RackInterface.for(rackup_file) } }
+          end
         end
 
         def include(path)
@@ -242,11 +245,6 @@ module Itsi
           @options[:shutdown_timeout] = shutdown_timeout.to_f
         end
 
-        def script_name(script_name)
-          raise "Script name must be set at the root" unless @parent.nil?
-
-          @options[:script_name] = script_name.to_s
-        end
 
         def stream_body(stream_body)
           raise "Stream body must be set at the root" unless @parent.nil?
@@ -309,6 +307,15 @@ module Itsi
         end
 
         def auth_basic(**args)
+
+          if File.exist?(".itsi-credentials") && !args[:credential_file]
+            args[:credential_file] = ".itsi-credentials"
+          end
+
+          if args[:credential_file] && File.exist?(args[:credential_file])
+            args[:credential_pairs] = Passfile.load(args[:credential_file])
+          end
+
           @middleware[:auth_basic] = args
         end
 
@@ -325,6 +332,19 @@ module Itsi
         end
 
         def auth_api_key(**args)
+          if args[:valid_keys] && args[:valid_keys].is_a?(Array)
+            args[:valid_keys] = args[:valid_keys].each_with_index.map { |key, index| [index, key] }.to_h
+            args[:key_id_source] = nil
+          end
+
+          if File.exist?(".itsi-credentials") && !args[:credential_file]
+            args[:credential_file] = ".itsi-credentials"
+          end
+
+          if args[:credential_file] && File.exist?(args[:credential_file])
+            args[:valid_keys] = Passfile.load(args[:credential_file])
+          end
+
           @middleware[:auth_api_key] = args
         end
 

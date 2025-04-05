@@ -1,10 +1,12 @@
+#![deny(unused_crate_dependencies)]
+
 pub mod env;
 pub mod prelude;
 pub mod ruby_types;
 pub mod server;
 pub mod services;
 
-use magnus::{error::Result, function, method, Module, Object, Ruby};
+use magnus::{error::Result, function, method, Module, Object, Ruby, Value};
 use prelude::*;
 use ruby_types::{
     itsi_body_proxy::ItsiBodyProxy, itsi_grpc_call::ItsiGrpcCall,
@@ -13,7 +15,7 @@ use ruby_types::{
     ITSI_GRPC_RESPONSE_STREAM, ITSI_MODULE, ITSI_REQUEST, ITSI_RESPONSE, ITSI_SERVER,
 };
 use server::signal::reset_signal_handlers;
-use services::bcrypt_hassword_hash;
+use services::password_hasher;
 
 #[magnus::init]
 fn init(ruby: &Ruby) -> Result<()> {
@@ -28,8 +30,8 @@ fn init(ruby: &Ruby) -> Result<()> {
     itsi.define_singleton_method("log_warn", function!(log_warn, 1))?;
     itsi.define_singleton_method("log_error", function!(log_error, 1))?;
     itsi.define_singleton_method(
-        "bcrypt_create_password_hash",
-        function!(bcrypt_hassword_hash::create_password_hash, 1),
+        "create_password_hash",
+        function!(password_hasher::create_password_hash, 2),
     )?;
 
     let server = ruby.get_inner(&ITSI_SERVER);
