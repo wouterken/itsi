@@ -1,5 +1,8 @@
+use crate::{
+    server::http_message_types::HttpResponse, services::itsi_http_service::HttpRequestContext,
+};
+
 use super::{FromValue, MiddlewareLayer};
-use crate::server::{itsi_service::RequestContext, types::HttpResponse};
 use async_trait::async_trait;
 use http::{HeaderName, HeaderValue};
 use magnus::error::Result;
@@ -90,7 +93,7 @@ impl MiddlewareLayer for CacheControl {
         Ok(())
     }
 
-    async fn after(&self, mut resp: HttpResponse, _: &mut RequestContext) -> HttpResponse {
+    async fn after(&self, mut resp: HttpResponse, _: &mut HttpRequestContext) -> HttpResponse {
         // Skip for statuses where caching doesn't make sense
         let status = resp.status().as_u16();
         if matches!(status, 401 | 403 | 500..=599) {

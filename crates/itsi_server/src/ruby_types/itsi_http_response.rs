@@ -32,7 +32,8 @@ use tokio_util::io::ReaderStream;
 use tracing::warn;
 
 use crate::server::{
-    byte_frame::ByteFrame, serve_strategy::single_mode::RunningPhase, types::HttpResponse,
+    byte_frame::ByteFrame, http_message_types::HttpResponse,
+    serve_strategy::single_mode::RunningPhase,
 };
 
 #[magnus::wrap(class = "Itsi::HttpResponse", free_immediately, size)]

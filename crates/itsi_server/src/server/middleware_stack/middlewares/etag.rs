@@ -1,5 +1,9 @@
+use crate::{
+    server::http_message_types::{HttpRequest, HttpResponse},
+    services::itsi_http_service::HttpRequestContext,
+};
+
 use super::{FromValue, MiddlewareLayer};
-use crate::server::{itsi_service::RequestContext, types::HttpResponse};
 use async_trait::async_trait;
 use base64::{engine::general_purpose, Engine as _};
 use bytes::{Bytes, BytesMut};
@@ -50,9 +54,9 @@ fn default_true() -> bool {
 impl MiddlewareLayer for ETag {
     async fn before(
         &self,
-        req: crate::server::types::HttpRequest,
-        context: &mut RequestContext,
-    ) -> Result<Either<crate::server::types::HttpRequest, HttpResponse>> {
+        req: HttpRequest,
+        context: &mut HttpRequestContext,
+    ) -> Result<Either<HttpRequest, HttpResponse>> {
         // Store if-none-match header in context if present for later use in after hook
         if self.handle_if_none_match {
             if let Some(if_none_match) = req.headers().get(header::IF_NONE_MATCH) {
@@ -64,7 +68,7 @@ impl MiddlewareLayer for ETag {
         Ok(Either::Left(req))
     }
 
-    async fn after(&self, resp: HttpResponse, context: &mut RequestContext) -> HttpResponse {
+    async fn after(&self, resp: HttpResponse, context: &mut HttpRequestContext) -> HttpResponse {
         // Skip for error responses or responses that shouldn't have ETags
         match resp.status() {
             StatusCode::OK

@@ -9,3 +9,4 @@ magnus = { version = "0.7.1" }
 rcgen = "0.13.2"
 nix = "0.29.0"
 httparse = "1.10.1"
+anyhow = "1.0.97"

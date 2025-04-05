@@ -1,8 +1,10 @@
-use super::{ErrorResponse, FromValue, MiddlewareLayer};
-use crate::server::{
-    itsi_service::RequestContext,
-    types::{HttpRequest, HttpResponse, RequestExt},
+use crate::{
+    server::http_message_types::{HttpRequest, HttpResponse, RequestExt},
+    services::itsi_http_service::HttpRequestContext,
 };
+
+use super::{ErrorResponse, FromValue, MiddlewareLayer};
+
 use async_trait::async_trait;
 use either::Either;
 use itsi_error::ItsiError;
@@ -27,17 +29,17 @@ fn forbidden_error_response() -> ErrorResponse {
 #[async_trait]
 impl MiddlewareLayer for AllowList {
     async fn initialize(&self) -> Result<()> {
-        let allowed_ips = RegexSet::new(&self.allowed_patterns).map_err(ItsiError::default)?;
+        let allowed_ips = RegexSet::new(&self.allowed_patterns).map_err(ItsiError::new)?;
         self.allowed_ips
             .set(allowed_ips)
-            .map_err(|e| ItsiError::default(format!("Failed to set allowed IPs: {:?}", e)))?;
+            .map_err(|e| ItsiError::new(format!("Failed to set allowed IPs: {:?}", e)))?;
         Ok(())
     }
 
     async fn before(
         &self,
         req: HttpRequest,
-        context: &mut RequestContext,
+        context: &mut HttpRequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
         if let Some(allowed_ips) = self.allowed_ips.get() {
             if !allowed_ips.is_match(&context.addr) {

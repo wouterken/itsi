@@ -1,6 +1,6 @@
-use crate::server::{
-    itsi_service::RequestContext,
-    types::{HttpRequest, HttpResponse, RequestExt},
+use crate::{
+    server::http_message_types::{HttpRequest, HttpResponse, RequestExt},
+    services::itsi_http_service::HttpRequestContext,
 };
 
 use super::{ErrorResponse, FromValue, MiddlewareLayer};
@@ -27,14 +27,14 @@ impl MiddlewareLayer for MaxBody {
     async fn before(
         &self,
         req: HttpRequest,
-        context: &mut RequestContext,
+        context: &mut HttpRequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
         req.body().limit.store(self.max_size, Ordering::Relaxed);
         context.set_response_format(req.accept().into());
         Ok(Either::Left(req))
     }
 
-    async fn after(&self, resp: HttpResponse, context: &mut RequestContext) -> HttpResponse {
+    async fn after(&self, resp: HttpResponse, context: &mut HttpRequestContext) -> HttpResponse {
         if resp.status() == StatusCode::PAYLOAD_TOO_LARGE {
             self.error_response
                 .to_http_response(context.response_format().clone())

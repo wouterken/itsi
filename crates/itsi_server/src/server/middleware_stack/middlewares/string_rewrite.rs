@@ -1,9 +1,10 @@
-use crate::server::{
-    itsi_service::RequestContext,
-    types::{HttpRequest, HttpResponse},
-};
 use serde::Deserialize;
 use std::sync::OnceLock;
+
+use crate::{
+    server::http_message_types::{HttpRequest, HttpResponse},
+    services::itsi_http_service::HttpRequestContext,
+};
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(transparent)]
@@ -49,7 +50,7 @@ pub fn parse_template(template: &str) -> Vec<Segment> {
 }
 
 impl StringRewrite {
-    pub fn rewrite_request(&self, req: &HttpRequest, context: &RequestContext) -> String {
+    pub fn rewrite_request(&self, req: &HttpRequest, context: &HttpRequestContext) -> String {
         let segments = self
             .segments
             .get_or_init(|| parse_template(&self.template_string));
@@ -118,7 +119,7 @@ impl StringRewrite {
         result
     }
 
-    pub fn rewrite_response(&self, resp: &HttpResponse, context: &RequestContext) -> String {
+    pub fn rewrite_response(&self, resp: &HttpResponse, context: &HttpRequestContext) -> String {
         let segments = self
             .segments
             .get_or_init(|| parse_template(&self.template_string));

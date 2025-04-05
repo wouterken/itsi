@@ -16,6 +16,7 @@ COMMANDS = {
   "add_worker" => "Add a new worker to the server cluster",
   "remove_worker" => "Remove a worker from the server cluster",
   "routes" => "Print the routes of the server",
+  "passfile" => "Manage bcrypt users and passwords in a passfile (like .htpasswd)",
   "test_route" => "Test which route a request will be routed to",
   "static" => "Serve static assets in the given directory"
 }
@@ -140,6 +141,10 @@ parser = OptionParser.new do |opts|
   opts.on("--listeners LISTENERS", String, "Listeners for reexec") do |listeners|
     options[:listeners] = listeners
   end
+
+  opts.on("--passfile PASSFILE", String, "Passfile") do |passfile|
+    options[:passfile] = passfile
+  end
 end
 
 if ENV['COMP_LINE'] || ARGV.include?('--completion')
@@ -155,10 +160,18 @@ end
 
 case (command = ARGV.shift)
 when *COMMANDS.keys
-  case Itsi::Server.method(command).parameters.first&.length || 1
+  require 'debug'
+  required_arity = Itsi::Server.method(command).parameters&.select{|c| c.first == :req }&.length&.succ || 2
+  case required_arity
   when 1 then Itsi::Server.send(command)
   when 2 then Itsi::Server.send(command, options)
-  when 3 then Itsi::Server.send(command, options, ARGV.shift)
+  else
+    if ARGV.length != required_arity - 2
+      puts "Expecting #{required_arity - 2} args. Got #{ARGV.length} "
+      exit(0)
+    end
+    binding.b
+    Itsi::Server.send(command, options, *ARGV)
   end
 when nil
   Itsi::Server.start(options)

@@ -3,7 +3,7 @@ use std::convert::Infallible;
 use bytes::Bytes;
 use http_body_util::{combinators::BoxBody, Full};
 
-use crate::server::types::ResponseFormat;
+use crate::server::http_message_types::ResponseFormat;
 
 use super::{ContentSource, DefaultFormat, ErrorResponse};
 
@@ -24,61 +24,61 @@ impl DefaultFormat {
             },
             DefaultFormat::Html => match code {
                 500 => ContentSource::Inline(
-                    include_str!("../../../default_responses/html/500.html").to_owned(),
+                    include_str!("../../../../default_responses/html/500.html").to_owned(),
                 ),
                 404 => ContentSource::Inline(
-                    include_str!("../../../default_responses/html/404.html").to_owned(),
+                    include_str!("../../../../default_responses/html/404.html").to_owned(),
                 ),
                 401 => ContentSource::Inline(
-                    include_str!("../../../default_responses/html/401.html").to_owned(),
+                    include_str!("../../../../default_responses/html/401.html").to_owned(),
                 ),
                 403 => ContentSource::Inline(
-                    include_str!("../../../default_responses/html/403.html").to_owned(),
+                    include_str!("../../../../default_responses/html/403.html").to_owned(),
                 ),
                 413 => ContentSource::Inline(
-                    include_str!("../../../default_responses/html/413.html").to_owned(),
+                    include_str!("../../../../default_responses/html/413.html").to_owned(),
                 ),
                 429 => ContentSource::Inline(
-                    include_str!("../../../default_responses/html/429.html").to_owned(),
+                    include_str!("../../../../default_responses/html/429.html").to_owned(),
                 ),
                 502 => ContentSource::Inline(
-                    include_str!("../../../default_responses/html/502.html").to_owned(),
+                    include_str!("../../../../default_responses/html/502.html").to_owned(),
                 ),
                 503 => ContentSource::Inline(
-                    include_str!("../../../default_responses/html/503.html").to_owned(),
+                    include_str!("../../../../default_responses/html/503.html").to_owned(),
                 ),
                 504 => ContentSource::Inline(
-                    include_str!("../../../default_responses/html/504.html").to_owned(),
+                    include_str!("../../../../default_responses/html/504.html").to_owned(),
                 ),
                 _ => ContentSource::Inline("Unexpected Error".to_owned()),
             },
             DefaultFormat::Json => match code {
                 500 => ContentSource::Inline(
-                    include_str!("../../../default_responses/json/500.json").to_owned(),
+                    include_str!("../../../../default_responses/json/500.json").to_owned(),
                 ),
                 404 => ContentSource::Inline(
-                    include_str!("../../../default_responses/json/404.json").to_owned(),
+                    include_str!("../../../../default_responses/json/404.json").to_owned(),
                 ),
                 401 => ContentSource::Inline(
-                    include_str!("../../../default_responses/json/401.json").to_owned(),
+                    include_str!("../../../../default_responses/json/401.json").to_owned(),
                 ),
                 403 => ContentSource::Inline(
-                    include_str!("../../../default_responses/json/403.json").to_owned(),
+                    include_str!("../../../../default_responses/json/403.json").to_owned(),
                 ),
                 413 => ContentSource::Inline(
-                    include_str!("../../../default_responses/json/413.json").to_owned(),
+                    include_str!("../../../../default_responses/json/413.json").to_owned(),
                 ),
                 429 => ContentSource::Inline(
-                    include_str!("../../../default_responses/json/429.json").to_owned(),
+                    include_str!("../../../../default_responses/json/429.json").to_owned(),
                 ),
                 502 => ContentSource::Inline(
-                    include_str!("../../../default_responses/json/502.json").to_owned(),
+                    include_str!("../../../../default_responses/json/502.json").to_owned(),
                 ),
                 503 => ContentSource::Inline(
-                    include_str!("../../../default_responses/json/503.json").to_owned(),
+                    include_str!("../../../../default_responses/json/503.json").to_owned(),
                 ),
                 504 => ContentSource::Inline(
-                    include_str!("../../../default_responses/json/504.json").to_owned(),
+                    include_str!("../../../../default_responses/json/504.json").to_owned(),
                 ),
                 _ => ContentSource::Inline("Unexpected Error".to_owned()),
             },

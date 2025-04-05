@@ -1,7 +1,9 @@
+use crate::server::io_stream::IoStream;
+use crate::server::serve_strategy::single_mode::RunningPhase;
+
 use super::bind::{Bind, BindAddress};
 use super::bind_protocol::BindProtocol;
-use super::io_stream::IoStream;
-use super::serve_strategy::single_mode::RunningPhase;
+
 use super::tls::ItsiTlsAcceptor;
 use itsi_error::{ItsiError, Result};
 use itsi_tracing::info;
@@ -152,7 +154,7 @@ impl TokioListener {
             ItsiTlsAcceptor::Automatic(acme_acceptor, _, rustls_config) => {
                 let accept_future = acme_acceptor.accept(tcp_stream.0);
                 match accept_future.await {
-                    Ok(None) => Err(ItsiError::Pass()),
+                    Ok(None) => Err(ItsiError::Pass),
                     Ok(Some(start_handshake)) => {
                         let tls_stream = start_handshake.into_stream(rustls_config.clone()).await?;
                         Ok(IoStream::TcpTls {
@@ -162,7 +164,7 @@ impl TokioListener {
                     }
                     Err(error) => {
                         error!(error = format!("{:?}", error));
-                        Err(ItsiError::Pass())
+                        Err(ItsiError::Pass)
                     }
                 }
             }

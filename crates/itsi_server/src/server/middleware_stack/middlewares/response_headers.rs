@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 
 use super::{FromValue, MiddlewareLayer};
-use crate::server::{itsi_service::RequestContext, types::HttpResponse};
+use crate::{
+    server::http_message_types::HttpResponse, services::itsi_http_service::HttpRequestContext,
+};
 use async_trait::async_trait;
 use http::HeaderName;
 use serde::Deserialize;
@@ -14,7 +16,7 @@ pub struct ResponseHeaders {
 
 #[async_trait]
 impl MiddlewareLayer for ResponseHeaders {
-    async fn after(&self, mut resp: HttpResponse, _: &mut RequestContext) -> HttpResponse {
+    async fn after(&self, mut resp: HttpResponse, _: &mut HttpRequestContext) -> HttpResponse {
         let headers = resp.headers_mut();
         for removal in &self.removals {
             headers.remove(removal);

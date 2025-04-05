@@ -1,13 +1,12 @@
-use crate::server::static_file_server::ROOT_STATIC_FILE_SERVER;
-use crate::server::types::HttpResponse;
-use crate::server::types::ResponseFormat;
-
 use bytes::Bytes;
 use http::Response;
 use http_body_util::{combinators::BoxBody, Full};
 use serde::{Deserialize, Deserializer};
 use std::convert::Infallible;
 use std::path::PathBuf;
+
+use crate::server::http_message_types::{HttpResponse, ResponseFormat};
+use crate::services::static_file_server::ROOT_STATIC_FILE_SERVER;
 mod default_responses;
 
 #[derive(Debug, Clone, Deserialize)]

@@ -2,7 +2,7 @@ use derive_more::Debug;
 use futures::StreamExt;
 use http::{request::Parts, Response, StatusCode, Version};
 use http_body_util::{combinators::BoxBody, BodyExt, Empty};
-use itsi_error::from::CLIENT_CONNECTION_CLOSED;
+use itsi_error::CLIENT_CONNECTION_CLOSED;
 use itsi_rb_helpers::{print_rb_backtrace, HeapValue};
 use itsi_tracing::{debug, error};
 use magnus::{
@@ -21,12 +21,14 @@ use super::{
     itsi_body_proxy::{big_bytes::BigBytes, ItsiBody, ItsiBodyProxy},
     itsi_http_response::ItsiHttpResponse,
 };
-use crate::server::{
-    byte_frame::ByteFrame,
-    itsi_service::RequestContext,
-    request_job::RequestJob,
-    size_limited_incoming::MaxBodySizeReached,
-    types::{HttpRequest, HttpResponse},
+use crate::{
+    server::{
+        byte_frame::ByteFrame,
+        http_message_types::{HttpRequest, HttpResponse},
+        request_job::RequestJob,
+        size_limited_incoming::MaxBodySizeReached,
+    },
+    services::itsi_http_service::HttpRequestContext,
 };
 
 static ID_MESSAGE: LazyId = LazyId::new("message");
@@ -41,7 +43,7 @@ pub struct ItsiHttpRequest {
     pub response: ItsiHttpResponse,
     pub start: Instant,
     #[debug(skip)]
-    pub context: RequestContext,
+    pub context: HttpRequestContext,
 }
 
 impl fmt::Display for ItsiHttpRequest {
@@ -118,7 +120,7 @@ impl ItsiHttpRequest {
     pub(crate) async fn process_request(
         app: Arc<HeapValue<Proc>>,
         hyper_request: HttpRequest,
-        context: &RequestContext,
+        context: &HttpRequestContext,
     ) -> itsi_error::Result<HttpResponse> {
         match ItsiHttpRequest::new(hyper_request, context).await {
             Ok((request, mut receiver)) => {
@@ -151,7 +153,7 @@ impl ItsiHttpRequest {
 
     pub(crate) async fn new(
         request: HttpRequest,
-        context: &RequestContext,
+        context: &HttpRequestContext,
     ) -> Result<(ItsiHttpRequest, mpsc::Receiver<ByteFrame>), HttpResponse> {
         let (parts, body) = request.into_parts();
         let body = if context.server_params.streamable_body {

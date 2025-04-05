@@ -1,8 +1,10 @@
-use super::middlewares::*;
-use crate::server::{
-    itsi_service::RequestContext,
-    types::{HttpRequest, HttpResponse},
+use crate::{
+    server::http_message_types::{HttpRequest, HttpResponse},
+    services::itsi_http_service::HttpRequestContext,
 };
+
+use super::middlewares::*;
+
 use async_trait::async_trait;
 use either::Either;
 use magnus::error::Result;
@@ -61,7 +63,7 @@ impl MiddlewareLayer for Middleware {
     async fn before(
         &self,
         req: HttpRequest,
-        context: &mut RequestContext,
+        context: &mut HttpRequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
         match self {
             Middleware::DenyList(filter) => filter.before(req, context).await,
@@ -86,7 +88,7 @@ impl MiddlewareLayer for Middleware {
         }
     }
 
-    async fn after(&self, res: HttpResponse, context: &mut RequestContext) -> HttpResponse {
+    async fn after(&self, res: HttpResponse, context: &mut HttpRequestContext) -> HttpResponse {
         match self {
             Middleware::DenyList(filter) => filter.after(res, context).await,
             Middleware::AllowList(filter) => filter.after(res, context).await,

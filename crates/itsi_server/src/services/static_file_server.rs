@@ -1,9 +1,10 @@
-use super::{
-    middleware_stack::ErrorResponse,
-    mime_types::get_mime_type,
-    types::{HttpRequest, HttpResponse, RequestExt},
+use crate::{
+    prelude::*,
+    server::{
+        http_message_types::{HttpRequest, HttpResponse, RequestExt},
+        middleware_stack::ErrorResponse,
+    },
 };
-use crate::prelude::*;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use http::{header, Response, StatusCode};
@@ -24,6 +25,8 @@ use std::{
 };
 use tokio::sync::Mutex;
 use tokio::{fs::File, io::AsyncReadExt};
+
+use super::mime_types::get_mime_type;
 
 pub static ROOT_STATIC_FILE_SERVER: LazyLock<StaticFileServer> = LazyLock::new(|| {
     StaticFileServer::new(StaticFileServerConfig {
@@ -853,7 +856,7 @@ async fn generate_directory_listing(
     config: &StaticFileServerConfig,
 ) -> std::io::Result<String> {
     // Load our static HTML template.
-    let template = include_str!("default_responses/html/index.html");
+    let template = include_str!("../default_responses/html/index.html");
 
     // Compute the displayable directory string.
 

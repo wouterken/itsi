@@ -1,18 +1,15 @@
 use super::itsi_grpc_response_stream::ItsiGrpcResponseStream;
 use crate::prelude::*;
-use crate::server::{
-    byte_frame::ByteFrame,
-    itsi_service::RequestContext,
-    request_job::RequestJob,
-    types::{HttpRequest, HttpResponse},
-};
+use crate::server::http_message_types::{HttpRequest, HttpResponse};
+use crate::server::{byte_frame::ByteFrame, request_job::RequestJob};
+use crate::services::itsi_http_service::HttpRequestContext;
 use async_compression::futures::bufread::{GzipDecoder, GzipEncoder, ZlibDecoder, ZlibEncoder};
 use bytes::Bytes;
 use derive_more::Debug;
 use futures::{executor::block_on, io::Cursor, AsyncReadExt};
 use http::{request::Parts, Response, StatusCode};
 use http_body_util::{combinators::BoxBody, BodyExt, Empty};
-use itsi_error::from::CLIENT_CONNECTION_CLOSED;
+use itsi_error::CLIENT_CONNECTION_CLOSED;
 use itsi_rb_helpers::{print_rb_backtrace, HeapValue};
 use itsi_tracing::debug;
 use magnus::{
@@ -43,7 +40,7 @@ pub struct ItsiGrpcCall {
     pub compression_in: CompressionAlgorithm,
     pub compression_out: CompressionAlgorithm,
     #[debug(skip)]
-    pub context: RequestContext,
+    pub context: HttpRequestContext,
     #[debug(skip)]
     pub stream: ItsiGrpcResponseStream,
 }
@@ -125,7 +122,7 @@ impl ItsiGrpcCall {
     pub(crate) async fn process_request(
         app: Arc<HeapValue<Proc>>,
         hyper_request: HttpRequest,
-        context: &RequestContext,
+        context: &HttpRequestContext,
     ) -> itsi_error::Result<HttpResponse> {
         let (request, mut receiver) = ItsiGrpcCall::new(hyper_request, context).await;
         let shutdown_channel = context.service.shutdown_channel.clone();
@@ -270,7 +267,7 @@ impl ItsiGrpcCall {
 
     pub(crate) async fn new(
         request: HttpRequest,
-        context: &RequestContext,
+        context: &HttpRequestContext,
     ) -> (ItsiGrpcCall, mpsc::Receiver<ByteFrame>) {
         let (parts, body) = request.into_parts();
         let response_channel = mpsc::channel::<ByteFrame>(100);
@@ -322,9 +319,9 @@ impl ItsiGrpcCall {
     }
 }
 
-fn parse_grpc_timeout(timeout_str: &str) -> Result<f64, &'static str> {
+fn parse_grpc_timeout(timeout_str: &str) -> Result<f64> {
     if timeout_str.len() < 2 {
-        return Err("Timeout string too short");
+        return Err("Timeout string too short".into());
     }
     let (value_str, unit) = timeout_str.split_at(timeout_str.len() - 1);
     let value: u64 = value_str.parse().map_err(|_| "Invalid timeout value")?;
@@ -335,7 +332,7 @@ fn parse_grpc_timeout(timeout_str: &str) -> Result<f64, &'static str> {
         "S" => value as f64,                   // seconds
         "M" => value as f64 * 60.0,            // minutes
         "H" => value as f64 * 3600.0,          // hours
-        _ => return Err("Invalid timeout unit"),
+        _ => return Err("Invalid timeout unit".into()),
     };
 
     Ok(duration_secs)

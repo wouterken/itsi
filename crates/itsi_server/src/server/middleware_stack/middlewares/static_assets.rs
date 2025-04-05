@@ -1,8 +1,12 @@
 use super::{FromValue, MiddlewareLayer};
-use crate::server::{
-    itsi_service::RequestContext,
-    static_file_server::{NotFoundBehavior, ServeRange, StaticFileServer, StaticFileServerConfig},
-    types::{HttpRequest, HttpResponse},
+use crate::{
+    server::http_message_types::{HttpRequest, HttpResponse},
+    services::{
+        itsi_http_service::HttpRequestContext,
+        static_file_server::{
+            NotFoundBehavior, ServeRange, StaticFileServer, StaticFileServerConfig,
+        },
+    },
 };
 use async_trait::async_trait;
 use either::Either;
@@ -60,14 +64,14 @@ impl MiddlewareLayer for StaticAssets {
                 serve_dot_files: self.serve_dot_files,
                 allowed_extensions: self.allowed_extensions.clone(),
             }))
-            .map_err(ItsiError::default)?;
+            .map_err(ItsiError::new)?;
         Ok(())
     }
 
     async fn before(
         &self,
         req: HttpRequest,
-        context: &mut RequestContext,
+        context: &mut HttpRequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
         // Only handle GET and HEAD requests
         if req.method() != Method::GET && req.method() != Method::HEAD {

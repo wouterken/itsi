@@ -1,8 +1,9 @@
 use super::{FromValue, MiddlewareLayer};
-use crate::server::{
-    itsi_service::RequestContext,
-    types::{HttpRequest, HttpResponse, RequestExt},
+use crate::{
+    server::http_message_types::{HttpRequest, HttpResponse, RequestExt},
+    services::itsi_http_service::HttpRequestContext,
 };
+
 use async_trait::async_trait;
 use http::{HeaderMap, Method, Response};
 use http_body_util::{combinators::BoxBody, Empty};
@@ -69,14 +70,14 @@ impl Cors {
     fn cors_headers(&self, origin: &str) -> Result<HeaderMap> {
         let mut headers = HeaderMap::new();
 
-        headers.insert("Vary", "Origin".parse().map_err(ItsiError::default)?);
+        headers.insert("Vary", "Origin".parse().map_err(ItsiError::new)?);
 
         if origin.is_empty() {
             // When credentials are allowed, you cannot return "*".
             if !self.allow_credentials {
                 headers.insert(
                     "Access-Control-Allow-Origin",
-                    "*".parse().map_err(ItsiError::default)?,
+                    "*".parse().map_err(ItsiError::new)?,
                 );
             }
             return Ok(headers);
@@ -97,7 +98,7 @@ impl Cors {
             };
             headers.insert(
                 "Access-Control-Allow-Origin",
-                value.parse().map_err(ItsiError::default)?,
+                value.parse().map_err(ItsiError::new)?,
             );
         }
 
@@ -110,7 +111,7 @@ impl Cors {
                     .collect::<Vec<&str>>()
                     .join(", ")
                     .parse()
-                    .map_err(ItsiError::default)?,
+                    .map_err(ItsiError::new)?,
             );
         }
         if !self.allowed_headers.is_empty() {
@@ -119,19 +120,19 @@ impl Cors {
                 self.allowed_headers
                     .join(", ")
                     .parse()
-                    .map_err(ItsiError::default)?,
+                    .map_err(ItsiError::new)?,
             );
         }
         if self.allow_credentials {
             headers.insert(
                 "Access-Control-Allow-Credentials",
-                "true".parse().map_err(ItsiError::default)?,
+                "true".parse().map_err(ItsiError::new)?,
             );
         }
         if let Some(max_age) = self.max_age {
             headers.insert(
                 "Access-Control-Max-Age",
-                max_age.to_string().parse().map_err(ItsiError::default)?,
+                max_age.to_string().parse().map_err(ItsiError::new)?,
             );
         }
         if !self.exposed_headers.is_empty() {
@@ -140,7 +141,7 @@ impl Cors {
                 self.exposed_headers
                     .join(", ")
                     .parse()
-                    .map_err(ItsiError::default)?,
+                    .map_err(ItsiError::new)?,
             );
         }
         Ok(headers)
@@ -154,7 +155,7 @@ impl Cors {
     ) -> Result<HeaderMap> {
         let mut headers = HeaderMap::new();
 
-        headers.insert("Vary", "Origin".parse().map_err(ItsiError::default)?);
+        headers.insert("Vary", "Origin".parse().map_err(ItsiError::new)?);
 
         let origin = match origin {
             Some(o) if !o.is_empty() => o,
@@ -208,25 +209,25 @@ impl Cors {
                 .collect::<Vec<&str>>()
                 .join(", ")
                 .parse()
-                .map_err(ItsiError::default)?,
+                .map_err(ItsiError::new)?,
         );
         headers.insert(
             "Access-Control-Allow-Headers",
             self.allowed_headers
                 .join(", ")
                 .parse()
-                .map_err(ItsiError::default)?,
+                .map_err(ItsiError::new)?,
         );
         if self.allow_credentials {
             headers.insert(
                 "Access-Control-Allow-Credentials",
-                "true".parse().map_err(ItsiError::default)?,
+                "true".parse().map_err(ItsiError::new)?,
             );
         }
         if let Some(max_age) = self.max_age {
             headers.insert(
                 "Access-Control-Max-Age",
-                max_age.to_string().parse().map_err(ItsiError::default)?,
+                max_age.to_string().parse().map_err(ItsiError::new)?,
             );
         }
         if !self.exposed_headers.is_empty() {
@@ -235,7 +236,7 @@ impl Cors {
                 self.exposed_headers
                     .join(", ")
                     .parse()
-                    .map_err(ItsiError::default)?,
+                    .map_err(ItsiError::new)?,
             );
         }
 
@@ -253,7 +254,7 @@ impl MiddlewareLayer for Cors {
     async fn before(
         &self,
         req: HttpRequest,
-        context: &mut RequestContext,
+        context: &mut HttpRequestContext,
     ) -> Result<either::Either<HttpRequest, HttpResponse>> {
         let origin = req.header("Origin");
         if req.method() == Method::OPTIONS {
@@ -265,7 +266,7 @@ impl MiddlewareLayer for Cors {
             *response_builder.headers_mut().unwrap() = headers;
             let response = response_builder
                 .body(BoxBody::new(Empty::new()))
-                .map_err(ItsiError::default)?;
+                .map_err(ItsiError::new)?;
             return Ok(either::Either::Right(response));
         }
         context.set_origin(origin.map(|s| s.to_string()));
@@ -273,7 +274,11 @@ impl MiddlewareLayer for Cors {
     }
 
     // The after hook can be used to inject CORS headers into non-preflight responses.
-    async fn after(&self, mut resp: HttpResponse, context: &mut RequestContext) -> HttpResponse {
+    async fn after(
+        &self,
+        mut resp: HttpResponse,
+        context: &mut HttpRequestContext,
+    ) -> HttpResponse {
         if let Some(Some(origin)) = context.origin.get() {
             if let Ok(cors_headers) = self.cors_headers(origin) {
                 for (key, value) in cors_headers.iter() {

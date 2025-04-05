@@ -2,6 +2,8 @@ pub mod env;
 pub mod prelude;
 pub mod ruby_types;
 pub mod server;
+pub mod services;
+
 use magnus::{error::Result, function, method, Module, Object, Ruby};
 use prelude::*;
 use ruby_types::{
@@ -11,6 +13,7 @@ use ruby_types::{
     ITSI_GRPC_RESPONSE_STREAM, ITSI_MODULE, ITSI_REQUEST, ITSI_RESPONSE, ITSI_SERVER,
 };
 use server::signal::reset_signal_handlers;
+use services::bcrypt_hassword_hash;
 
 #[magnus::init]
 fn init(ruby: &Ruby) -> Result<()> {
@@ -24,6 +27,10 @@ fn init(ruby: &Ruby) -> Result<()> {
     itsi.define_singleton_method("log_info", function!(log_info, 1))?;
     itsi.define_singleton_method("log_warn", function!(log_warn, 1))?;
     itsi.define_singleton_method("log_error", function!(log_error, 1))?;
+    itsi.define_singleton_method(
+        "bcrypt_create_password_hash",
+        function!(bcrypt_hassword_hash::create_password_hash, 1),
+    )?;
 
     let server = ruby.get_inner(&ITSI_SERVER);
     server.define_singleton_method("new", function!(ItsiServer::new, 3))?;

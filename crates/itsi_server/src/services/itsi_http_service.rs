@@ -1,13 +1,9 @@
-use super::listener::ListenerInfo;
-use super::middleware_stack::CompressionAlgorithm;
-use super::middleware_stack::MiddlewareLayer;
-use super::request_job::RequestJob;
-use super::serve_strategy::single_mode::RunningPhase;
-use super::types::ConversionExt;
-use super::types::HttpResponse;
-use super::types::ResponseFormat;
-
 use crate::ruby_types::itsi_server::itsi_server_config::ServerParams;
+use crate::server::binds::listener::ListenerInfo;
+use crate::server::http_message_types::{ConversionExt, HttpResponse, ResponseFormat};
+use crate::server::middleware_stack::{CompressionAlgorithm, MiddlewareLayer};
+use crate::server::request_job::RequestJob;
+use crate::server::serve_strategy::single_mode::RunningPhase;
 use chrono;
 use chrono::Local;
 use either::Either;
@@ -21,19 +17,19 @@ use std::{future::Future, ops::Deref, pin::Pin, sync::Arc};
 use tokio::sync::watch::{self};
 
 #[derive(Clone)]
-pub struct ItsiService {
-    pub inner: Arc<IstiServiceInner>,
+pub struct ItsiHttpService {
+    pub inner: Arc<ItsiHttpServiceInner>,
 }
 
-impl Deref for ItsiService {
-    type Target = Arc<IstiServiceInner>;
+impl Deref for ItsiHttpService {
+    type Target = Arc<ItsiHttpServiceInner>;
 
     fn deref(&self) -> &Self::Target {
         &self.inner
     }
 }
 
-pub struct IstiServiceInner {
+pub struct ItsiHttpServiceInner {
     pub sender: async_channel::Sender<RequestJob>,
     pub server_params: Arc<ServerParams>,
     pub listener: Arc<ListenerInfo>,
@@ -42,11 +38,11 @@ pub struct IstiServiceInner {
 }
 
 #[derive(Clone)]
-pub struct RequestContext {
+pub struct HttpRequestContext {
     inner: Arc<RequestContextInner>,
 }
 
-impl Deref for RequestContext {
+impl Deref for HttpRequestContext {
     type Target = Arc<RequestContextInner>;
 
     fn deref(&self) -> &Self::Target {
@@ -55,7 +51,7 @@ impl Deref for RequestContext {
 }
 
 impl Deref for RequestContextInner {
-    type Target = ItsiService;
+    type Target = ItsiHttpService;
 
     fn deref(&self) -> &Self::Target {
         &self.service
@@ -64,7 +60,7 @@ impl Deref for RequestContextInner {
 
 pub struct RequestContextInner {
     pub request_id: u128,
-    pub service: ItsiService,
+    pub service: ItsiHttpService,
     pub matching_pattern: Option<Arc<Regex>>,
     pub compression_method: OnceLock<CompressionAlgorithm>,
     pub origin: OnceLock<Option<String>>,
@@ -76,9 +72,9 @@ pub struct RequestContextInner {
     pub etag_value: OnceLock<Option<String>>,
 }
 
-impl RequestContext {
-    fn new(service: ItsiService, matching_pattern: Option<Arc<Regex>>) -> Self {
-        RequestContext {
+impl HttpRequestContext {
+    fn new(service: ItsiHttpService, matching_pattern: Option<Arc<Regex>>) -> Self {
+        HttpRequestContext {
             inner: Arc::new(RequestContextInner {
                 request_id: rand::random::<u128>(),
                 service,
@@ -145,7 +141,7 @@ impl RequestContext {
     }
 }
 
-impl Service<Request<Incoming>> for ItsiService {
+impl Service<Request<Incoming>> for ItsiHttpService {
     type Response = HttpResponse;
     type Error = ItsiError;
     type Future = Pin<Box<dyn Future<Output = itsi_error::Result<HttpResponse>> + Send>>;
@@ -158,7 +154,7 @@ impl Service<Request<Incoming>> for ItsiService {
             let mut req = req.limit();
             let mut resp: Option<HttpResponse> = None;
             let (stack, matching_pattern) = params.middleware.get().unwrap().stack_for(&req)?;
-            let mut context = RequestContext::new(self_clone, matching_pattern);
+            let mut context = HttpRequestContext::new(self_clone, matching_pattern);
             let mut depth = 0;
 
             for (index, elm) in stack.iter().enumerate() {

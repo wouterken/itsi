@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 
-use super::{FromValue, MiddlewareLayer};
-use crate::server::{
-    itsi_service::RequestContext,
-    types::{HttpRequest, HttpResponse},
+use crate::{
+    server::http_message_types::{HttpRequest, HttpResponse},
+    services::itsi_http_service::HttpRequestContext,
 };
+
+use super::{FromValue, MiddlewareLayer};
 use async_trait::async_trait;
 use either::Either;
 use http::HeaderName;
@@ -22,7 +23,7 @@ impl MiddlewareLayer for RequestHeaders {
     async fn before(
         &self,
         mut req: HttpRequest,
-        _: &mut RequestContext,
+        _: &mut HttpRequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
         let headers = req.headers_mut();
         for removal in &self.removals {

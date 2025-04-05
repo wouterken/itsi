@@ -45,7 +45,7 @@ impl ItsiServer {
         let result = if self.config.lock().server_params.read().silence {
             run_silently(|| self.build_and_run_strategy())
         } else {
-            info!("Itsi - Rolling into action. 💨 ⚪ ");
+            info!("Itsi - Rolling into action. ⚪💨");
             self.build_and_run_strategy()
         };
         if let Err(e) = result {

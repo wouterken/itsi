@@ -1,9 +1,8 @@
 use super::itsi_grpc_call::CompressionAlgorithm;
 use crate::prelude::*;
+use crate::server::http_message_types::HttpResponse;
 use crate::server::size_limited_incoming::SizeLimitedIncoming;
-use crate::server::{
-    byte_frame::ByteFrame, serve_strategy::single_mode::RunningPhase, types::HttpResponse,
-};
+use crate::server::{byte_frame::ByteFrame, serve_strategy::single_mode::RunningPhase};
 use bytes::Bytes;
 use derive_more::Debug;
 use futures::stream::unfold;

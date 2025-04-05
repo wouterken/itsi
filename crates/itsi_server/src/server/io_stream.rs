@@ -1,4 +1,3 @@
-use super::listener::SockAddr;
 use pin_project::pin_project;
 use tokio::net::{TcpStream, UnixStream};
 use tokio_rustls::server::TlsStream;
@@ -7,6 +6,8 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use tokio::io::{AsyncRead, AsyncWrite};
+
+use super::binds::listener::SockAddr;
 
 #[pin_project(project = IoStreamEnumProj)]
 pub enum IoStream {

@@ -1,10 +1,8 @@
 use super::{token_source::TokenSource, ErrorResponse, FromValue, MiddlewareLayer};
-use crate::server::{
-    itsi_service::RequestContext,
-    rate_limiter::{
-        create_rate_limit_key, get_rate_limiter, RateLimitError, RateLimiter, RateLimiterConfig,
-    },
-    types::{HttpRequest, HttpResponse, RequestExt},
+use crate::server::http_message_types::{HttpRequest, HttpResponse, RequestExt};
+use crate::services::itsi_http_service::HttpRequestContext;
+use crate::services::rate_limiter::{
+    create_rate_limit_key, get_rate_limiter, RateLimitError, RateLimiter, RateLimiterConfig,
 };
 use async_trait::async_trait;
 use either::Either;
@@ -51,7 +49,7 @@ impl MiddlewareLayer for RateLimit {
     async fn before(
         &self,
         req: HttpRequest,
-        context: &mut RequestContext,
+        context: &mut HttpRequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
         // Get the key to rate limit on
         let key_value = match &self.key {

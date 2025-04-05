@@ -202,7 +202,7 @@ impl ClusterMode {
             }
         }
 
-        Err(ItsiError::Break())
+        Err(ItsiError::Break)
     }
 
     pub async fn print_info(self: Arc<Self>) -> Result<()> {
@@ -320,7 +320,7 @@ impl ClusterMode {
                 Ok(lifecycle_event) => {
                   if let Err(e) = self_ref.clone().handle_lifecycle_event(lifecycle_event).await{
                     match e {
-                      ItsiError::Break() => break,
+                      ItsiError::Break => break,
                       _ => error!("Error in handle_lifecycle_event {:?}", e)
                     }
                   }

@@ -1,6 +1,5 @@
 mod middleware;
 mod middlewares;
-use super::types::HttpRequest;
 use http::header::{ACCEPT, CONTENT_TYPE, HOST};
 use itsi_rb_helpers::HeapVal;
 use magnus::{error::Result, value::ReprValue, RArray, RHash, Ruby, TryConvert, Value};
@@ -9,6 +8,8 @@ pub use middlewares::*;
 use regex::{Regex, RegexSet};
 use std::{collections::HashMap, sync::Arc};
 use tracing::info;
+
+use super::http_message_types::HttpRequest;
 
 #[derive(Debug)]
 pub struct MiddlewareSet {

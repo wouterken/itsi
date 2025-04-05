@@ -1,6 +1,6 @@
-use crate::server::{
-    itsi_service::RequestContext,
-    types::{HttpRequest, HttpResponse},
+use crate::{
+    server::http_message_types::{HttpRequest, HttpResponse},
+    services::itsi_http_service::HttpRequestContext,
 };
 
 use super::{string_rewrite::StringRewrite, FromValue, MiddlewareLayer};
@@ -42,7 +42,7 @@ impl MiddlewareLayer for Redirect {
     async fn before(
         &self,
         req: HttpRequest,
-        context: &mut RequestContext,
+        context: &mut HttpRequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
         Ok(Either::Right(self.redirect_response(&req, context)?))
     }
@@ -52,7 +52,7 @@ impl Redirect {
     pub fn redirect_response(
         &self,
         req: &HttpRequest,
-        context: &mut RequestContext,
+        context: &mut HttpRequestContext,
     ) -> Result<HttpResponse> {
         let mut response = Response::new(BoxBody::new(Empty::new()));
         *response.status_mut() = match self.redirect_type {

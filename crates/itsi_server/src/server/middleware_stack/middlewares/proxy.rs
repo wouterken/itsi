@@ -11,11 +11,13 @@ use std::{
 };
 
 use super::{string_rewrite::StringRewrite, ErrorResponse, FromValue, MiddlewareLayer};
-use crate::server::{
-    bind::{Bind, BindAddress},
-    itsi_service::RequestContext,
-    size_limited_incoming::MaxBodySizeReached,
-    types::{HttpRequest, HttpResponse, RequestExt, ResponseFormat},
+use crate::{
+    server::{
+        binds::bind::{Bind, BindAddress},
+        http_message_types::{HttpRequest, HttpResponse, RequestExt, ResponseFormat},
+        size_limited_incoming::MaxBodySizeReached,
+    },
+    services::itsi_http_service::HttpRequestContext,
 };
 use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
@@ -70,7 +72,7 @@ pub enum ProxiedHeader {
 }
 
 impl ProxiedHeader {
-    pub fn to_string(&self, req: &HttpRequest, context: &RequestContext) -> String {
+    pub fn to_string(&self, req: &HttpRequest, context: &HttpRequestContext) -> String {
         match self {
             ProxiedHeader::String(value) => value.clone(),
             ProxiedHeader::StringRewrite(rewrite) => rewrite.rewrite_request(req, context),
@@ -156,7 +158,7 @@ impl Proxy {
     fn build_overriding_headers(
         &self,
         req: &HttpRequest,
-        context: &mut RequestContext,
+        context: &mut HttpRequestContext,
     ) -> http::HeaderMap {
         let mut headers = http::HeaderMap::new();
         for (name, header_opt) in self.headers.iter() {
@@ -309,7 +311,7 @@ impl MiddlewareLayer for Proxy {
     async fn before(
         &self,
         req: HttpRequest,
-        context: &mut RequestContext,
+        context: &mut HttpRequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
         let url = self.to.rewrite_request(&req, context);
         let accept: ResponseFormat = req.accept().into();

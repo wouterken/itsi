@@ -9,9 +9,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::str;
 
-use crate::server::{
-    itsi_service::RequestContext,
-    types::{HttpRequest, HttpResponse, RequestExt},
+use crate::{
+    server::http_message_types::{HttpRequest, HttpResponse, RequestExt},
+    services::itsi_http_service::HttpRequestContext,
 };
 
 use super::{FromValue, MiddlewareLayer};
@@ -40,7 +40,7 @@ impl MiddlewareLayer for AuthBasic {
     async fn before(
         &self,
         req: HttpRequest,
-        _context: &mut RequestContext,
+        _context: &mut HttpRequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
         // Retrieve the Authorization header.
         let auth_header = req.header("Authorization");

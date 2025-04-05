@@ -1,11 +1,13 @@
+use crate::{
+    server::http_message_types::{HttpRequest, HttpResponse},
+    services::itsi_http_service::HttpRequestContext,
+};
+
 use super::{
     header_interpretation::{find_first_supported, header_contains},
     FromValue, MiddlewareLayer,
 };
-use crate::server::{
-    itsi_service::RequestContext,
-    types::{HttpRequest, HttpResponse},
-};
+
 use async_compression::{
     tokio::bufread::{BrotliEncoder, DeflateEncoder, GzipEncoder, ZstdEncoder},
     Level,
@@ -155,7 +157,7 @@ impl MiddlewareLayer for Compression {
     async fn before(
         &self,
         req: HttpRequest,
-        context: &mut RequestContext,
+        context: &mut HttpRequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
         let algo = match find_first_supported(
             &req.headers().get_all(ACCEPT_ENCODING),
@@ -182,7 +184,7 @@ impl MiddlewareLayer for Compression {
     /// * The response body is larger than the minimum size.
     /// * The response content type is supported.
     /// * The client supports the compression algorithm.
-    async fn after(&self, resp: HttpResponse, context: &mut RequestContext) -> HttpResponse {
+    async fn after(&self, resp: HttpResponse, context: &mut HttpRequestContext) -> HttpResponse {
         let compression_method;
         if let Some(method) = context.compression_method.get() {
             compression_method = method.clone();

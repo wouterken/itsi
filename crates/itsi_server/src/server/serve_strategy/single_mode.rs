@@ -1,14 +1,14 @@
 use crate::{
     ruby_types::itsi_server::itsi_server_config::ItsiServerConfig,
     server::{
+        binds::listener::ListenerInfo,
         io_stream::IoStream,
-        itsi_service::{IstiServiceInner, ItsiService},
         lifecycle_event::LifecycleEvent,
-        listener::ListenerInfo,
         request_job::RequestJob,
         signal::{SHUTDOWN_REQUESTED, SIGNAL_HANDLER_CHANNEL},
         thread_worker::{build_thread_workers, ThreadWorker},
     },
+    services::itsi_http_service::{ItsiHttpService, ItsiHttpServiceInner},
 };
 use hyper_util::{
     rt::{TokioExecutor, TokioIo, TokioTimer},
@@ -360,8 +360,8 @@ impl SingleMode {
         let mut binding = executor.http1();
         let shutdown_channel = shutdown_channel_clone.clone();
 
-        let service = ItsiService {
-            inner: Arc::new(IstiServiceInner {
+        let service = ItsiHttpService {
+            inner: Arc::new(ItsiHttpServiceInner {
                 sender: job_sender.clone(),
                 server_params: self.server_config.server_params.read().clone(),
                 listener,

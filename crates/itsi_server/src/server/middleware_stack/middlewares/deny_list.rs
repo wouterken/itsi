@@ -1,6 +1,6 @@
-use crate::server::{
-    itsi_service::RequestContext,
-    types::{HttpRequest, HttpResponse, RequestExt},
+use crate::{
+    server::http_message_types::{HttpRequest, HttpResponse, RequestExt},
+    services::itsi_http_service::HttpRequestContext,
 };
 
 use super::{ErrorResponse, FromValue, MiddlewareLayer};
@@ -28,17 +28,17 @@ fn forbidden_error_response() -> ErrorResponse {
 #[async_trait]
 impl MiddlewareLayer for DenyList {
     async fn initialize(&self) -> Result<()> {
-        let denied_ips = RegexSet::new(&self.denied_patterns).map_err(ItsiError::default)?;
+        let denied_ips = RegexSet::new(&self.denied_patterns).map_err(ItsiError::new)?;
         self.denied_ips
             .set(denied_ips)
-            .map_err(|e| ItsiError::default(format!("Failed to set allowed IPs: {:?}", e)))?;
+            .map_err(|e| ItsiError::new(format!("Failed to set allowed IPs: {:?}", e)))?;
         Ok(())
     }
 
     async fn before(
         &self,
         req: HttpRequest,
-        context: &mut RequestContext,
+        context: &mut HttpRequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
         if let Some(denied_ips) = self.denied_ips.get() {
             if denied_ips.is_match(&context.addr) {

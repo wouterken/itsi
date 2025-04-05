@@ -1,13 +1,9 @@
 use super::MiddlewareLayer;
 use crate::ruby_types::itsi_grpc_call::ItsiGrpcCall;
-use crate::server::static_file_server::ROOT_STATIC_FILE_SERVER;
-use crate::{
-    ruby_types::itsi_http_request::ItsiHttpRequest,
-    server::{
-        itsi_service::RequestContext,
-        types::{HttpRequest, HttpResponse},
-    },
-};
+use crate::ruby_types::itsi_http_request::ItsiHttpRequest;
+use crate::server::http_message_types::{HttpRequest, HttpResponse};
+use crate::services::itsi_http_service::HttpRequestContext;
+use crate::services::static_file_server::ROOT_STATIC_FILE_SERVER;
 use async_trait::async_trait;
 use derive_more::Debug;
 use either::Either;
@@ -66,7 +62,7 @@ impl MiddlewareLayer for RubyApp {
     async fn before(
         &self,
         req: HttpRequest,
-        context: &mut RequestContext,
+        context: &mut HttpRequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
         match self.request_type {
             RequestType::Http => ItsiHttpRequest::process_request(self.app.clone(), req, context)
@@ -80,7 +76,7 @@ impl MiddlewareLayer for RubyApp {
         }
     }
 
-    async fn after(&self, resp: HttpResponse, _context: &mut RequestContext) -> HttpResponse {
+    async fn after(&self, resp: HttpResponse, _context: &mut HttpRequestContext) -> HttpResponse {
         if self.sendfile {
             if let Some(sendfile_header) = resp.headers().get("X-Sendfile") {
                 return ROOT_STATIC_FILE_SERVER

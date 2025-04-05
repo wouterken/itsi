@@ -1,7 +1,10 @@
 use super::file_watcher::{self};
 use crate::{
     ruby_types::ITSI_SERVER_CONFIG,
-    server::{bind::Bind, listener::Listener, middleware_stack::MiddlewareSet},
+    server::{
+        binds::{bind::Bind, listener::Listener},
+        middleware_stack::MiddlewareSet,
+    },
 };
 use derive_more::Debug;
 use itsi_rb_helpers::{call_with_gvl, print_rb_backtrace, HeapValue};

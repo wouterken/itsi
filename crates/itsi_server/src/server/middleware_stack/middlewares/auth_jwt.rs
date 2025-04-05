@@ -1,8 +1,9 @@
 use super::{error_response::ErrorResponse, token_source::TokenSource, FromValue, MiddlewareLayer};
-use crate::server::{
-    itsi_service::RequestContext,
-    types::{HttpRequest, HttpResponse, RequestExt},
+use crate::{
+    server::http_message_types::{HttpRequest, HttpResponse, RequestExt},
+    services::itsi_http_service::HttpRequestContext,
 };
+
 use async_trait::async_trait;
 use base64::{engine::general_purpose, Engine};
 use derive_more::Debug;
@@ -95,7 +96,7 @@ impl JwtAlgorithm {
                 Ok(DecodingKey::from_secret(
                     &general_purpose::STANDARD
                         .decode(base64)
-                        .map_err(ItsiError::default)?,
+                        .map_err(ItsiError::new)?,
                 ))
             }
             // For RSA (and PS) algorithms, expect a PEM-formatted key.
@@ -105,11 +106,11 @@ impl JwtAlgorithm {
             | JwtAlgorithm::Ps256
             | JwtAlgorithm::Ps384
             | JwtAlgorithm::Ps512 => DecodingKey::from_rsa_pem(base64.trim_ascii().as_bytes())
-                .map_err(|e| ItsiError::default(e.to_string())),
+                .map_err(|e| ItsiError::new(e.to_string())),
             // For ECDSA algorithms, expect a PEM-formatted key.
             JwtAlgorithm::Es256 | JwtAlgorithm::Es384 => {
                 DecodingKey::from_ec_pem(base64.trim_ascii().as_bytes())
-                    .map_err(|e| ItsiError::default(e.to_string()))
+                    .map_err(|e| ItsiError::new(e.to_string()))
             }
         }
     }
@@ -150,14 +151,14 @@ impl MiddlewareLayer for AuthJwt {
             .collect::<itsi_error::Result<HashMap<JwtAlgorithm, Vec<DecodingKey>>>>()?;
         self.keys
             .set(keys)
-            .map_err(|_| ItsiError::default("Failed to set keys".to_string()))?;
+            .map_err(|_| ItsiError::new("Failed to set keys"))?;
         Ok(())
     }
 
     async fn before(
         &self,
         req: HttpRequest,
-        _context: &mut RequestContext,
+        _context: &mut HttpRequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
         // Retrieve the JWT token from either a header or a query parameter.
         let token_str = match &self.token_source {
@@ -188,7 +189,7 @@ impl MiddlewareLayer for AuthJwt {
         info!("Token str is {:?}", token_str);
         // Use jsonwebtoken's decode_header to inspect the token and determine its algorithm.
         let header =
-            decode_header(token_str).map_err(|_| ItsiError::default("Invalid token header"))?;
+            decode_header(token_str).map_err(|_| ItsiError::new("Invalid token header"))?;
         info!("Header is {:?}", header);
         let alg: JwtAlgorithm = header.alg.into();
 

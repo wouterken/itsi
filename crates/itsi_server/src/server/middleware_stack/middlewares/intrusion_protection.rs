@@ -1,9 +1,11 @@
-use super::{ErrorResponse, FromValue, MiddlewareLayer};
-use crate::server::{
-    itsi_service::RequestContext,
-    rate_limiter::{get_ban_manager, get_rate_limiter, BanManager, RateLimiter, RateLimiterConfig},
-    types::{HttpRequest, HttpResponse, RequestExt},
+use crate::server::http_message_types::{HttpRequest, HttpResponse, RequestExt};
+use crate::services::itsi_http_service::HttpRequestContext;
+use crate::services::rate_limiter::{
+    get_ban_manager, get_rate_limiter, BanManager, RateLimiter, RateLimiterConfig,
 };
+
+use super::{ErrorResponse, FromValue, MiddlewareLayer};
+
 use async_trait::async_trait;
 use either::Either;
 use itsi_tracing::*;
@@ -94,7 +96,7 @@ impl MiddlewareLayer for IntrusionProtection {
     async fn before(
         &self,
         req: HttpRequest,
-        context: &mut RequestContext,
+        context: &mut HttpRequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
         // Get client IP address from context's service
         let client_ip = &context.addr;

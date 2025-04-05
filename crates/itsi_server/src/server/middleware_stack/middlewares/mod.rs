@@ -50,8 +50,9 @@ use serde::Deserialize;
 use serde_magnus::deserialize;
 pub use static_assets::StaticAssets;
 
-use crate::server::itsi_service::RequestContext;
-use crate::server::types::{HttpRequest, HttpResponse};
+use crate::server::http_message_types::HttpRequest;
+use crate::server::http_message_types::HttpResponse;
+use crate::services::itsi_http_service::HttpRequestContext;
 
 pub trait FromValue: Sized + Send + Sync + 'static {
     fn from_value(value: Value) -> Result<Self>
@@ -72,13 +73,13 @@ pub trait MiddlewareLayer: Sized + Send + Sync + 'static {
     async fn before(
         &self,
         req: HttpRequest,
-        _context: &mut RequestContext,
+        _context: &mut HttpRequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
         Ok(Either::Left(req))
     }
 
     /// The "after" hook. By default, it passes through the response.
-    async fn after(&self, resp: HttpResponse, _context: &mut RequestContext) -> HttpResponse {
+    async fn after(&self, resp: HttpResponse, _context: &mut HttpRequestContext) -> HttpResponse {
         resp
     }
 }

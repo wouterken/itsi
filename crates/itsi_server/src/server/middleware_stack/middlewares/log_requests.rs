@@ -4,8 +4,8 @@ use itsi_tracing::*;
 use magnus::error::Result;
 use serde::Deserialize;
 
-use crate::server::itsi_service::RequestContext;
-use crate::server::types::{HttpRequest, HttpResponse};
+use crate::server::http_message_types::{HttpRequest, HttpResponse};
+use crate::services::itsi_http_service::HttpRequestContext;
 
 use super::string_rewrite::StringRewrite;
 use super::{FromValue, MiddlewareLayer};
@@ -60,7 +60,7 @@ impl MiddlewareLayer for LogRequests {
     async fn before(
         &self,
         req: HttpRequest,
-        context: &mut RequestContext,
+        context: &mut HttpRequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
         context.track_start_time();
         if let Some(LogConfig { level, format }) = self.before.as_ref() {
@@ -70,7 +70,7 @@ impl MiddlewareLayer for LogRequests {
         Ok(Either::Left(req))
     }
 
-    async fn after(&self, resp: HttpResponse, context: &mut RequestContext) -> HttpResponse {
+    async fn after(&self, resp: HttpResponse, context: &mut HttpRequestContext) -> HttpResponse {
         if let Some(LogConfig { level, format }) = self.after.as_ref() {
             level.log(format.rewrite_response(&resp, context));
         }

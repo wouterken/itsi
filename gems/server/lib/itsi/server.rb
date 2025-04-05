@@ -93,12 +93,84 @@ module Itsi
         Process.kill(:USR1, pid)
       end
 
-      def down
-        puts :down
-      end
+      def passfile(options, subcmd)
+        unless filename = options[:passfile]
+          puts "--passfile required"
+          exit(1)
+        end
 
-      def up
-        puts :up
+        if filename.nil? || filename.strip.empty?
+          puts "Error: a valid filename is required."
+          exit(1)
+        end
+
+        creds = {}
+        if File.exist?(filename)
+          File.foreach(filename) do |line|
+            line.chomp!
+            next if line.empty?
+
+            user, pass = line.split(':', 2)
+            creds[user] = pass
+          end
+        end
+
+        case subcmd
+        when 'add'
+          print "Enter username: "
+          username = $stdin.gets.chomp
+
+          print "Enter password: "
+
+          password = $stdin.noecho(&:gets).chomp
+          puts
+
+          print "Confirm password: "
+          password_confirm = $stdin.noecho(&:gets).chomp
+          puts
+
+          if password != password_confirm
+            puts "Error: Passwords do not match!"
+            exit(1)
+          end
+
+          creds[username] = Itsi.bcrypt_create_password_hash(password)
+
+
+          File.open(filename, 'w', 0o600) do |f|
+            creds.each do |u, p|
+              f.puts "#{u}:#{p}"
+            end
+          end
+
+          puts "User '#{username}' added."
+
+        when 'remove'
+          print "Enter username to remove: "
+          username = $stdin.gets.chomp
+
+          if creds.key?(username)
+            creds.delete(username)
+            File.open(filename, 'w', 0o600) do |f|
+              creds.each do |u, p|
+                f.puts "#{u}:#{p}"
+              end
+            end
+            puts "User '#{username}' removed."
+          else
+            puts "Warning: User '#{username}' not found."
+          end
+
+        when 'list'
+          puts "Current credentials in '#{filename}':"
+          creds.each do |u, p|
+            puts "#{u}:#{p}"
+          end
+
+        else
+          puts "Valid subcommands are: add | remove | list"
+          exit(0)
+        end
       end
 
       def add_worker

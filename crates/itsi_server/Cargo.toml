@@ -21,6 +21,7 @@ async-compression = { version = "0.4.21", features = [
 ] }
 async-channel = "2.3.1"
 async-trait = "0.1.87"
+bcrypt = "0.17.0"
 base64 = "0.22.1"
 bytes = "1.3"
 chrono = "0.4.35"
@@ -39,7 +40,6 @@ http-body-util = "0.1.2"
 httpdate = "1.0.3"
 httparse = "1.10.1"
 hyper = { version = "1.5.0", features = ["full", "server", "http1", "http2"] }
-hyper-staticfile = "0.10.1"
 hyper-util = { version = "0.1.10", features = ["full"] }
 itsi_error = { path = "../itsi_error" }
 itsi_rb_helpers = { path = "../itsi_rb_helpers" }
