@@ -1,12 +1,11 @@
 #![deny(unused_crate_dependencies)]
-
 pub mod env;
 pub mod prelude;
 pub mod ruby_types;
 pub mod server;
 pub mod services;
 
-use magnus::{error::Result, function, method, Module, Object, Ruby, Value};
+use magnus::{error::Result, function, method, Module, Object, Ruby};
 use prelude::*;
 use ruby_types::{
     itsi_body_proxy::ItsiBodyProxy, itsi_grpc_call::ItsiGrpcCall,

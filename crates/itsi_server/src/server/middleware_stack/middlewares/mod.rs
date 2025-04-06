@@ -19,6 +19,7 @@ mod request_headers;
 mod response_headers;
 mod ruby_app;
 mod static_assets;
+mod static_response;
 mod string_rewrite;
 mod token_source;
 
@@ -49,6 +50,7 @@ pub use ruby_app::RubyApp;
 use serde::Deserialize;
 use serde_magnus::deserialize;
 pub use static_assets::StaticAssets;
+pub use static_response::StaticResponse;
 
 use crate::server::http_message_types::HttpRequest;
 use crate::server::http_message_types::HttpResponse;

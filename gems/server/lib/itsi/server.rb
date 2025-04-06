@@ -95,7 +95,12 @@ module Itsi
       end
 
       def passfile(options, subcmd)
-        filename = options.fetch(:passfile, ".itsi-credentials")
+        filename = options[:passfile]
+        unless filename
+          puts "Error: passfile not set. Use --passfile option to provide a path to a file containing hashed credentials."
+          puts "This file contains hashed credentials and should not be included in source control without additional protection."
+          exit(1)
+        end
         algorithm = options.fetch(:algorithm, 'sha256')
 
         unless %w[sha256 sha512 bcrypt argon2 none].include?(algorithm)

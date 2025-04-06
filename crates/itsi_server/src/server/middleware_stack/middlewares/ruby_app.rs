@@ -9,6 +9,7 @@ use derive_more::Debug;
 use either::Either;
 use itsi_rb_helpers::{HeapVal, HeapValue};
 use magnus::{block::Proc, error::Result, value::ReprValue, Symbol};
+use regex::Regex;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -17,6 +18,7 @@ pub struct RubyApp {
     app: Arc<HeapValue<Proc>>,
     request_type: RequestType,
     sendfile: bool,
+    base_path: Regex,
 }
 
 #[derive(Debug)]
@@ -43,6 +45,11 @@ impl RubyApp {
         let sendfile = params
             .funcall::<_, _, bool>(Symbol::new("[]"), ("sendfile",))
             .unwrap_or(true);
+        let base_path_src = params
+            .funcall::<_, _, String>(Symbol::new("[]"), ("base_path",))
+            .unwrap_or("".to_owned());
+        let base_path = Regex::new(&base_path_src).unwrap();
+
         let request_type: RequestType = params
             .funcall::<_, _, String>(Symbol::new("[]"), ("request_type",))
             .unwrap_or("http".to_string())
@@ -53,6 +60,7 @@ impl RubyApp {
             app: Arc::new(app.into()),
             sendfile,
             request_type,
+            base_path,
         })
     }
 }
@@ -66,16 +74,14 @@ impl MiddlewareLayer for RubyApp {
     ) -> Result<Either<HttpRequest, HttpResponse>> {
         match self.request_type {
             RequestType::Http => {
-                let path = req.uri().path();
-                let suffix = context
-                    .matching_pattern
-                    .as_ref()
-                    .and_then(|pattern| pattern.captures(path))
-                    .and_then(|captures| captures.name("path_suffix"))
+                let uri = req.uri().path();
+                let script_name = self
+                    .base_path
+                    .captures(uri)
+                    .and_then(|caps| caps.name("base_path"))
                     .map(|m| m.as_str())
-                    .unwrap_or("");
-                let script_name = path.strip_suffix(suffix).unwrap_or("").to_owned();
-
+                    .unwrap_or("/")
+                    .to_owned();
                 ItsiHttpRequest::process_request(self.app.clone(), req, context, script_name)
                     .await
                     .map_err(|e| e.into())
@@ -88,11 +94,11 @@ impl MiddlewareLayer for RubyApp {
         }
     }
 
-    async fn after(&self, resp: HttpResponse, _context: &mut HttpRequestContext) -> HttpResponse {
+    async fn after(&self, resp: HttpResponse, context: &mut HttpRequestContext) -> HttpResponse {
         if self.sendfile {
             if let Some(sendfile_header) = resp.headers().get("X-Sendfile") {
                 return ROOT_STATIC_FILE_SERVER
-                    .serve_single(sendfile_header.to_str().unwrap())
+                    .serve_single(sendfile_header.to_str().unwrap(), context.accept.clone())
                     .await;
             }
         }

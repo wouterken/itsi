@@ -215,6 +215,11 @@ impl MiddlewareSet {
         let binding = self.route_set.matches(request.uri().path());
         let matches = binding.iter();
 
+        info!(
+            "Matching request URI {:?} against self.route_set: {:?}",
+            request.uri().path(),
+            self.route_set
+        );
         for index in matches {
             let matching_pattern = self.patterns.get(index).cloned();
             if let Some(stack) = self.stacks.get(&index) {
@@ -285,6 +290,9 @@ impl MiddlewareSet {
                     parameters,
                 )?)),
                 "static_assets" => Ok(Middleware::StaticAssets(StaticAssets::from_value(
+                    parameters,
+                )?)),
+                "static_response" => Ok(Middleware::StaticResponse(StaticResponse::from_value(
                     parameters,
                 )?)),
                 "compression" => Ok(Middleware::Compression(Compression::from_value(

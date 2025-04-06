@@ -25,6 +25,7 @@ use std::{
     os::fd::{AsRawFd, OwnedFd, RawFd},
     path::PathBuf,
     sync::{Arc, OnceLock},
+    time::Duration,
 };
 static DEFAULT_BIND: &str = "http://localhost:3000";
 static ID_BUILD_CONFIG: LazyId = LazyId::new("build_config");
@@ -50,6 +51,7 @@ pub struct ServerParams {
     pub hooks: HashMap<String, HeapValue<Proc>>,
     pub preload: bool,
 
+    pub request_timeout: Option<Duration>,
     pub notify_watchers: Option<Vec<(String, Vec<Vec<String>>)>>,
     /// Worker params
     pub threads: u8,
@@ -125,6 +127,9 @@ impl ServerParams {
             .transpose()?
             .unwrap_or_default();
         let preload: bool = rb_param_hash.fetch("preload")?;
+        let request_timeout: Option<u64> = rb_param_hash.fetch("request_timeout")?;
+        let request_timeout = request_timeout.map(|to| Duration::from_secs(to));
+
         let notify_watchers: Option<Vec<(String, Vec<Vec<String>>)>> =
             rb_param_hash.fetch("notify_watchers")?;
         let threads: u8 = rb_param_hash.fetch("threads")?;
@@ -207,6 +212,7 @@ impl ServerParams {
             shutdown_timeout,
             hooks,
             preload,
+            request_timeout,
             notify_watchers,
             threads,
             streamable_body,

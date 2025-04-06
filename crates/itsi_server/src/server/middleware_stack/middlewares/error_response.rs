@@ -127,7 +127,9 @@ impl ErrorResponse {
             Some(ContentSource::File(path)) => {
                 // Convert the PathBuf to a &str (assumes valid UTF-8).
                 if let Some(path_str) = path.to_str() {
-                    let response = ROOT_STATIC_FILE_SERVER.serve_single(path_str).await;
+                    let response = ROOT_STATIC_FILE_SERVER
+                        .serve_single(path_str, accept.clone())
+                        .await;
                     if response.status().is_success() {
                         return response.into_body();
                     }

@@ -215,6 +215,14 @@ impl MiddlewareLayer for Compression {
             return resp;
         }
 
+        if let Some(existing_encoding) = resp.headers().get(CONTENT_ENCODING) {
+            if let Ok(encoding_str) = existing_encoding.to_str() {
+                if encoding_str == compression_method.as_str() {
+                    return resp;
+                }
+            }
+        }
+
         let (mut parts, body) = resp.into_parts();
 
         let new_body = if let Some(_size) = body_size {

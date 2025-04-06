@@ -198,7 +198,7 @@ impl ItsiHttpRequest {
             .parts
             .uri
             .path()
-            .strip_prefix(&self.script_name)
+            .strip_prefix(self.script_name.trim_end_matches('/'))
             .unwrap_or(self.parts.uri.path()))
     }
 

@@ -16,8 +16,10 @@ use http::{
 };
 use itsi_error::ItsiError;
 use magnus::error::Result;
+use regex::Regex;
 use serde::Deserialize;
 use std::{collections::HashMap, path::PathBuf, sync::OnceLock, time::Duration};
+use tracing::info;
 
 #[derive(Debug, Deserialize)]
 pub struct StaticAssets {
@@ -32,6 +34,9 @@ pub struct StaticAssets {
     pub allowed_extensions: Vec<String>,
     pub relative_path: bool,
     pub serve_dot_files: bool,
+    pub base_path: String,
+    #[serde(skip)]
+    pub base_path_regex: OnceLock<Regex>,
     #[serde(skip)]
     file_server: OnceLock<StaticFileServer>,
 }
@@ -52,6 +57,9 @@ impl MiddlewareLayer for StaticAssets {
                 "Root directory exists but is not a directory".to_string(),
             ))
         }?;
+        self.base_path_regex
+            .set(Regex::new(&self.base_path).map_err(ItsiError::new)?)
+            .map_err(ItsiError::new)?;
         self.file_server
             .set(StaticFileServer::new(StaticFileServerConfig {
                 root_dir: self.root_dir.clone(),
@@ -71,7 +79,7 @@ impl MiddlewareLayer for StaticAssets {
     async fn before(
         &self,
         req: HttpRequest,
-        context: &mut HttpRequestContext,
+        _context: &mut HttpRequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
         // Only handle GET and HEAD requests
         if req.method() != Method::GET && req.method() != Method::HEAD {
@@ -81,13 +89,22 @@ impl MiddlewareLayer for StaticAssets {
         let rel_path = if !self.relative_path {
             abs_path
         } else {
-            match context
-                .matching_pattern
-                .as_ref()
-                .and_then(|pattern| pattern.captures(req.uri().path()))
-                .and_then(|captures| captures.name("path_suffix"))
+            let base_path = self
+                .base_path_regex
+                .get()
+                .unwrap()
+                .captures(abs_path)
+                .and_then(|caps| caps.name("base_path"))
                 .map(|m| m.as_str())
-            {
+                .unwrap_or("/");
+
+            info!("Base path is {}", base_path);
+            info!("Full path is {}", abs_path);
+            info!(
+                "Stripped is {}",
+                abs_path.strip_prefix(base_path).unwrap_or("")
+            );
+            match abs_path.strip_prefix(base_path) {
                 Some(suffix) => suffix,
                 None => return Ok(Either::Left(req)),
             }

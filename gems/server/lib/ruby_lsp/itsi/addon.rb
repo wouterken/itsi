@@ -5,12 +5,6 @@ puts "Here we go"
 module RubyLsp
   module Itsi
     class Addon < ::RubyLsp::Addon
-      def activate(global_state, message_queue)
-        @message_queue = message_queue
-      end
-
-      def deactivate
-      end
 
       def name
         "Ruby LSP Itsi"

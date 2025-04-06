@@ -16,7 +16,7 @@ COMMANDS = {
   "add_worker" => "Add a new worker to the server cluster",
   "remove_worker" => "Remove a worker from the server cluster",
   "routes" => "Print the routes of the server",
-  "passfile" => "Manage bcrypt users and passwords in a passfile (like .htpasswd)",
+  "passfile" => "Manage hashed users and passwords in a passfile (like .htpasswd). [add, remove, list]",
   "test_route" => "Test which route a request will be routed to",
   "static" => "Serve static assets in the given directory"
 }
@@ -37,7 +37,7 @@ parser = OptionParser.new do |opts|
   end
 
   opts.on("-d", "--daemonize", "Run the process as a daemon") do
-    options[:daemonize] = true
+    Process.daemon(true)
   end
 
   opts.on("-t", "--threads THREADS", Integer, "Number of threads (default: 1)") do |t|
@@ -155,10 +155,6 @@ end
 
 parser.parse!
 
-if options[:daemonize]
-  Process.daemon(true)
-end
-
 case (command = ARGV.shift)
 when *COMMANDS.keys
   required_arity = Itsi::Server.method(command).parameters&.select{|c| c.first == :req }&.length&.succ || 2
@@ -167,7 +163,7 @@ when *COMMANDS.keys
   when 2 then Itsi::Server.send(command, options)
   else
     if ARGV.length != required_arity - 2
-      puts "Expecting #{required_arity - 2} args. Got #{ARGV.length} "
+      puts "Command #{command} requires #{required_arity - 2} subcommands. "
       exit(0)
     end
     Itsi::Server.send(command, options, *ARGV)

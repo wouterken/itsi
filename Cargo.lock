@@ -1362,7 +1362,7 @@ dependencies = [
 
 [[package]]
 name = "itsi-server"
-version = "0.1.16"
+version = "0.1.17"
 dependencies = [
  "argon2",
  "async-channel",

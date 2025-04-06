@@ -56,7 +56,6 @@ module Itsi
                   file_check_interval: 1,
                   serve_dot_files: true,
                   headers: {
-                    'Cache-Control' => 'public, max-age=86400',
                     'X-Content-Type-Options' => 'nosniff'
                   }
               end
@@ -94,6 +93,7 @@ module Itsi
           shutdown_timeout: args.fetch(:shutdown_timeout) { itsifile_config.fetch(:shutdown_timeout, 5) },
           hooks: itsifile_config.fetch(:hooks, nil),
           preload: !!preload,
+          request_timeout: itsifile_config.fetch(:request_timeout, nil),
           notify_watchers: itsifile_config.fetch(:notify_watchers, nil),
           threads: args.fetch(:threads) { itsifile_config.fetch(:threads, 1) },
           streamable_body: args.fetch(:streamable_body) { itsifile_config.fetch(:streamable_body, false) },

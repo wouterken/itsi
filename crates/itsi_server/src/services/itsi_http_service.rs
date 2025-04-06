@@ -1,7 +1,7 @@
 use crate::ruby_types::itsi_server::itsi_server_config::ServerParams;
 use crate::server::binds::listener::ListenerInfo;
-use crate::server::http_message_types::{ConversionExt, HttpResponse, ResponseFormat};
-use crate::server::middleware_stack::{CompressionAlgorithm, MiddlewareLayer};
+use crate::server::http_message_types::{ConversionExt, HttpResponse, RequestExt, ResponseFormat};
+use crate::server::middleware_stack::{CompressionAlgorithm, ErrorResponse, MiddlewareLayer};
 use crate::server::request_job::RequestJob;
 use crate::server::serve_strategy::single_mode::RunningPhase;
 use chrono;
@@ -12,9 +12,11 @@ use hyper::body::Incoming;
 use hyper::service::Service;
 use itsi_error::ItsiError;
 use regex::Regex;
-use std::sync::OnceLock;
+use std::sync::{LazyLock, OnceLock};
+
 use std::{future::Future, ops::Deref, pin::Pin, sync::Arc};
 use tokio::sync::watch::{self};
+use tokio::time::timeout;
 
 #[derive(Clone)]
 pub struct ItsiHttpService {
@@ -61,6 +63,7 @@ impl Deref for RequestContextInner {
 pub struct RequestContextInner {
     pub request_id: u128,
     pub service: ItsiHttpService,
+    pub accept: ResponseFormat,
     pub matching_pattern: Option<Arc<Regex>>,
     pub compression_method: OnceLock<CompressionAlgorithm>,
     pub origin: OnceLock<Option<String>>,
@@ -73,12 +76,17 @@ pub struct RequestContextInner {
 }
 
 impl HttpRequestContext {
-    fn new(service: ItsiHttpService, matching_pattern: Option<Arc<Regex>>) -> Self {
+    fn new(
+        service: ItsiHttpService,
+        matching_pattern: Option<Arc<Regex>>,
+        accept: ResponseFormat,
+    ) -> Self {
         HttpRequestContext {
             inner: Arc::new(RequestContextInner {
                 request_id: rand::random::<u128>(),
                 service,
                 matching_pattern,
+                accept,
                 compression_method: OnceLock::new(),
                 origin: OnceLock::new(),
                 response_format: OnceLock::new(),
@@ -141,6 +149,9 @@ impl HttpRequestContext {
     }
 }
 
+static TIMEOUT_RESPONSE: LazyLock<ErrorResponse> = LazyLock::new(ErrorResponse::gateway_timeout);
+static NOT_FOUND_RESPONSE: LazyLock<ErrorResponse> = LazyLock::new(ErrorResponse::not_found);
+
 impl Service<Request<Incoming>> for ItsiHttpService {
     type Response = HttpResponse;
     type Error = ItsiError;
@@ -149,12 +160,15 @@ impl Service<Request<Incoming>> for ItsiHttpService {
     fn call(&self, req: Request<Incoming>) -> Self::Future {
         let params = self.server_params.clone();
         let self_clone = self.clone();
-
-        Box::pin(async move {
-            let mut req = req.limit();
+        let mut req = req.limit();
+        let accept: ResponseFormat = req.accept().into();
+        let accept_clone = accept.clone();
+        let request_timeout = self.server_params.request_timeout;
+        let service_future = async move {
             let mut resp: Option<HttpResponse> = None;
             let (stack, matching_pattern) = params.middleware.get().unwrap().stack_for(&req)?;
-            let mut context = HttpRequestContext::new(self_clone, matching_pattern);
+            let mut context =
+                HttpRequestContext::new(self_clone, matching_pattern, accept_clone.clone());
             let mut depth = 0;
 
             for (index, elm) in stack.iter().enumerate() {
@@ -171,17 +185,25 @@ impl Service<Request<Incoming>> for ItsiHttpService {
 
             let mut resp = match resp {
                 Some(r) => r,
-                None => {
-                    return Err(ItsiError::InternalServerError(
-                        "No response returned from middleware stack".to_string(),
-                    ))
-                }
+                None => return Ok(NOT_FOUND_RESPONSE.to_http_response(accept_clone).await),
             };
+
             for elm in stack.iter().rev().skip(stack.len() - depth - 1) {
                 resp = elm.after(resp, &mut context).await;
             }
 
             Ok(resp)
+        };
+
+        Box::pin(async move {
+            if let Some(timeout_duration) = request_timeout {
+                match timeout(timeout_duration, service_future).await {
+                    Ok(result) => result,
+                    Err(_) => Ok(TIMEOUT_RESPONSE.to_http_response(accept).await),
+                }
+            } else {
+                service_future.await
+            }
         })
     }
 }

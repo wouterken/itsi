@@ -1,7 +1,7 @@
 use crate::{
     prelude::*,
     server::{
-        http_message_types::{HttpRequest, HttpResponse, RequestExt},
+        http_message_types::{HttpRequest, HttpResponse, RequestExt, ResponseFormat},
         middleware_stack::ErrorResponse,
     },
 };
@@ -13,6 +13,7 @@ use itsi_error::Result;
 use moka::sync::Cache;
 use percent_encoding::{percent_decode_str, utf8_percent_encode, NON_ALPHANUMERIC};
 use serde::Deserialize;
+use serde_json::json;
 use std::{
     borrow::Cow,
     cmp::Ordering,
@@ -104,11 +105,16 @@ impl CacheEntry {
         })
     }
 
-    async fn new_virtual_listing(path: PathBuf, config: &StaticFileServerConfig) -> Self {
-        let directory_listing: Bytes = generate_directory_listing(path.parent().unwrap(), config)
-            .await
-            .unwrap_or("".to_owned())
-            .into();
+    async fn new_virtual_listing(
+        path: PathBuf,
+        config: &StaticFileServerConfig,
+        accept: ResponseFormat,
+    ) -> Self {
+        let directory_listing: Bytes =
+            generate_directory_listing(path.parent().unwrap(), config, accept)
+                .await
+                .unwrap_or("".to_owned())
+                .into();
         CacheEntry {
             content: Arc::new(directory_listing),
             last_modified: SystemTime::now(),
@@ -148,7 +154,8 @@ impl StaticFileServer {
         if_modified_since: Option<SystemTime>,
         is_head_request: bool,
     ) -> Option<HttpResponse> {
-        let resolved = self.resolve(path, abs_path).await;
+        let accept: ResponseFormat = request.accept().into();
+        let resolved = self.resolve(path, abs_path, accept.clone()).await;
         Some(match resolved {
             Ok(ResolvedAsset {
                 path,
@@ -201,7 +208,8 @@ impl StaticFileServer {
                 }
                 NotFoundBehavior::FallThrough => return None,
                 NotFoundBehavior::IndexFile(index_file) => {
-                    self.serve_single(index_file.to_str().unwrap()).await
+                    self.serve_single(index_file.to_str().unwrap(), accept)
+                        .await
                 }
                 NotFoundBehavior::Redirect(redirect) => Response::builder()
                     .status(StatusCode::MOVED_PERMANENTLY)
@@ -216,8 +224,8 @@ impl StaticFileServer {
         })
     }
 
-    pub async fn serve_single(&self, path: &str) -> HttpResponse {
-        let resolved = self.resolve(path, path).await;
+    pub async fn serve_single(&self, path: &str, accept: ResponseFormat) -> HttpResponse {
+        let resolved = self.resolve(path, path, accept).await;
         if let Ok(ResolvedAsset {
             path,
             cache_entry: Some(cache_entry),
@@ -258,6 +266,7 @@ impl StaticFileServer {
         &self,
         key: &str,
         abs_path: &str,
+        accept: ResponseFormat,
     ) -> std::result::Result<ResolvedAsset, NotFoundBehavior> {
         // First check if we have a cached mapping for this key
         if let Some(path) = self.key_to_path.lock().await.get(key) {
@@ -399,9 +408,12 @@ impl StaticFileServer {
                         // Create a virtual path for the directory listing
                         let virtual_path = full_path.join(".directory_listing.dir_list");
 
-                        let cache_entry =
-                            CacheEntry::new_virtual_listing(virtual_path.clone(), &self.config)
-                                .await;
+                        let cache_entry = CacheEntry::new_virtual_listing(
+                            virtual_path.clone(),
+                            &self.config,
+                            accept,
+                        )
+                        .await;
                         self.key_to_path
                             .lock()
                             .await
@@ -854,151 +866,306 @@ impl Default for StaticFileServer {
 async fn generate_directory_listing(
     dir_path: &Path,
     config: &StaticFileServerConfig,
+    accept: ResponseFormat,
 ) -> std::io::Result<String> {
-    // Load our static HTML template.
-    let template = include_str!("../default_responses/html/index.html");
+    match accept {
+        ResponseFormat::JSON => {
+            let directory_display = {
+                let display = dir_path
+                    .strip_prefix(&config.root_dir)
+                    .unwrap_or(Path::new(""))
+                    .to_string_lossy();
+                if display.is_empty() {
+                    Cow::Borrowed(".")
+                } else {
+                    display
+                }
+            };
 
-    // Compute the displayable directory string.
+            let mut items = Vec::new();
 
-    let directory_display = {
-        let display = dir_path
-            .strip_prefix(&config.root_dir)
-            .unwrap_or(Path::new(""))
-            .to_string_lossy();
-        if display.is_empty() {
-            Cow::Borrowed(".")
-        } else {
-            display
+            // Add a parent directory entry if not at the root.
+            if dir_path != config.root_dir {
+                items.push(json!({
+                    "name": "..",
+                    "path": "..",
+                    "is_dir": true,
+                    "size": null,
+                    "modified": null,
+                }));
+            }
+
+            // Read directory entries.
+            let mut entries = tokio::fs::read_dir(dir_path).await?;
+            let mut dirs = Vec::new();
+            let mut files = Vec::new();
+
+            while let Some(entry) = entries.next_entry().await? {
+                let entry_path = entry.path();
+                let metadata = entry.metadata().await?;
+                let name = entry_path
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned();
+
+                if !config.serve_dot_files && name.starts_with('.') {
+                    continue;
+                }
+
+                let ext = entry_path
+                    .extension()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("");
+
+                if metadata.is_dir() {
+                    dirs.push((name, metadata));
+                } else if config.allowed_extensions.is_empty()
+                    || config.allowed_extensions.iter().any(|e| e == ext)
+                {
+                    files.push((name, metadata));
+                }
+            }
+
+            // Sort directories alphabetically with dot directories pushed to the bottom.
+            dirs.sort_by(|(name_a, _), (name_b, _)| {
+                let a_is_dot = name_a.starts_with('.');
+                let b_is_dot = name_b.starts_with('.');
+                if a_is_dot != b_is_dot {
+                    if a_is_dot {
+                        Ordering::Greater
+                    } else {
+                        Ordering::Less
+                    }
+                } else {
+                    name_a.cmp(name_b)
+                }
+            });
+
+            // Sort files so that dot files appear last.
+            files.sort_by(|(name_a, _), (name_b, _)| {
+                let a_is_dot = name_a.starts_with('.');
+                let b_is_dot = name_b.starts_with('.');
+                if a_is_dot != b_is_dot {
+                    if a_is_dot {
+                        Ordering::Greater
+                    } else {
+                        Ordering::Less
+                    }
+                } else {
+                    name_a.cmp(name_b)
+                }
+            });
+
+            // Generate JSON entries for directories.
+            for (name, metadata) in dirs {
+                let encoded = utf8_percent_encode(&name, NON_ALPHANUMERIC).to_string();
+                let modified = metadata
+                    .modified()
+                    .ok()
+                    .map(|m| {
+                        DateTime::<Utc>::from(m)
+                            .format("%Y-%m-%d %H:%M:%S")
+                            .to_string()
+                    })
+                    .unwrap_or_else(|| "-".to_string());
+
+                items.push(json!({
+                    "name": format!("{}/", name),
+                    "path": format!("{}/", encoded),
+                    "is_dir": true,
+                    "size": null,
+                    "modified": modified,
+                }));
+            }
+
+            // Generate JSON entries for files.
+            for (name, metadata) in files {
+                let encoded = utf8_percent_encode(&name, NON_ALPHANUMERIC).to_string();
+                let file_size = metadata.len();
+                let formatted_size = if file_size < 1024 {
+                    format!("{} B", file_size)
+                } else if file_size < 1024 * 1024 {
+                    format!("{:.1} KB", file_size as f64 / 1024.0)
+                } else if file_size < 1024 * 1024 * 1024 {
+                    format!("{:.1} MB", file_size as f64 / (1024.0 * 1024.0))
+                } else {
+                    format!("{:.1} GB", file_size as f64 / (1024.0 * 1024.0 * 1024.0))
+                };
+
+                let modified_str = metadata
+                    .modified()
+                    .ok()
+                    .map(|m| {
+                        DateTime::<Utc>::from(m)
+                            .format("%Y-%m-%d %H:%M:%S")
+                            .to_string()
+                    })
+                    .unwrap_or_else(|| "-".to_string());
+
+                items.push(json!({
+                    "name": name,
+                    "path": encoded,
+                    "is_dir": false,
+                    "size": formatted_size,
+                    "modified": modified_str,
+                }));
+            }
+
+            // Build the final JSON object.
+            let json_obj = json!({
+                "title": format!("Directory listing for {}", directory_display),
+                "directory": directory_display,
+                "items": items,
+            });
+
+            // Serialize the JSON object to a pretty-printed string.
+            let json_string = serde_json::to_string_pretty(&json_obj)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+
+            Ok(json_string)
         }
-    };
+        ResponseFormat::HTML | ResponseFormat::TEXT | ResponseFormat::UNKNOWN => {
+            let template = include_str!("../default_responses/html/index.html");
 
-    // Generate the inner table rows dynamically.
-    let mut rows = String::new();
+            let directory_display = {
+                let display = dir_path
+                    .strip_prefix(&config.root_dir)
+                    .unwrap_or(Path::new(""))
+                    .to_string_lossy();
+                if display.is_empty() {
+                    Cow::Borrowed(".")
+                } else {
+                    display
+                }
+            };
 
-    // Add a parent directory link if not at the root.
-    if dir_path != config.root_dir {
-        rows.push_str(
+            let mut rows = String::new();
+            if dir_path != config.root_dir {
+                rows.push_str(
             r#"<tr><td><a href="..">..</a></td><td class="size">-</td><td class="date">-</td></tr>"#,
         );
-        rows.push('\n');
-    }
-
-    // Read directory entries.
-    let mut entries = tokio::fs::read_dir(dir_path).await?;
-    let mut dirs = Vec::new();
-    let mut files = Vec::new();
-
-    while let Some(entry) = entries.next_entry().await? {
-        let entry_path = entry.path();
-        let metadata = entry.metadata().await?;
-        let name = entry_path
-            .file_name()
-            .unwrap()
-            .to_string_lossy()
-            .into_owned();
-
-        if !config.serve_dot_files && name.starts_with('.') {
-            continue;
-        }
-
-        let ext = entry_path
-            .extension()
-            .and_then(|s| s.to_str())
-            .unwrap_or("");
-
-        if metadata.is_dir() {
-            dirs.push((name, metadata));
-        } else if config.allowed_extensions.is_empty()
-            || config.allowed_extensions.iter().any(|e| e == ext)
-        {
-            files.push((name, metadata));
-        }
-    }
-
-    // Sort directories and files alphabetically.
-    dirs.sort_by(|(name_a, _), (name_b, _)| {
-        let a_is_dot = name_a.starts_with('.');
-        let b_is_dot = name_b.starts_with('.');
-        if a_is_dot != b_is_dot {
-            if a_is_dot {
-                Ordering::Greater
-            } else {
-                Ordering::Less
+                rows.push('\n');
             }
-        } else {
-            name_a.cmp(name_b)
-        }
-    });
 
-    // Sort files so that dot files are at the bottom.
-    files.sort_by(|(name_a, _), (name_b, _)| {
-        let a_is_dot = name_a.starts_with('.');
-        let b_is_dot = name_b.starts_with('.');
-        if a_is_dot != b_is_dot {
-            if a_is_dot {
-                Ordering::Greater
-            } else {
-                Ordering::Less
+            // Read directory entries.
+            let mut entries = tokio::fs::read_dir(dir_path).await?;
+            let mut dirs = Vec::new();
+            let mut files = Vec::new();
+
+            while let Some(entry) = entries.next_entry().await? {
+                let entry_path = entry.path();
+                let metadata = entry.metadata().await?;
+                let name = entry_path
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned();
+
+                if !config.serve_dot_files && name.starts_with('.') {
+                    continue;
+                }
+
+                let ext = entry_path
+                    .extension()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("");
+
+                if metadata.is_dir() {
+                    dirs.push((name, metadata));
+                } else if config.allowed_extensions.is_empty()
+                    || config.allowed_extensions.iter().any(|e| e == ext)
+                {
+                    files.push((name, metadata));
+                }
             }
-        } else {
-            name_a.cmp(name_b)
-        }
-    });
 
-    // Generate rows for directories.
-    for (name, metadata) in dirs {
-        let encoded = utf8_percent_encode(&name, NON_ALPHANUMERIC).to_string();
+            // Sort directories and files alphabetically.
+            dirs.sort_by(|(name_a, _), (name_b, _)| {
+                let a_is_dot = name_a.starts_with('.');
+                let b_is_dot = name_b.starts_with('.');
+                if a_is_dot != b_is_dot {
+                    if a_is_dot {
+                        Ordering::Greater
+                    } else {
+                        Ordering::Less
+                    }
+                } else {
+                    name_a.cmp(name_b)
+                }
+            });
 
-        rows.push_str(&format!(
+            // Sort files so that dot files are at the bottom.
+            files.sort_by(|(name_a, _), (name_b, _)| {
+                let a_is_dot = name_a.starts_with('.');
+                let b_is_dot = name_b.starts_with('.');
+                if a_is_dot != b_is_dot {
+                    if a_is_dot {
+                        Ordering::Greater
+                    } else {
+                        Ordering::Less
+                    }
+                } else {
+                    name_a.cmp(name_b)
+                }
+            });
+
+            // Generate rows for directories.
+            for (name, metadata) in dirs {
+                let encoded = utf8_percent_encode(&name, NON_ALPHANUMERIC).to_string();
+
+                rows.push_str(&format!(
             r#"<tr><td><a href="{0}/">{1}/</a></td><td class="size">-</td><td class="date">{2}</td></tr>"#,
             encoded,
             name,
             metadata.modified().ok().map(|m| DateTime::<Utc>::from(m).format("%Y-%m-%d %H:%M:%S").to_string())
                 .unwrap_or_else(|| "-".to_string())
         ));
-        rows.push('\n');
-    }
+                rows.push('\n');
+            }
 
-    // Generate rows for files.
-    for (name, metadata) in files {
-        let encoded = utf8_percent_encode(&name, NON_ALPHANUMERIC).to_string();
+            // Generate rows for files.
+            for (name, metadata) in files {
+                let encoded = utf8_percent_encode(&name, NON_ALPHANUMERIC).to_string();
 
-        let file_size = metadata.len();
-        let formatted_size = if file_size < 1024 {
-            format!("{} B", file_size)
-        } else if file_size < 1024 * 1024 {
-            format!("{:.1} KB", file_size as f64 / 1024.0)
-        } else if file_size < 1024 * 1024 * 1024 {
-            format!("{:.1} MB", file_size as f64 / (1024.0 * 1024.0))
-        } else {
-            format!("{:.1} GB", file_size as f64 / (1024.0 * 1024.0 * 1024.0))
-        };
+                let file_size = metadata.len();
+                let formatted_size = if file_size < 1024 {
+                    format!("{} B", file_size)
+                } else if file_size < 1024 * 1024 {
+                    format!("{:.1} KB", file_size as f64 / 1024.0)
+                } else if file_size < 1024 * 1024 * 1024 {
+                    format!("{:.1} MB", file_size as f64 / (1024.0 * 1024.0))
+                } else {
+                    format!("{:.1} GB", file_size as f64 / (1024.0 * 1024.0 * 1024.0))
+                };
 
-        let modified_str = metadata
-            .modified()
-            .ok()
-            .map(|m| {
-                DateTime::<Utc>::from(m)
-                    .format("%Y-%m-%d %H:%M:%S")
-                    .to_string()
-            })
-            .unwrap_or_else(|| "-".to_string());
+                let modified_str = metadata
+                    .modified()
+                    .ok()
+                    .map(|m| {
+                        DateTime::<Utc>::from(m)
+                            .format("%Y-%m-%d %H:%M:%S")
+                            .to_string()
+                    })
+                    .unwrap_or_else(|| "-".to_string());
 
-        rows.push_str(&format!(
+                rows.push_str(&format!(
             r#"<tr><td><a href="{0}">{1}</a></td><td class="size">{2}</td><td class="date">{3}</td></tr>"#,
             encoded, name, formatted_size, modified_str
         ));
-        rows.push('\n');
+                rows.push('\n');
+            }
+
+            // Replace the placeholders in our template.
+            let html = template
+                .replace(
+                    "{{title}}",
+                    &format!("Directory listing for {}", directory_display),
+                )
+                .replace("{{directory}}", &directory_display)
+                .replace("{{rows}}", &rows);
+
+            Ok(html)
+        }
     }
-
-    // Replace the placeholders in our template.
-    let html = template
-        .replace(
-            "{{title}}",
-            &format!("Directory listing for {}", directory_display),
-        )
-        .replace("{{directory}}", &directory_display)
-        .replace("{{rows}}", &rows);
-
-    Ok(html)
 }

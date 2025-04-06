@@ -113,15 +113,20 @@ module Itsi
           endpoint(route, [:patch], app_proc, &blk)
         end
 
-        def endpoint(route="/", methods=[], app_proc = nil, &blk)
-          raise "You can't use both a block and an explicit handler in the same endpoint" if blk && app_proc
+        def endpoint(route, methods=[], app_proc = nil, &blk)
           raise "You must provide either a block or an explicit handler for the endpoint" if app_proc.nil? && blk.nil?
 
           app_proc = @controller.method(app_proc).to_proc if app_proc.is_a?(Symbol)
 
           app_proc ||= blk
 
-          location(route, methods: methods) do
+          if route && methods.any?
+            # For endpoints, it's usually assumed trailing slash and non-trailing slash behaviour is the same
+            routes = route == "/" ? ["", "/"] : [route]
+            location(*routes, methods: methods) do
+              @middleware[:app] = { preloader: -> { app_proc } }
+            end
+          else
             @middleware[:app] = { preloader: -> { app_proc } }
           end
         end
@@ -153,17 +158,13 @@ module Itsi
           end
         end
 
-        def run(app, sendfile: true)
-          location(/(?<path_suffix>.*)/) do
-            @middleware[:app] = { preloader: -> { Itsi::Server::RackInterface.for(app) }, sendfile: sendfile }
-          end
+        def run(app, sendfile: true, path_info: "/")
+          @middleware[:app] = { preloader: -> { Itsi::Server::RackInterface.for(app) }, sendfile: sendfile, base_path: "^(?<base_path>#{paths_from_parent.gsub(/\.\*\)$/, ')')}).*$", path_info: path_info }
         end
 
-        def rackup_file(rackup_file)
+        def rackup_file(rackup_file, sendfile: true, path_info: "/")
           raise "Rackup file #{rackup_file} doesn't exist" unless File.exist?(rackup_file)
-          location(/(?<path_suffix>.*)/) do
-            @middleware[:app] = { preloader: -> { Itsi::Server::RackInterface.for(rackup_file) } }
-          end
+          @middleware[:app] = { preloader: -> { Itsi::Server::RackInterface.for(rackup_file) }, sendfile: sendfile, base_path: "^(?<base_path>#{paths_from_parent.gsub(/\.\*\)$/, ')')}).*$", path_info: path_info }
         end
 
         def include(path)
@@ -231,6 +232,12 @@ module Itsi
 
           klass_name = "Itsi::Scheduler" if klass_name == true
           @options[:scheduler_class] = klass_name if klass_name
+        end
+
+        def request_timeout(request_timeout)
+          raise "Request timeout must be set at the root" unless @parent.nil?
+
+          @options[:request_timeout] = request_timeout
         end
 
         def preload(preload)
@@ -327,6 +334,11 @@ module Itsi
           @middleware[:proxy] = args
         end
 
+        def static_response(**args)
+          args[:body] = args[:body].bytes
+          @middleware[:static_response] = args
+        end
+
         def auth_jwt(**args)
           @middleware[:auth_jwt] = args
         end
@@ -408,7 +420,9 @@ module Itsi
             args[:allowed_extensions] << ""
           end
 
-          location(/(?<path_suffix>.*)/, extensions: args[:allowed_extensions]) do
+          args[:base_path] = "^(?<base_path>#{paths_from_parent}).*$"
+
+          location("*", extensions: args[:allowed_extensions]) do
             @middleware[:static_assets] = args
           end
         end
@@ -459,7 +473,7 @@ module Itsi
             when /\*/
               seg.gsub(/\*/, ".*")
             else
-              Regexp.escape(seg).gsub(%r{/$}, ".*")
+              Regexp.escape(seg)
             end
           end.join("|")
 

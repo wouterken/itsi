@@ -1,6 +1,6 @@
 [package]
 name = "itsi-server"
-version = "0.1.16"
+version = "0.1.17"
 edition = "2021"
 authors = ["Wouter Coppieters <wc@pico.net.nz>"]
 license = "MIT"

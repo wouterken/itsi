@@ -5,6 +5,15 @@ module Itsi
       require "set"
       require "strscan"
 
+      def format_mw(mw)
+        case mw["type"]
+        when "app"
+          "app #{mw["parameters"]["app_proc"].inspect.split(" ")[1]}"
+        else
+          mw["type"]
+        end
+      end
+
       def print_route(route_str, stack)
         filters = %w[methods ports protocols extensions].map do |key|
           val = stack[key]
@@ -12,14 +21,14 @@ module Itsi
         end.compact
         filter_str = filters.any? ? filters.join(", ") : "(none)"
 
-        middlewares = stack["middleware"].map { |m| m["type"] }
+        middlewares = stack["middleware"]
 
         puts "─" * 76
         puts "Route:      #{route_str}"
         puts "Conditions: #{filter_str}"
-        puts "Middleware: • #{middlewares.first}"
+        puts "Middleware: • #{format_mw(middlewares.first)}"
         middlewares[1..].each do |mw|
-          puts "            • #{mw}"
+          puts "            • #{format_mw(mw)}"
         end
       end
 

@@ -31,6 +31,7 @@ pub enum Middleware {
     ResponseHeaders(ResponseHeaders),
     RubyApp(RubyApp),
     StaticAssets(StaticAssets),
+    StaticResponse(StaticResponse),
 }
 
 #[async_trait]
@@ -52,6 +53,7 @@ impl MiddlewareLayer for Middleware {
             Middleware::Cors(filter) => filter.initialize().await,
             Middleware::ETag(filter) => filter.initialize().await,
             Middleware::StaticAssets(filter) => filter.initialize().await,
+            Middleware::StaticResponse(filter) => filter.initialize().await,
             Middleware::Compression(filter) => filter.initialize().await,
             Middleware::LogRequests(filter) => filter.initialize().await,
             Middleware::Redirect(filter) => filter.initialize().await,
@@ -80,6 +82,7 @@ impl MiddlewareLayer for Middleware {
             Middleware::Cors(filter) => filter.before(req, context).await,
             Middleware::ETag(filter) => filter.before(req, context).await,
             Middleware::StaticAssets(filter) => filter.before(req, context).await,
+            Middleware::StaticResponse(filter) => filter.before(req, context).await,
             Middleware::Compression(filter) => filter.before(req, context).await,
             Middleware::LogRequests(filter) => filter.before(req, context).await,
             Middleware::Redirect(filter) => filter.before(req, context).await,
@@ -104,6 +107,7 @@ impl MiddlewareLayer for Middleware {
             Middleware::Cors(filter) => filter.after(res, context).await,
             Middleware::ETag(filter) => filter.after(res, context).await,
             Middleware::StaticAssets(filter) => filter.after(res, context).await,
+            Middleware::StaticResponse(filter) => filter.after(res, context).await,
             Middleware::Compression(filter) => filter.after(res, context).await,
             Middleware::LogRequests(filter) => filter.after(res, context).await,
             Middleware::Redirect(filter) => filter.after(res, context).await,
@@ -133,8 +137,9 @@ impl Middleware {
             Middleware::Compression(_) => 14,
             Middleware::Proxy(_) => 15,
             Middleware::Cors(_) => 16,
-            Middleware::StaticAssets(_) => 17,
-            Middleware::RubyApp(_) => 18,
+            Middleware::StaticResponse(_) => 17,
+            Middleware::StaticAssets(_) => 18,
+            Middleware::RubyApp(_) => 19,
         }
     }
 }
