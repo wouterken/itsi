@@ -14,7 +14,7 @@ use url::Url;
 #[derive(Debug)]
 pub enum RateLimitError {
     RedisError(RedisError),
-    RateLimitExceeded { limit: u64, count: u64 },
+    RateLimitExceeded { limit: u64, count: u64, ttl: u64 },
     LockError,
     ConnectionTimeout,
 }
@@ -29,8 +29,8 @@ impl std::fmt::Display for RateLimitError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             RateLimitError::RedisError(e) => write!(f, "Redis error: {}", e),
-            RateLimitError::RateLimitExceeded { limit, count } => {
-                write!(f, "Rate limit exceeded: {}/{}", count, limit)
+            RateLimitError::RateLimitExceeded { limit, count, ttl } => {
+                write!(f, "Rate limit exceeded: {}/{} (ttl: {})", count, limit, ttl)
             }
             RateLimitError::LockError => write!(f, "Failed to acquire lock"),
             RateLimitError::ConnectionTimeout => write!(f, "Connection timeout"),
@@ -45,7 +45,7 @@ pub trait RateLimiter: Send + Sync + std::fmt::Debug {
     /// Returns the new counter value.
     ///
     /// If the operation fails, returns Ok(0) to fail open.
-    async fn increment(&self, key: &str, timeout: Duration) -> Result<u64, RateLimitError>;
+    async fn increment(&self, key: &str, timeout: Duration) -> Result<(u64, u64), RateLimitError>;
 
     /// Checks if the rate limit is exceeded for the given key.
     /// Returns Ok(current_count) if not exceeded, or Err(RateLimitExceeded) if exceeded.
@@ -57,7 +57,7 @@ pub trait RateLimiter: Send + Sync + std::fmt::Debug {
         key: &str,
         limit: u64,
         timeout: Duration,
-    ) -> Result<u64, RateLimitError>;
+    ) -> Result<(u64, u64), RateLimitError>;
 
     /// Returns self as Any for downcasting
     fn as_any(&self) -> &dyn Any;
@@ -98,15 +98,9 @@ impl RedisRateLimiter {
                 "Invalid Redis URL format",
             ))));
         }
-
-        // Create a Redis client
         let client = Client::open(connection_url).map_err(RateLimitError::RedisError)?;
-
-        // Use tokio timeout to prevent hanging on connection attempt
         let connection_manager_result =
             timeout(CONNECTION_TIMEOUT, ConnectionManager::new(client)).await;
-
-        // Handle timeout and connection errors
         let connection_manager = match connection_manager_result {
             Ok(result) => result.map_err(RateLimitError::RedisError)?,
             Err(_) => return Err(RateLimitError::ConnectionTimeout),
@@ -119,7 +113,7 @@ impl RedisRateLimiter {
             if redis.call('TTL', KEYS[1]) < 0 then
                 redis.call('EXPIRE', KEYS[1], ARGV[1])
             end
-            return current
+            return { current, ttl }
             "#,
         );
 
@@ -171,7 +165,7 @@ impl RedisRateLimiter {
 
 #[async_trait]
 impl RateLimiter for RedisRateLimiter {
-    async fn increment(&self, key: &str, timeout: Duration) -> Result<u64, RateLimitError> {
+    async fn increment(&self, key: &str, timeout: Duration) -> Result<(u64, u64), RateLimitError> {
         let timeout_secs = timeout.as_secs();
         let mut connection = (*self.connection).clone();
 
@@ -183,11 +177,11 @@ impl RateLimiter for RedisRateLimiter {
             .invoke_async(&mut connection)
             .await
         {
-            Ok(value) => Ok(value),
+            Ok((count, ttl)) => Ok((count, ttl)),
             Err(err) => {
                 // Log the error but return 0 to fail open
                 tracing::warn!("Redis rate limit error: {}", err);
-                Ok(0)
+                Ok((0, timeout_secs))
             }
         }
     }
@@ -197,12 +191,14 @@ impl RateLimiter for RedisRateLimiter {
         key: &str,
         limit: u64,
         timeout: Duration,
-    ) -> Result<u64, RateLimitError> {
+    ) -> Result<(u64, u64), RateLimitError> {
         match self.increment(key, timeout).await {
-            Ok(count) if count <= limit => Ok(count),
-            Ok(count) if count > limit => Err(RateLimitError::RateLimitExceeded { limit, count }),
+            Ok((count, ttl)) if count <= limit => Ok((count, ttl)),
+            Ok((count, ttl)) if count > limit => {
+                Err(RateLimitError::RateLimitExceeded { limit, count, ttl })
+            }
             // For any error or other case, fail open
-            _ => Ok(0),
+            _ => Ok((0, timeout.as_secs())),
         }
     }
 
@@ -296,10 +292,8 @@ impl Default for InMemoryRateLimiter {
 
 #[async_trait]
 impl RateLimiter for InMemoryRateLimiter {
-    async fn increment(&self, key: &str, timeout: Duration) -> Result<u64, RateLimitError> {
-        // Periodically clean up expired entries
+    async fn increment(&self, key: &str, timeout: Duration) -> Result<(u64, u64), RateLimitError> {
         if rand::rng().random_bool(0.01) {
-            // 1% chance on each call
             self.cleanup().await;
         }
 
@@ -314,11 +308,20 @@ impl RateLimiter for InMemoryRateLimiter {
                 expires_at: now + timeout,
             });
 
-        // Update expiry time if it's an existing entry
-        entry.expires_at = now + timeout;
-        entry.count += 1;
+        if entry.expires_at < now {
+            entry.expires_at = now + timeout;
+            entry.count = 1;
+        } else {
+            entry.count += 1;
+        }
 
-        Ok(entry.count)
+        let ttl = if entry.expires_at > now {
+            entry.expires_at.duration_since(now).as_secs()
+        } else {
+            0
+        };
+
+        Ok((entry.count, ttl))
     }
 
     async fn check_limit(
@@ -326,12 +329,14 @@ impl RateLimiter for InMemoryRateLimiter {
         key: &str,
         limit: u64,
         timeout: Duration,
-    ) -> Result<u64, RateLimitError> {
+    ) -> Result<(u64, u64), RateLimitError> {
         match self.increment(key, timeout).await {
-            Ok(count) if count <= limit => Ok(count),
-            Ok(count) if count > limit => Err(RateLimitError::RateLimitExceeded { limit, count }),
+            Ok((count, ttl)) if count <= limit => Ok((count, ttl)),
+            Ok((count, ttl)) if count > limit => {
+                Err(RateLimitError::RateLimitExceeded { limit, count, ttl })
+            }
             // For any error or other case, fail open
-            _ => Ok(0),
+            _ => Ok((0, timeout.as_secs())),
         }
     }
 

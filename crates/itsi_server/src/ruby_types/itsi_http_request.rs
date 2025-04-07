@@ -1,6 +1,6 @@
 use derive_more::Debug;
 use futures::StreamExt;
-use http::{request::Parts, Response, StatusCode, Version};
+use http::{header::CONTENT_LENGTH, request::Parts, Response, StatusCode, Version};
 use http_body_util::{combinators::BoxBody, BodyExt, Empty};
 use itsi_error::CLIENT_CONNECTION_CLOSED;
 use itsi_rb_helpers::{print_rb_backtrace, HeapValue};
@@ -8,7 +8,7 @@ use itsi_tracing::{debug, error};
 use magnus::{
     block::Proc,
     error::{ErrorType, Result as MagnusResult},
-    Error,
+    Error, RHash, Symbol,
 };
 use magnus::{
     value::{LazyId, ReprValue},
@@ -77,7 +77,7 @@ impl ItsiHttpRequest {
             }
         }
     }
-    fn content_type_str(&self) -> &str {
+    pub fn content_type_str(&self) -> &str {
         self.parts
             .headers
             .get("Content-Type")
@@ -89,8 +89,47 @@ impl ItsiHttpRequest {
         self.content_type_str() == "application/json"
     }
 
+    pub fn url_params(&self) -> magnus::error::Result<RHash> {
+        let captures = self
+            .context
+            .matching_pattern
+            .as_ref()
+            .and_then(|re| re.captures(self.parts.uri.path()));
+        if let Some(caps) = &captures {
+            let re = self.context.matching_pattern.as_ref().unwrap();
+            let params = RHash::with_capacity(caps.len());
+            for (i, group_name) in re.capture_names().enumerate().skip(1) {
+                if let Some(name) = group_name {
+                    if let Some(m) = caps.get(i) {
+                        // Insert into the hash: key is the group name, value is the match.
+                        params.aset(Symbol::new(name), m.as_str())?;
+                    }
+                }
+            }
+            Ok(params)
+        } else {
+            Ok(RHash::new())
+        }
+    }
+
     pub fn is_html(&self) -> bool {
         self.content_type_str() == "text/html"
+    }
+
+    pub fn is_url_encoded(&self) -> bool {
+        self.content_type_str() == "application/x-www-form-urlencoded"
+    }
+
+    pub fn is_multipart(&self) -> bool {
+        self.content_type_str().starts_with("multipart/form-data")
+    }
+
+    pub fn content_length(&self) -> Option<u64> {
+        self.parts
+            .headers
+            .get(CONTENT_LENGTH)
+            .and_then(|hv| hv.to_str().ok())
+            .and_then(|s| s.parse().ok())
     }
 
     pub fn process(self, ruby: &Ruby, app_proc: Arc<HeapValue<Proc>>) -> magnus::error::Result<()> {
@@ -123,13 +162,18 @@ impl ItsiHttpRequest {
         hyper_request: HttpRequest,
         context: &HttpRequestContext,
         script_name: String,
+        nonblocking: bool,
     ) -> itsi_error::Result<HttpResponse> {
         match ItsiHttpRequest::new(hyper_request, context, script_name).await {
             Ok((request, mut receiver)) => {
                 let shutdown_channel = context.service.shutdown_channel.clone();
                 let response = request.response.clone();
-                match context
-                    .sender
+                let sender = if nonblocking {
+                    &context.nonblocking_sender
+                } else {
+                    &context.sender
+                };
+                match sender
                     .send(RequestJob::ProcessHttpRequest(request, app))
                     .await
                 {

@@ -3,10 +3,7 @@ use http::{header::GetAll, HeaderValue};
 /// Given a list of header values (which may be comma-separated and may have quality parameters)
 /// and a list of supported items (each supported item is a full value or a prefix ending with '*'),
 /// return Some(supported_item) for the first supported item that matches any header value, or None.
-pub fn find_first_supported<'a, I>(
-    header_values: &http::header::GetAll<http::HeaderValue>,
-    supported: I,
-) -> Option<&'a str>
+pub fn find_first_supported<'a, I>(header_values: &[HeaderValue], supported: I) -> Option<&'a str>
 where
     I: IntoIterator<Item = &'a str> + Clone,
 {

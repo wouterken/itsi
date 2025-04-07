@@ -7,7 +7,7 @@ pub use middleware::Middleware;
 pub use middlewares::*;
 use regex::{Regex, RegexSet};
 use std::{collections::HashMap, sync::Arc};
-use tracing::info;
+use tracing::debug;
 
 use super::http_message_types::HttpRequest;
 
@@ -86,7 +86,6 @@ impl MiddlewareStack {
 
         if let (Some(ports), Some(port)) = (&self.ports, request.uri().port()) {
             if !ports.iter().any(|d| d.matches(port.as_str())) {
-                info!("No match between port {} and {:?}", port, ports);
                 return false;
             }
         }
@@ -215,7 +214,7 @@ impl MiddlewareSet {
         let binding = self.route_set.matches(request.uri().path());
         let matches = binding.iter();
 
-        info!(
+        debug!(
             "Matching request URI {:?} against self.route_set: {:?}",
             request.uri().path(),
             self.route_set
@@ -228,7 +227,7 @@ impl MiddlewareSet {
                 }
             }
         }
-        info!(
+        debug!(
             "Failed to match request URI {:?} to self.route_set: {:?}",
             request.uri().path(),
             self.route_set

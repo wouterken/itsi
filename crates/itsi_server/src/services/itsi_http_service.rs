@@ -1,18 +1,23 @@
+use crate::default_responses::{NOT_FOUND_RESPONSE, TIMEOUT_RESPONSE};
 use crate::ruby_types::itsi_server::itsi_server_config::ServerParams;
 use crate::server::binds::listener::ListenerInfo;
 use crate::server::http_message_types::{ConversionExt, HttpResponse, RequestExt, ResponseFormat};
-use crate::server::middleware_stack::{CompressionAlgorithm, ErrorResponse, MiddlewareLayer};
+use crate::server::lifecycle_event::LifecycleEvent;
+use crate::server::middleware_stack::MiddlewareLayer;
 use crate::server::request_job::RequestJob;
 use crate::server::serve_strategy::single_mode::RunningPhase;
+use crate::server::signal::send_lifecycle_event;
 use chrono;
 use chrono::Local;
 use either::Either;
-use http::Request;
+use http::header::ACCEPT_ENCODING;
+use http::{HeaderValue, Request};
 use hyper::body::Incoming;
 use hyper::service::Service;
 use itsi_error::ItsiError;
 use regex::Regex;
-use std::sync::{LazyLock, OnceLock};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::OnceLock;
 
 use std::{future::Future, ops::Deref, pin::Pin, sync::Arc};
 use tokio::sync::watch::{self};
@@ -33,6 +38,7 @@ impl Deref for ItsiHttpService {
 
 pub struct ItsiHttpServiceInner {
     pub sender: async_channel::Sender<RequestJob>,
+    pub nonblocking_sender: async_channel::Sender<RequestJob>,
     pub server_params: Arc<ServerParams>,
     pub listener: Arc<ListenerInfo>,
     pub addr: String,
@@ -65,14 +71,14 @@ pub struct RequestContextInner {
     pub service: ItsiHttpService,
     pub accept: ResponseFormat,
     pub matching_pattern: Option<Arc<Regex>>,
-    pub compression_method: OnceLock<CompressionAlgorithm>,
     pub origin: OnceLock<Option<String>>,
     pub response_format: OnceLock<ResponseFormat>,
     pub start_time: chrono::DateTime<chrono::Utc>,
     pub request: Option<Arc<Request<Incoming>>>,
     pub request_start_time: OnceLock<chrono::DateTime<Local>>,
     pub if_none_match: OnceLock<Option<String>>,
-    pub etag_value: OnceLock<Option<String>>,
+    pub supported_encoding_set: Vec<HeaderValue>,
+    pub is_ruby_request: Arc<AtomicBool>,
 }
 
 impl HttpRequestContext {
@@ -80,6 +86,8 @@ impl HttpRequestContext {
         service: ItsiHttpService,
         matching_pattern: Option<Arc<Regex>>,
         accept: ResponseFormat,
+        supported_encoding_set: Vec<HeaderValue>,
+        is_ruby_request: Arc<AtomicBool>,
     ) -> Self {
         HttpRequestContext {
             inner: Arc::new(RequestContextInner {
@@ -87,20 +95,16 @@ impl HttpRequestContext {
                 service,
                 matching_pattern,
                 accept,
-                compression_method: OnceLock::new(),
                 origin: OnceLock::new(),
                 response_format: OnceLock::new(),
                 start_time: chrono::Utc::now(),
                 request: None,
                 request_start_time: OnceLock::new(),
                 if_none_match: OnceLock::new(),
-                etag_value: OnceLock::new(),
+                supported_encoding_set,
+                is_ruby_request,
             }),
         }
-    }
-
-    pub fn set_compression_method(&self, method: CompressionAlgorithm) {
-        self.inner.compression_method.set(method).unwrap();
     }
 
     pub fn set_origin(&self, origin: Option<String>) {
@@ -149,9 +153,6 @@ impl HttpRequestContext {
     }
 }
 
-static TIMEOUT_RESPONSE: LazyLock<ErrorResponse> = LazyLock::new(ErrorResponse::gateway_timeout);
-static NOT_FOUND_RESPONSE: LazyLock<ErrorResponse> = LazyLock::new(ErrorResponse::not_found);
-
 impl Service<Request<Incoming>> for ItsiHttpService {
     type Response = HttpResponse;
     type Error = ItsiError;
@@ -163,12 +164,27 @@ impl Service<Request<Incoming>> for ItsiHttpService {
         let mut req = req.limit();
         let accept: ResponseFormat = req.accept().into();
         let accept_clone = accept.clone();
+        let is_single_mode = self.server_params.workers == 1;
+        let supported_encoding_set = req
+            .headers()
+            .get_all(ACCEPT_ENCODING)
+            .into_iter()
+            .cloned()
+            .collect::<Vec<_>>();
         let request_timeout = self.server_params.request_timeout;
+        let is_ruby_request = Arc::new(AtomicBool::new(false));
+        let irr_clone = is_ruby_request.clone();
         let service_future = async move {
             let mut resp: Option<HttpResponse> = None;
             let (stack, matching_pattern) = params.middleware.get().unwrap().stack_for(&req)?;
-            let mut context =
-                HttpRequestContext::new(self_clone, matching_pattern, accept_clone.clone());
+
+            let mut context = HttpRequestContext::new(
+                self_clone,
+                matching_pattern,
+                accept_clone.clone(),
+                supported_encoding_set,
+                irr_clone,
+            );
             let mut depth = 0;
 
             for (index, elm) in stack.iter().enumerate() {
@@ -199,7 +215,21 @@ impl Service<Request<Incoming>> for ItsiHttpService {
             if let Some(timeout_duration) = request_timeout {
                 match timeout(timeout_duration, service_future).await {
                     Ok(result) => result,
-                    Err(_) => Ok(TIMEOUT_RESPONSE.to_http_response(accept).await),
+                    Err(_) => {
+                        // If we're still running Ruby at this point, we can't just kill the
+                        // thread as it might be in a critical section.
+                        // Instead we must ask the worker to hot restart.
+                        if is_ruby_request.load(Ordering::Relaxed) {
+                            if is_single_mode {
+                                // If we're in single mode, re-exec the whole process
+                                send_lifecycle_event(LifecycleEvent::Restart);
+                            } else {
+                                // Otherwise we can shutdown the worker and rely on the master to restart it
+                                send_lifecycle_event(LifecycleEvent::Shutdown);
+                            }
+                        }
+                        Ok(TIMEOUT_RESPONSE.to_http_response(accept).await)
+                    }
                 }
             } else {
                 service_future.await

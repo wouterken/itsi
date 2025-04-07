@@ -1,38 +1,176 @@
 workers 1
 threads 1
+fiber_scheduler true
+
+scheduler_threads 1
+
+request_timeout 2
 
 preload false
 
 bind 'http://localhost:3000'
-bind 'http://0.0.0.0:8000'
 
-shutdown_timeout 3
+shutdown_timeout 10
 
 auto_reload_config!
-log_target :stdout
+
 log_format :plain
-log_level :info
 
-require_relative 'echo_service/echo_service_impl'
-
-grpc EchoServiceImpl.new do
-  rate_limit requests: 5, seconds: 5, key: 'address',
-             store_config: { redis: { connection_url: 'redis://localhost:6379/0' } }, error_response: { plaintext: 'no way', code: 429, default: 'plaintext' }
+get "/root" do |req|
+  req.ok "Got from root"
 end
 
-location '/' do
-  # compress algorithms: ['zstd'], min_size: 0, compress_streams: true, mime_types: ['all'], level: 'fastest'
-  get '/' do |req|
-    req.respond('Foo')
+
+location "app" do
+  location "/users" do
+    get "/:id" do |req|
+      req.ok "Got user #{req.url_params[:id]}"
+    end
   end
-  etag type: 'weak', algorithm: 'md5', min_body_size: 0
-  post '/' do |req|
-    req.respond('Foo')
-  end
+
+  run(->(env){
+    [200, {}, ["Fallback Rack app"]]
+  })
 end
 
-location '/' do
-end
+
+static_assets \
+  relative_path: true,
+  root_dir: "public",
+  not_found_behavior: "fallthrough",
+  try_html_extension: true,
+  auto_index: true,
+  max_file_size_in_memory: 1024 * 1024,
+  max_files_in_memory: 1000,
+  file_check_interval: 5,
+  serve_hidden_files: false
+
+run(->(env){
+  [200, {}, ["Final Fallback Rack App"]]
+})
+# location %q{/foo/:id(\d+)/test/:name/bla} do
+#   get "/" do |req|
+#     req.respond json: req.url_params
+#   end
+# end
+
+# location "blocking" do
+#   run ->(env){
+#     sleep 0.25
+#     [200, {}, [:ok]]
+#   }
+# end
+
+# location "nonblocking" do
+#   run(->(env){
+#     sleep 0.25
+#     [200, {}, [:ok]]
+#   }, nonblocking: true)
+# end
+
+# require_relative 'echo_service/echo_service_impl'
+
+# grpc EchoServiceImpl.new, nonblocking: false do
+# end
+
+# location "foo" do
+#   static_response code: 200, headers: [["Headers","Foo"]], body: "This is my body"
+# end
+
+# location "/public" do
+#   static_assets relative_path: true, root_dir: "public", not_found_behavior: {error: 'not_found'},
+#     try_html_extension: true, auto_index: true, max_file_size_in_memory: 1024 * 1024,
+#       # Maximum number of files to keep in memory cache
+#       max_files_in_memory: 1000,
+#       # Check for file modifications every 5 seconds
+#       file_check_interval: 5,
+#       serve_hidden_files: false
+# end
+
+# require 'debug'
+# require 'date'
+
+# UserSchema = {
+#   id: Integer,
+#   name: String
+# }
+
+
+# ResultSchema = {
+#   status_code: Integer,
+#   user: UserSchema
+# }
+
+# module UserController
+
+#   def self.create(req)
+#     req.ok \
+#       json: {
+#         status: :created,
+#         user: user
+#       }
+#   end
+
+#   def self.create(req, params: UserSchema, return_type: ResultSchema)
+#     req.ok \
+#       json: {
+#         status_code: 5,
+#         user: params
+#       },
+#       as: return_type
+#   end
+
+#   def self.create_no_type(req, params)
+#     req.ok json: "foo"
+#   end
+
+# end
+
+# controller UserController
+# post "/", :create
+# get "/" do |req, return_type: ResultSchema|
+#   req.ok as: return_type, json: {
+#     status_code: 5,
+#     user: {
+#       id: 3,
+#       name: "Foo Bar"
+#     }
+#   }
+# end
+
+# post "/nt", :create_no_type
+
+# location "/rack" do
+#   run(->(env){
+#     sleep 5
+#     [200, {}, [:ok]]
+#   })
+# end
+# location '*' do
+#   proxy to: 'http://{host}{path_and_query}', backends: ['127.0.0.1:8082','127.0.0.1:8080', '127.0.0.1:8081'], headers: {}, verify_ssl: false, timeout: 1, tls_sni: false, backend_priority: 'round_robin'
+# end
+
+# # require_relative 'echo_service/echo_service_impl'
+
+# # grpc EchoServiceImpl.new do
+
+# # end
+
+# location '/' do
+#   # compress algorithms: ['zstd'], min_size: 0, compress_streams: true, mime_types: ['all'], level: 'fastest'
+#   max_body max_size: 5
+#   get '/' do |req|
+#     req.respond('Foo')
+#   end
+#   etag type: 'weak', algorithm: 'md5', min_body_size: 0
+#   post '/' do |req|
+#     puts "Post to me!"
+#         req.respond('Foo')
+#   end
+# end
+
+# location '/' do
+# end
 # rate_limit requests: 5, seconds: 5, key: 'address', store_config: { redis: { connection_url: 'redis://localhost:6379/0' } }, error_response: { plaintext: 'no way', code: 429, default: 'plaintext' }
 
 #
@@ -61,9 +199,9 @@ end
 #     'X-Content-Type-Options' => 'nosniff'
 #   }
 
-run(lambda  { |env|
-  [200, {}, ["I'm a fallback"]]
-})
+# run(lambda  { |env|
+#   [200, {}, ["I'm a fallback"]]
+# })
 
 # def user_serve(request)
 #   response = request.response
@@ -187,151 +325,149 @@ run(lambda  { |env|
 
 # # location '' do
 
-#   # location '/spa' do
-#   #   # Serve static files from the "public/assets" directory
-#   #   log_requests before: { format: "REQUEST_ID={request_id}  METHOD={method} PATH={path} QUERY={query} HOST={host} PORT={port} START_TIME={start_time}" , level: 'INFO'}, after: { format: "REQUEST_ID={request_id} RESPONSE_TIME={response_time}", level: 'INFO' }
-#   #   allow_list allowed_patterns: [/127.*/], error_response: { plaintext: 'no way', code: 401, default: 'plaintext' }
-#   #   static_assets\
-#   #     relative_path: true,
-#   #     root_dir: 'spa/dist',
-#   #     # # Only allow certain file extensions
-#   #     # allowed_extensions: %w[css js jpg jpeg png gif svg ico woff woff2 ttf
-#   #     #                        otf html],
-#   #     # Return a 404 error if file is not found
-#   #     not_found_behavior: { index: 'index.html' },
-#   #     # Enable auto-indexing of directories
-#   #     auto_index: true,
-#   #     # Try adding .html extension to extensionless URLs
-#   #     try_html_extension: true,
-#   #     # Files under this size are cached in memory
-#   #     max_file_size_in_memory: 1024 * 1024, # 1MB
-#   #     # Maximum number of files to keep in memory cache
-#   #     max_files_in_memory: 1000,
-#   #     # Check for file modifications every 5 seconds
-#   #     file_check_interval: 5,
-#   #     # Add custom headers to all responses
-#   #     headers: {
-#   #       'Cache-Control' => 'public, max-age=86400',
-#   #       'X-Content-Type-Options' => 'nosniff'
-#   #     }
-#   #   compress algorithms: ['zstd'], min_size: 0, compress_streams: true, mime_types: ['all'], level: 'fastest'
-#   # end
-# # end
+# location '/spa' do
+#   # Serve static files from the "public/assets" directory
+#   log_requests before: { format: "REQUEST_ID={request_id}  METHOD={method} PATH={path} QUERY={query} HOST={host} PORT={port} START_TIME={start_time}" , level: 'INFO'}, after: { format: "REQUEST_ID={request_id} RESPONSE_TIME={response_time}", level: 'INFO' }
+#   allow_list allowed_patterns: [/127.*/], error_response: { plaintext: 'no way', code: 401, default: 'plaintext' }
+#   static_assets\
+#     relative_path: true,
+#     root_dir: 'spa/dist',
+#     # # Only allow certain file extensions
+#     # allowed_extensions: %w[css js jpg jpeg png gif svg ico woff woff2 ttf
+#     #                        otf html],
+#     # Return a 404 error if file is not found
+#     not_found_behavior: { index: 'index.html' },
+#     # Enable auto-indexing of directories
+#     auto_index: true,
+#     # Try adding .html extension to extensionless URLs
+#     try_html_extension: true,
+#     # Files under this size are cached in memory
+#     max_file_size_in_memory: 1024 * 1024, # 1MB
+#     # Maximum number of files to keep in memory cache
+#     max_files_in_memory: 1000,
+#     # Check for file modifications every 5 seconds
+#     file_check_interval: 5,
+#     # Add custom headers to all responses
+#     headers: {
+#       'Cache-Control' => 'public, max-age=86400',
+#       'X-Content-Type-Options' => 'nosniff'
+#     }
+#   compress algorithms: ['zstd'], min_size: 0, compress_streams: true, mime_types: ['all'], level: 'fastest'
+# end
+# end
 
-# # location "/cors_test" do
-# #   cors allowed_origins: ["http://127.0.0.1:8000"], allowed_methods: ["GET", "PATCH", "POST"], allowed_headers: ['Content-Type'], exposed_headers: ['X-Custom-Header'], allow_credentials: true
-# #   get "/user/:id" do |req|
-# #     req.respond("You've been CORSed!")
-# #   end
-# # end
+# location "/cors_test" do
+#   cors allowed_origins: ["http://127.0.0.1:8000"], allowed_methods: ["GET", "PATCH", "POST"], allowed_headers: ['Content-Type'], exposed_headers: ['X-Custom-Header'], allow_credentials: true
+#   get "/user/:id" do |req|
+#     req.respond("You've been CORSed!")
+#   end
+# end
 
-# # location "/basic" do
-# #   auth_basic realm: 'My Realm', credential_pairs: { 'user' => 'password' }
-# # end
 
-# # location '/proxy_as_foo_com' do
-# #   compress algorithms: ['zstd'], min_size: 0, compress_streams: true, mime_types: ['all'], level: 'fastest'
-# #   proxy to: 'http://foo.com/zstd', backends: ['http://127.0.0.1:3000'], headers: { 'Host' => { 'value' => 'foo.com' } },
-# #         verify_ssl: false, timeout: 100, tls_sni: true
-# # end
 
-# # location '/proxy_as_bar_com' do
-# #   proxy to: 'http://bar.com', backends: ['http://127.0.0.1:3000'], headers: { 'Host' => { 'value' => 'bar.com' } },
-# #         verify_ssl: false, timeout: 100, tls_sni: true
-# # end
+# location '/proxy_as_foo_com' do
+#   compress algorithms: ['zstd'], min_size: 0, compress_streams: true, mime_types: ['all'], level: 'fastest'
+#   proxy to: 'http://foo.com/zstd', backends: ['http://127.0.0.1:3000'], headers: { 'Host' => { 'value' => 'foo.com' } },
+#         verify_ssl: false, timeout: 100, tls_sni: true
+# end
 
-# # location '/', hosts: ['foo.com'] do
-# #   get '/' do |req|
-# #     req.respond('I am foo.com')
-# #   end
-# # end
+# location '/proxy_as_bar_com' do
+#   proxy to: 'http://bar.com', backends: ['http://127.0.0.1:3000'], headers: { 'Host' => { 'value' => 'bar.com' } },
+#         verify_ssl: false, timeout: 100, tls_sni: true
+# end
 
-# # location '/', hosts: ['bar.com'] do
-# #   get '/' do |req|
-# #     req.respond('I am bar.com')
-# #   end
-# # end
+# location '/', hosts: ['foo.com'] do
+#   get '/' do |req|
+#     req.respond('I am foo.com')
+#   end
+# end
 
-# # location '/admin*' do
-# #   auth_api_key valid_keys: %w[one two], token_source: { header: { name: 'Authorization', prefix: 'Bearer ' } },
-# #                error_response: { code: 401, plaintext: 'Unauthorized', default: 'plaintext' }
-# #   run lambda { |env|
-# #     [200, {}, 'Oh look, it also. Clusters!']
-# #   }
-# # end
+# location '/', hosts: ['bar.com'] do
+#   get '/' do |req|
+#     req.respond('I am bar.com')
+#   end
+# end
 
-# # location '/br' do
-# #   compress algorithms: ['brotli'], min_size: 0, compress_streams: true, mime_types: ['all'], level: 'fastest'
-# #   get '/' do |req|
-# #     req.respond("Hello world. I'm brotli'd!")
-# #   end
-# # end
+# location '/admin*' do
+#   auth_api_key valid_keys: %w[one two], token_source: { header: { name: 'Authorization', prefix: 'Bearer ' } },
+#                error_response: { code: 401, plaintext: 'Unauthorized', default: 'plaintext' }
+#   run lambda { |env|
+#     [200, {}, 'Oh look, it also. Clusters!']
+#   }
+# end
 
-# # location '/zstd' do
-# #   compress algorithms: ['zstd'], min_size: 0, compress_streams: true, mime_types: ['all'], level: 'fastest'
-# #   get '/' do |req|
-# #     req.respond("Hello world. I'm zstd'd!")
-# #   end
-# # end
+# location '/br' do
+#   compress algorithms: ['brotli'], min_size: 0, compress_streams: true, mime_types: ['all'], level: 'fastest'
+#   get '/' do |req|
+#     req.respond("Hello world. I'm brotli'd!")
+#   end
+# end
 
-# # location 'gzip' do
-# #   compress algorithms: ['gzip'], min_size: 0, compress_streams: true, mime_types: ['all'], level: 'fastest'
-# #   get '/' do |req|
-# #     req.respond("Hello world. I'm gzip'd!")
-# #   end
-# # end
+# location '/zstd' do
+#   compress algorithms: ['zstd'], min_size: 0, compress_streams: true, mime_types: ['all'], level: 'fastest'
+#   get '/' do |req|
+#     req.respond("Hello world. I'm zstd'd!")
+#   end
+# end
 
-# # location 'deflate' do
-# #   compress algorithms: ['deflate'], min_size: 0, compress_streams: true, mime_types: ['all'], level: 'fastest'
-# #   get '/' do |req|
-# #     req.respond("Hello world. I'm deflated!")
-# #   end
-# # end
+# location 'gzip' do
+#   compress algorithms: ['gzip'], min_size: 0, compress_streams: true, mime_types: ['all'], level: 'fastest'
+#   get '/' do |req|
+#     req.respond("Hello world. I'm gzip'd!")
+#   end
+# end
 
-# # get '/hey' do |req|
-# #   req.respond("This is a test")
-# # end
+# location 'deflate' do
+#   compress algorithms: ['deflate'], min_size: 0, compress_streams: true, mime_types: ['all'], level: 'fastest'
+#   get '/' do |req|
+#     req.respond("Hello world. I'm deflated!")
+#   end
+# end
 
-# # location '*', protocols: :http do
-# #   location 'foo' do
-# #     redirect to: 'https://{host}:3001{path}'
-# #   end
-# # end
+# get '/hey' do |req|
+#   req.respond("This is a test")
+# end
 
-# # location '*', hosts: ['127.0.0.1'], ports: [3001] do
-# #   proxy to: ['https://docs.rs{path}{query}'],
-# #         headers: { 'Host' => { value: 'docs.rs' }, 'Origin' => { value: 'https://docs.rs' } }, verify_ssl: false, timeout: 5
-# # end
+# location '*', protocols: :http do
+#   location 'foo' do
+#     redirect to: 'https://{host}:3001{path}'
+#   end
+# end
 
-# # location '*', hosts: ['127.0.0.1'], ports: [3002] do
-# #   proxy to: ['https://httpbin.org{path}{query}'],
-# #         headers: { 'Host' => { value: 'docs.rs' }, 'Origin' => { value: 'https://docs.rs' } }, verify_ssl: false, timeout: 5
-# # end
+# location '*', hosts: ['127.0.0.1'], ports: [3001] do
+#   proxy to: ['https://docs.rs{path}{query}'],
+#         headers: { 'Host' => { value: 'docs.rs' }, 'Origin' => { value: 'https://docs.rs' } }, verify_ssl: false, timeout: 5
+# end
 
-# # location '/app' do
-# #   location '/users' do
-# #     get '/:id', :user_serve
-# #     post '/:id', :user_create
-# #   end
+# location '*', hosts: ['127.0.0.1'], ports: [3002] do
+#   proxy to: ['https://httpbin.org{path}{query}'],
+#         headers: { 'Host' => { value: 'docs.rs' }, 'Origin' => { value: 'https://docs.rs' } }, verify_ssl: false, timeout: 5
+# end
 
-# #   include 'organisations_controller'
+# location '/app' do
+#   location '/users' do
+#     get '/:id', :user_serve
+#     post '/:id', :user_create
+#   end
 
-# #   location '/admin*' do
-# #     auth_api_key valid_keys: %w[one two], token_source: { header: { name: 'Authorization', prefix: 'Bearer ' } },
-# #                  error_response: { code: 401, plaintext: 'Unauthorized', default: 'plaintext' }
-# #   end
-# # end
-# # foo
-# # foo
+#   include 'organisations_controller'
 
-# # Example of using ETag middleware
-# # location "/with-etag" do
-# #   etag
-# #   get '/' do |req|
-# #     req.respond("This response will have an ETag header based on content hash.")
-# #   end
-# # end
+#   location '/admin*' do
+#     auth_api_key valid_keys: %w[one two], token_source: { header: { name: 'Authorization', prefix: 'Bearer ' } },
+#                  error_response: { code: 401, plaintext: 'Unauthorized', default: 'plaintext' }
+#   end
+# end
+# foo
+# foo
 
-# # Example with both caching and ETags
+# Example of using ETag middleware
+# location "/with-etag" do
+#   etag
+#   get '/' do |req|
+#     req.respond("This response will have an ETag header based on content hash.")
+#   end
+# end
 
-# # Simple ETag test endpoint with predictable content
+# Example with both caching and ETags
+
+# Simple ETag test endpoint with predictable content

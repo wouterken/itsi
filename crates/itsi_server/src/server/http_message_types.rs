@@ -28,12 +28,24 @@ pub trait RequestExt {
     fn query_param(&self, query_name: &str) -> Option<&str>;
 }
 
+pub trait PathExt {
+    fn no_trailing_slash(&self) -> &str;
+}
+
 #[derive(Debug, Clone)]
 pub enum ResponseFormat {
     JSON,
     HTML,
     TEXT,
     UNKNOWN,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SupportedEncodingSet {
+    pub zstd: bool,
+    pub br: bool,
+    pub deflate: bool,
+    pub gzip: bool,
 }
 
 impl From<Option<&str>> for ResponseFormat {
@@ -43,6 +55,16 @@ impl From<Option<&str>> for ResponseFormat {
             Some("text/html") => ResponseFormat::HTML,
             Some("text/plain") => ResponseFormat::TEXT,
             _ => ResponseFormat::UNKNOWN,
+        }
+    }
+}
+
+impl PathExt for str {
+    fn no_trailing_slash(&self) -> &str {
+        if self == "/" {
+            self
+        } else {
+            self.trim_end_matches("/")
         }
     }
 }

@@ -1,25 +1,34 @@
 use crate::{
+    default_responses::{INTERNAL_SERVER_ERROR_RESPONSE, NOT_FOUND_RESPONSE},
     prelude::*,
     server::{
         http_message_types::{HttpRequest, HttpResponse, RequestExt, ResponseFormat},
         middleware_stack::ErrorResponse,
     },
 };
+use base64::{engine::general_purpose, Engine};
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
-use http::{header, Response, StatusCode};
+use http::{
+    header::{
+        self, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_RANGE, CONTENT_TYPE, ETAG, LAST_MODIFIED,
+    },
+    HeaderValue, Response, StatusCode,
+};
 use http_body_util::{combinators::BoxBody, Full};
 use itsi_error::Result;
 use moka::sync::Cache;
 use percent_encoding::{percent_decode_str, utf8_percent_encode, NON_ALPHANUMERIC};
 use serde::Deserialize;
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use std::{
     borrow::Cow,
     cmp::Ordering,
     collections::HashMap,
     convert::Infallible,
     fs::Metadata,
+    ops::Deref,
     path::{Path, PathBuf},
     sync::{Arc, LazyLock},
     time::{Duration, Instant, SystemTime},
@@ -38,7 +47,7 @@ pub static ROOT_STATIC_FILE_SERVER: LazyLock<StaticFileServer> = LazyLock::new(|
         try_html_extension: true,
         auto_index: true,
         not_found_behavior: NotFoundBehavior::Error(ErrorResponse::not_found()),
-        serve_dot_files: false,
+        serve_hidden_files: false,
         allowed_extensions: vec!["html".to_string(), "css".to_string(), "js".to_string()],
     })
 });
@@ -71,7 +80,7 @@ pub struct StaticFileServerConfig {
     pub try_html_extension: bool,
     pub auto_index: bool,
     pub not_found_behavior: NotFoundBehavior,
-    pub serve_dot_files: bool,
+    pub serve_hidden_files: bool,
     pub allowed_extensions: Vec<String>,
 }
 
@@ -82,11 +91,53 @@ pub struct StaticFileServer {
     cache: Cache<PathBuf, CacheEntry>,
 }
 
+impl Deref for StaticFileServer {
+    type Target = StaticFileServerConfig;
+
+    fn deref(&self) -> &Self::Target {
+        &self.config
+    }
+}
+
 #[derive(Clone, Debug)]
 struct CacheEntry {
     content: Arc<Bytes>,
+    br_encoded: Option<Arc<Bytes>>,
+    zstd_encoded: Option<Arc<Bytes>>,
+    gzip_encoded: Option<Arc<Bytes>>,
+    deflate_encoded: Option<Arc<Bytes>>,
+    etag: String,
     last_modified: SystemTime,
     last_checked: Instant,
+}
+
+impl CacheEntry {
+    pub fn suggest_content_for(&self, supported_encodings: &[HeaderValue]) -> (Arc<Bytes>, &str) {
+        for encoding_header in supported_encodings {
+            if let Ok(header_value) = encoding_header.to_str() {
+                for header_value in header_value.split(",").map(|hv| hv.trim()) {
+                    for algo in header_value.split(";").map(|hv| hv.trim()) {
+                        match algo {
+                            "zstd" if self.zstd_encoded.is_some() => {
+                                return (self.zstd_encoded.clone().unwrap(), "zstd")
+                            }
+                            "gzip" if self.gzip_encoded.is_some() => {
+                                return (self.gzip_encoded.clone().unwrap(), "gzip")
+                            }
+                            "br" if self.br_encoded.is_some() => {
+                                return (self.br_encoded.clone().unwrap(), "br")
+                            }
+                            "deflate" if self.deflate_encoded.is_some() => {
+                                return (self.deflate_encoded.clone().unwrap(), "deflate")
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+        (self.content.clone(), "identity")
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -98,9 +149,20 @@ pub enum ServeRange {
 impl CacheEntry {
     async fn new(path: PathBuf) -> Result<Self> {
         let (bytes, last_modified) = read_entire_file(&path).await?;
+        let etag = {
+            let mut hasher = Sha256::new();
+            hasher.update(&bytes);
+            let result = hasher.finalize();
+            general_purpose::STANDARD.encode(result)
+        };
         Ok(CacheEntry {
             content: Arc::new(bytes),
+            gzip_encoded: read_variant(&path, "gz").await.map(Arc::new),
+            br_encoded: read_variant(&path, "br").await.map(Arc::new),
+            zstd_encoded: read_variant(&path, "zstd").await.map(Arc::new),
+            deflate_encoded: read_variant(&path, "deflate").await.map(Arc::new),
             last_modified,
+            etag,
             last_checked: Instant::now(),
         })
     }
@@ -115,9 +177,20 @@ impl CacheEntry {
                 .await
                 .unwrap_or("".to_owned())
                 .into();
+        let etag = {
+            let mut hasher = Sha256::new();
+            hasher.update(&directory_listing);
+            let result = hasher.finalize();
+            general_purpose::STANDARD.encode(result)
+        };
         CacheEntry {
             content: Arc::new(directory_listing),
+            gzip_encoded: None,
+            br_encoded: None,
+            zstd_encoded: None,
+            deflate_encoded: None,
             last_modified: SystemTime::now(),
+            etag,
             last_checked: Instant::now(),
         }
     }
@@ -132,6 +205,7 @@ struct ServeCacheArgs<'a>(
     Option<SystemTime>,
     bool,
     &'a Path,
+    &'a [HeaderValue],
 );
 
 impl StaticFileServer {
@@ -145,6 +219,7 @@ impl StaticFileServer {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn serve(
         &self,
         request: &HttpRequest,
@@ -153,9 +228,11 @@ impl StaticFileServer {
         serve_range: ServeRange,
         if_modified_since: Option<SystemTime>,
         is_head_request: bool,
+        supported_encodings: &[HeaderValue],
     ) -> Option<HttpResponse> {
         let accept: ResponseFormat = request.accept().into();
         let resolved = self.resolve(path, abs_path, accept.clone()).await;
+
         Some(match resolved {
             Ok(ResolvedAsset {
                 path,
@@ -178,6 +255,7 @@ impl StaticFileServer {
                         if_modified_since,
                         is_head_request,
                         &path,
+                        supported_encodings,
                     ))
                 } else {
                     self.serve_stream_content(ServeStreamArgs(
@@ -208,7 +286,7 @@ impl StaticFileServer {
                 }
                 NotFoundBehavior::FallThrough => return None,
                 NotFoundBehavior::IndexFile(index_file) => {
-                    self.serve_single(index_file.to_str().unwrap(), accept)
+                    self.serve_single(index_file.to_str().unwrap(), accept, supported_encodings)
                         .await
                 }
                 NotFoundBehavior::Redirect(redirect) => Response::builder()
@@ -216,15 +294,43 @@ impl StaticFileServer {
                     .header(header::LOCATION, redirect.to)
                     .body(BoxBody::new(Full::new(Bytes::new())))
                     .unwrap(),
-                NotFoundBehavior::InternalServerError => Response::builder()
-                    .status(StatusCode::INTERNAL_SERVER_ERROR)
-                    .body(BoxBody::new(Full::new(Bytes::new())))
-                    .unwrap(),
+                NotFoundBehavior::InternalServerError => {
+                    INTERNAL_SERVER_ERROR_RESPONSE
+                        .to_http_response(request.accept().into())
+                        .await
+                }
             },
         })
     }
 
-    pub async fn serve_single(&self, path: &str, accept: ResponseFormat) -> HttpResponse {
+    pub async fn serve_single_abs(
+        &self,
+        path: &str,
+        accept: ResponseFormat,
+        supported_encodings: &[HeaderValue],
+    ) -> HttpResponse {
+        if let (Ok(root), Ok(path_buf)) = (
+            self.root_dir.canonicalize(),
+            PathBuf::from(path).canonicalize(),
+        ) {
+            // Check that the path is under root.
+            if let Ok(stripped) = path_buf.strip_prefix(root) {
+                if let Some(stripped_str) = stripped.to_str() {
+                    return self
+                        .serve_single(stripped_str, accept, supported_encodings)
+                        .await;
+                }
+            }
+        }
+        NOT_FOUND_RESPONSE.to_http_response(accept).await
+    }
+
+    pub async fn serve_single(
+        &self,
+        path: &str,
+        accept: ResponseFormat,
+        supported_encodings: &[HeaderValue],
+    ) -> HttpResponse {
         let resolved = self.resolve(path, path, accept).await;
         if let Ok(ResolvedAsset {
             path,
@@ -240,6 +346,7 @@ impl StaticFileServer {
                 None,
                 false,
                 &path,
+                supported_encodings,
             ));
         } else if let Ok(ResolvedAsset { path, metadata, .. }) = resolved {
             return self
@@ -316,7 +423,7 @@ impl StaticFileServer {
         let normalized_path =
             normalize_path(decoded_key).ok_or(NotFoundBehavior::InternalServerError)?;
 
-        if !self.config.serve_dot_files
+        if !self.config.serve_hidden_files
             && normalized_path
                 .file_name()
                 .and_then(|f| f.to_str())
@@ -403,10 +510,12 @@ impl StaticFileServer {
                         });
                     }
 
-                    // No index.html, check if auto_index is enabled
                     if self.config.auto_index {
-                        // Create a virtual path for the directory listing
-                        let virtual_path = full_path.join(".directory_listing.dir_list");
+                        let virtual_path = if matches!(accept, ResponseFormat::JSON) {
+                            full_path.join(".directory_listing.dir_list_json")
+                        } else {
+                            full_path.join(".directory_listing.dir_list")
+                        };
 
                         let cache_entry = CacheEntry::new_virtual_listing(
                             virtual_path.clone(),
@@ -620,6 +729,8 @@ impl StaticFileServer {
 
             build_file_response(
                 status,
+                None,
+                None,
                 get_mime_type(&file),
                 (end_idx - start) as usize,
                 last_modified,
@@ -629,6 +740,8 @@ impl StaticFileServer {
         } else {
             build_file_response(
                 status,
+                None,
+                None,
                 get_mime_type(&file),
                 content_length as usize,
                 last_modified,
@@ -650,11 +763,11 @@ impl StaticFileServer {
             if_modified_since,
             is_head_request,
             path,
+            supported_encodings,
         ) = serve_cache_args;
 
         let content_length = cache_entry.content.len() as u64;
 
-        // Handle If-Modified-Since header
         if is_not_modified(cache_entry.last_modified, if_modified_since) {
             return build_not_modified_response();
         }
@@ -713,15 +826,20 @@ impl StaticFileServer {
             return builder.body(BoxBody::new(Full::new(Bytes::new()))).unwrap();
         }
 
-        // For GET requests, prepare the actual content
         if is_range_request {
-            // Extract the requested range from the cached content
             let start_idx = start as usize;
             let end_idx = std::cmp::min((adjusted_end + 1) as usize, cache_entry.content.len());
             let range_bytes = cache_entry.content.slice(start_idx..end_idx);
-
+            let etag = {
+                let mut hasher = Sha256::new();
+                hasher.update(&range_bytes);
+                let result = hasher.finalize();
+                general_purpose::STANDARD.encode(result)
+            };
             build_file_response(
                 status,
+                None,
+                Some(&etag),
                 get_mime_type(path),
                 range_bytes.len(),
                 cache_entry.last_modified,
@@ -730,10 +848,12 @@ impl StaticFileServer {
             )
         } else {
             // Return the full content
-            let content_clone = cache_entry.content.clone();
-            let body = build_ok_body(content_clone);
+            let (content, encoding) = cache_entry.suggest_content_for(supported_encodings);
+            let body = build_ok_body(content);
             build_file_response(
                 status,
+                Some(encoding),
+                Some(&cache_entry.etag),
                 get_mime_type(path),
                 content_length as usize,
                 cache_entry.last_modified,
@@ -764,6 +884,29 @@ async fn read_entire_file(path: &Path) -> std::io::Result<(Bytes, SystemTime)> {
     Ok((Bytes::from(buf), last_modified))
 }
 
+fn with_added_extension(path: &Path, ext: &str) -> PathBuf {
+    let mut new_path = path.to_path_buf();
+    if new_path.file_name().is_some() {
+        // Append the dot and extension in place.
+        new_path.as_mut_os_string().push(".");
+        new_path.as_mut_os_string().push(ext);
+    }
+    new_path
+}
+
+async fn read_variant(path: &Path, ext: &str) -> Option<Bytes> {
+    let variant = with_added_extension(path, ext);
+    if let Ok(metadata) = tokio::fs::metadata(&variant).await {
+        if let Ok(mut file) = File::open(&variant).await {
+            let mut buf = Vec::with_capacity(metadata.len().try_into().unwrap_or(4096));
+            if file.read_to_end(&mut buf).await.is_ok() {
+                return Some(Bytes::from(buf));
+            }
+        }
+    }
+    None
+}
+
 fn build_ok_body(bytes: Arc<Bytes>) -> BoxBody<Bytes, Infallible> {
     BoxBody::new(Full::new(bytes.as_ref().clone()))
 }
@@ -776,9 +919,11 @@ fn build_not_modified_response() -> http::Response<BoxBody<Bytes, Infallible>> {
         .unwrap()
 }
 
-// Helper function to build a file response with common headers
+#[allow(clippy::too_many_arguments)]
 fn build_file_response(
     status: StatusCode,
+    content_encoding: Option<&str>,
+    etag: Option<&str>,
     content_type: &str,
     content_length: usize,
     last_modified: SystemTime,
@@ -787,12 +932,20 @@ fn build_file_response(
 ) -> http::Response<BoxBody<Bytes, Infallible>> {
     let mut builder = Response::builder()
         .status(status)
-        .header("Content-Type", content_type)
-        .header("Content-Length", content_length)
-        .header("Last-Modified", format_http_date(last_modified));
+        .header(CONTENT_TYPE, content_type)
+        .header(CONTENT_LENGTH, content_length)
+        .header(LAST_MODIFIED, format_http_date(last_modified));
+
+    if let Some(etag) = etag {
+        builder = builder.header(ETAG, etag);
+    }
+
+    if let Some(content_encoding) = content_encoding {
+        builder = builder.header(CONTENT_ENCODING, content_encoding);
+    }
 
     if let Some(range) = range_header {
-        builder = builder.header("Content-Range", range);
+        builder = builder.header(CONTENT_RANGE, range);
     }
 
     builder.body(body).unwrap()
@@ -856,7 +1009,7 @@ impl Default for StaticFileServer {
             try_html_extension: true,
             auto_index: true,
             not_found_behavior: NotFoundBehavior::Error(ErrorResponse::not_found()),
-            serve_dot_files: false,
+            serve_hidden_files: false,
             allowed_extensions: vec!["html".to_string(), "css".to_string(), "js".to_string()],
         };
         Self::new(config)
@@ -909,7 +1062,7 @@ async fn generate_directory_listing(
                     .to_string_lossy()
                     .into_owned();
 
-                if !config.serve_dot_files && name.starts_with('.') {
+                if !config.serve_hidden_files && name.starts_with('.') {
                     continue;
                 }
 
@@ -1062,7 +1215,7 @@ async fn generate_directory_listing(
                     .to_string_lossy()
                     .into_owned();
 
-                if !config.serve_dot_files && name.starts_with('.') {
+                if !config.serve_hidden_files && name.starts_with('.') {
                     continue;
                 }
 

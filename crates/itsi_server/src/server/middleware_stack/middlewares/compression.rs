@@ -1,6 +1,5 @@
 use crate::{
-    server::http_message_types::{HttpRequest, HttpResponse},
-    services::itsi_http_service::HttpRequestContext,
+    server::http_message_types::HttpResponse, services::itsi_http_service::HttpRequestContext,
 };
 
 use super::{
@@ -14,15 +13,13 @@ use async_compression::{
 };
 use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
-use either::Either;
 use futures::TryStreamExt;
 use http::{
-    header::{GetAll, ACCEPT_ENCODING, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE},
+    header::{GetAll, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE},
     HeaderValue, Response,
 };
 use http_body_util::{combinators::BoxBody, BodyExt, Full, StreamBody};
 use hyper::body::{Body, Frame};
-use magnus::error::Result;
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
 use tokio::io::{AsyncRead, AsyncReadExt, BufReader};
@@ -150,17 +147,48 @@ fn update_content_encoding(parts: &mut http::response::Parts, new_encoding: Head
 
 #[async_trait]
 impl MiddlewareLayer for Compression {
-    /// A the request comes in, take note of the accepted content encodings,
-    /// so that we can apply compression on the response, where appropriate.
-    ///
-    /// We store the temporary state inside the RequestContext.
-    async fn before(
-        &self,
-        req: HttpRequest,
-        context: &mut HttpRequestContext,
-    ) -> Result<Either<HttpRequest, HttpResponse>> {
-        let algo = match find_first_supported(
-            &req.headers().get_all(ACCEPT_ENCODING),
+    /// We'll apply compression on the response, where appropriate.
+    /// This is if:
+    /// * The response body is larger than the minimum size.
+    /// * The response content type is supported.
+    /// * The client supports the compression algorithm.
+    async fn after(&self, resp: HttpResponse, context: &mut HttpRequestContext) -> HttpResponse {
+        let body_size = resp.size_hint().exact();
+        let resp = resp;
+
+        // Don't compress if it's not an explicitly listed compressable type
+        if !self
+            .mime_types
+            .iter()
+            .any(|mt| mt.matches(&resp.headers().get_all(CONTENT_TYPE)))
+        {
+            return resp;
+        }
+
+        // Don't compress streams unless compress streams is enabled.
+        if body_size.is_none() && !self.compress_streams {
+            return resp;
+        }
+
+        // Don't compress too small bodies
+        if body_size.is_some_and(|s| s < self.min_size as u64) {
+            return resp;
+        }
+
+        // Don't recompress if we're already compressed in a supported format
+        for existing_encoding in resp.headers().get_all(CONTENT_ENCODING) {
+            if let Ok(encodings) = existing_encoding.to_str() {
+                for encoding in encodings.split(',').map(str::trim) {
+                    let encoding = encoding.split(';').next().unwrap_or(encoding).trim();
+                    if self.algorithms.iter().any(|algo| algo.as_str() == encoding) {
+                        return resp;
+                    }
+                }
+            }
+        }
+
+        let compression_method = match find_first_supported(
+            &context.supported_encoding_set,
             self.algorithms.iter().map(|algo| algo.as_str()),
         ) {
             Some("gzip") => CompressionAlgorithm::Gzip,
@@ -170,57 +198,8 @@ impl MiddlewareLayer for Compression {
             _ => CompressionAlgorithm::None,
         };
 
-        if matches!(algo, CompressionAlgorithm::None) {
-            return Ok(Either::Left(req));
-        }
-
-        context.set_compression_method(algo);
-
-        Ok(Either::Left(req))
-    }
-
-    /// We'll apply compression on the response, where appropriate.
-    /// This is if:
-    /// * The response body is larger than the minimum size.
-    /// * The response content type is supported.
-    /// * The client supports the compression algorithm.
-    async fn after(&self, resp: HttpResponse, context: &mut HttpRequestContext) -> HttpResponse {
-        let compression_method;
-        if let Some(method) = context.compression_method.get() {
-            compression_method = method.clone();
-        } else {
-            return resp;
-        }
-
         if matches!(compression_method, CompressionAlgorithm::None) {
             return resp;
-        }
-
-        let body_size = resp.size_hint().exact();
-        let resp = resp;
-
-        if !self
-            .mime_types
-            .iter()
-            .any(|mt| mt.matches(&resp.headers().get_all(CONTENT_TYPE)))
-        {
-            return resp;
-        }
-
-        if body_size.is_none() && !self.compress_streams {
-            return resp;
-        }
-
-        if body_size.is_some_and(|s| s < self.min_size as u64) {
-            return resp;
-        }
-
-        if let Some(existing_encoding) = resp.headers().get(CONTENT_ENCODING) {
-            if let Ok(encoding_str) = existing_encoding.to_str() {
-                if encoding_str == compression_method.as_str() {
-                    return resp;
-                }
-            }
         }
 
         let (mut parts, body) = resp.into_parts();

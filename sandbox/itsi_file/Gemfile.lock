@@ -1,13 +1,14 @@
 PATH
   remote: ../../gems/scheduler
   specs:
-    itsi-scheduler (0.1.16)
+    itsi-scheduler (0.1.17)
       rb_sys (~> 0.9.91)
 
 PATH
   remote: ../../gems/server
   specs:
-    itsi-server (0.1.16)
+    itsi-server (0.1.17)
+      json (~> 2)
       rack (>= 1.6)
       rb_sys (~> 0.9.91)
 
@@ -16,6 +17,10 @@ GEM
   specs:
     ast (2.4.3)
     bigdecimal (3.1.9)
+    date (3.4.1)
+    debug (1.10.0)
+      irb (~> 1.10)
+      reline (>= 0.3.8)
     google-protobuf (4.30.2)
       bigdecimal
       rake (>= 13)
@@ -30,6 +35,11 @@ GEM
     grpc (1.71.0-arm64-darwin)
       google-protobuf (>= 3.25, < 5.0)
       googleapis-common-protos-types (~> 1.0)
+    io-console (0.8.0)
+    irb (1.15.2)
+      pp (>= 0.6.0)
+      rdoc (>= 4.0.0)
+      reline (>= 0.4.2)
     json (2.10.2)
     language_server-protocol (3.17.0.4)
     lint_roller (1.1.0)
@@ -38,7 +48,13 @@ GEM
     parser (3.3.7.4)
       ast (~> 2.4.1)
       racc
+    pp (0.6.2)
+      prettyprint
+    prettyprint (0.2.0)
     prism (1.4.0)
+    psych (5.2.3)
+      date
+      stringio
     racc (1.8.1)
     rack (3.1.12)
     rainbow (3.1.1)
@@ -48,7 +64,11 @@ GEM
       rake-compiler-dock (= 1.9.1)
     rbs (3.9.2)
       logger
+    rdoc (6.13.1)
+      psych (>= 4.0.0)
     regexp_parser (2.10.0)
+    reline (0.6.1)
+      io-console (~> 0.5)
     rubocop (1.75.1)
       json (~> 2.3)
       language_server-protocol (~> 3.17.0.2)
@@ -70,6 +90,7 @@ GEM
       sorbet-runtime (>= 0.5.10782)
     ruby-progressbar (1.13.0)
     sorbet-runtime (0.5.11971)
+    stringio (3.1.6)
     unicode-display_width (3.1.4)
       unicode-emoji (~> 4.0, >= 4.0.4)
     unicode-emoji (4.0.4)
@@ -79,6 +100,7 @@ PLATFORMS
   ruby
 
 DEPENDENCIES
+  debug
   grpc
   itsi-scheduler!
   itsi-server!

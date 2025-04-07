@@ -104,8 +104,7 @@ impl MiddlewareLayer for IntrusionProtection {
         // Check if the IP is already banned
         if let Some(ban_manager) = self.ban_manager.get() {
             match ban_manager.is_banned(client_ip).await {
-                Ok(Some(reason)) => {
-                    info!("Request from banned IP {}: {}", client_ip, reason);
+                Ok(Some(_)) => {
                     return Ok(Either::Right(
                         self.error_response
                             .to_http_response(req.accept().into())
@@ -129,9 +128,6 @@ impl MiddlewareLayer for IntrusionProtection {
             let path = req.uri().path_and_query().map(|p| p.as_str()).unwrap_or("");
 
             if url_matcher.is_match(path) {
-                info!("Intrusion detected: URL pattern match for {}", path);
-
-                // Ban the IP address if possible
                 if let Some(ban_manager) = self.ban_manager.get() {
                     match ban_manager
                         .ban_ip(
@@ -141,10 +137,7 @@ impl MiddlewareLayer for IntrusionProtection {
                         )
                         .await
                     {
-                        Ok(_) => info!(
-                            "Successfully banned IP {} for {} seconds",
-                            client_ip, self.banned_time_seconds
-                        ),
+                        Ok(_) => {}
                         Err(e) => error!("Failed to ban IP {}: {:?}", client_ip, e),
                     }
                 }

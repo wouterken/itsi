@@ -11,6 +11,7 @@ use itsi_rb_helpers::{HeapVal, HeapValue};
 use magnus::{block::Proc, error::Result, value::ReprValue, Symbol};
 use regex::Regex;
 use std::str::FromStr;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 #[derive(Debug)]
@@ -18,6 +19,7 @@ pub struct RubyApp {
     app: Arc<HeapValue<Proc>>,
     request_type: RequestType,
     sendfile: bool,
+    nonblocking: bool,
     base_path: Regex,
 }
 
@@ -45,6 +47,9 @@ impl RubyApp {
         let sendfile = params
             .funcall::<_, _, bool>(Symbol::new("[]"), ("sendfile",))
             .unwrap_or(true);
+        let nonblocking = params
+            .funcall::<_, _, bool>(Symbol::new("[]"), ("nonblocking",))
+            .unwrap_or(false);
         let base_path_src = params
             .funcall::<_, _, String>(Symbol::new("[]"), ("base_path",))
             .unwrap_or("".to_owned());
@@ -59,6 +64,7 @@ impl RubyApp {
         Ok(RubyApp {
             app: Arc::new(app.into()),
             sendfile,
+            nonblocking,
             request_type,
             base_path,
         })
@@ -72,6 +78,7 @@ impl MiddlewareLayer for RubyApp {
         req: HttpRequest,
         context: &mut HttpRequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
+        context.is_ruby_request.store(true, Ordering::SeqCst);
         match self.request_type {
             RequestType::Http => {
                 let uri = req.uri().path();
@@ -82,15 +89,23 @@ impl MiddlewareLayer for RubyApp {
                     .map(|m| m.as_str())
                     .unwrap_or("/")
                     .to_owned();
-                ItsiHttpRequest::process_request(self.app.clone(), req, context, script_name)
+                ItsiHttpRequest::process_request(
+                    self.app.clone(),
+                    req,
+                    context,
+                    script_name,
+                    self.nonblocking,
+                )
+                .await
+                .map_err(|e| e.into())
+                .map(Either::Right)
+            }
+            RequestType::Grpc => {
+                ItsiGrpcCall::process_request(self.app.clone(), req, context, self.nonblocking)
                     .await
                     .map_err(|e| e.into())
                     .map(Either::Right)
             }
-            RequestType::Grpc => ItsiGrpcCall::process_request(self.app.clone(), req, context)
-                .await
-                .map_err(|e| e.into())
-                .map(Either::Right),
         }
     }
 
@@ -98,7 +113,11 @@ impl MiddlewareLayer for RubyApp {
         if self.sendfile {
             if let Some(sendfile_header) = resp.headers().get("X-Sendfile") {
                 return ROOT_STATIC_FILE_SERVER
-                    .serve_single(sendfile_header.to_str().unwrap(), context.accept.clone())
+                    .serve_single_abs(
+                        sendfile_header.to_str().unwrap(),
+                        context.accept.clone(),
+                        &[],
+                    )
                     .await;
             }
         }

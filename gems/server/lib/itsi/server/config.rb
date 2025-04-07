@@ -19,7 +19,7 @@ module Itsi
         ].all?
         return unless auto_suppress_fork_darwin_fork_safety_warnings
 
-        env = ENV.to_h.merge("OBJC_DISABLE_INITIALIZE_FORK_SAFETY" => "YES", "PGGSSENCMODE" => "YES")
+        env = ENV.to_h.merge("OBJC_DISABLE_INITIALIZE_FORK_SAFETY" => "YES", "PGGSSENCMODE" => "disable")
         if ENV["BUNDLE_BIN_PATH"]
           exec env, "bundle", "exec", $PROGRAM_NAME, *@argv
         else
@@ -54,7 +54,7 @@ module Itsi
                   max_file_size_in_memory: 1024 * 1024, # 1MB
                   max_files_in_memory: 1000,
                   file_check_interval: 1,
-                  serve_dot_files: true,
+                  serve_hidden_files: false,
                   headers: {
                     'X-Content-Type-Options' => 'nosniff'
                   }
@@ -86,6 +86,7 @@ module Itsi
         when Symbol
           Bundler.require(preload)
         end
+
         {
           workers: args.fetch(:workers) { itsifile_config.fetch(:workers, 1) },
           worker_memory_limit: args.fetch(:worker_memory_limit) { itsifile_config.fetch(:worker_memory_limit, nil) },
@@ -96,10 +97,12 @@ module Itsi
           request_timeout: itsifile_config.fetch(:request_timeout, nil),
           notify_watchers: itsifile_config.fetch(:notify_watchers, nil),
           threads: args.fetch(:threads) { itsifile_config.fetch(:threads, 1) },
+          scheduler_threads: args.fetch(:scheduler_threads) { itsifile_config.fetch(:scheduler_threads, nil) },
           streamable_body: args.fetch(:streamable_body) { itsifile_config.fetch(:streamable_body, false) },
           multithreaded_reactor: args.fetch(:multithreaded_reactor) do
             itsifile_config.fetch(:multithreaded_reactor, nil)
           end,
+          pin_worker_cores: args.fetch(:pin_worker_cores) { itsifile_config.fetch(:pin_worker_cores, true) },
           scheduler_class: args.fetch(:scheduler_class) { itsifile_config.fetch(:scheduler_class, nil) },
           oob_gc_responses_threshold: args.fetch(:oob_gc_responses_threshold) do
             itsifile_config.fetch(:oob_gc_responses_threshold, nil)
@@ -155,7 +158,7 @@ module Itsi
 
         puts "Writing default configuration..."
         File.open(ITSI_DEFAULT_CONFIG_FILE, "w") do |file|
-          file.write(IO.read("#{__dir__}/Itsi.rb"))
+          file.write(IO.read("#{__dir__}/default_config/Itsi.rb"))
         end
       end
     end

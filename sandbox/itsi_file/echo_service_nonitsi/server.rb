@@ -1,7 +1,6 @@
 require 'grpc'
 require_relative 'echo_services_pb'
 require_relative 'echo_pb' # Your generated file
-require 'debug'
 
 # Define the EchoService implementation
 class EchoService < Echo::EchoService::Service

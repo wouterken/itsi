@@ -1,4 +1,5 @@
 use super::serve_strategy::{cluster_mode::ClusterMode, single_mode::SingleMode};
+use core_affinity::CoreId;
 use itsi_error::{ItsiError, Result};
 use itsi_rb_helpers::{call_with_gvl, call_without_gvl, create_ruby_thread, fork};
 use itsi_tracing::error;
@@ -16,7 +17,7 @@ use nix::{
 use parking_lot::Mutex;
 use std::{
     process::{self, exit},
-    sync::Arc,
+    sync::{Arc, LazyLock},
     time::{Duration, Instant},
 };
 use sysinfo::System;
@@ -40,6 +41,8 @@ impl Default for ProcessWorker {
         }
     }
 }
+
+static CORE_IDS: LazyLock<Vec<CoreId>> = LazyLock::new(|| core_affinity::get_core_ids().unwrap());
 
 impl ProcessWorker {
     #[instrument(skip(self, cluster_template), fields(self.worker_id = %self.worker_id))]
@@ -77,6 +80,16 @@ impl ProcessWorker {
                 }
                 match SingleMode::new(cluster_template.server_config.clone()) {
                     Ok(single_mode) => {
+                        if cluster_template
+                            .server_config
+                            .server_params
+                            .read()
+                            .pin_worker_cores
+                        {
+                            core_affinity::set_for_current(
+                                CORE_IDS[self.worker_id % CORE_IDS.len()],
+                            );
+                        }
                         Arc::new(single_mode).run().ok();
                     }
                     Err(e) => {

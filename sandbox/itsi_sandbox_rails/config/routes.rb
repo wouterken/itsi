@@ -13,6 +13,8 @@ Rails.application.routes.draw do
   root "home#index"
   get "io_party" => "home#io_party", as: :io_party
   get "chunked" => "home#chunked_encoding", as: :chunked_encoding
+  get "send_data" => "home#do_send_data", as: :send_data
+  get "send_file" => "home#do_send_file", as: :send_file
   get "full_hijack" => "home#full_hijack", as: :full_hijack
   get "stream" => "live#stream", as: :live_stream
   get "sse" => "live#sse", as: :sse

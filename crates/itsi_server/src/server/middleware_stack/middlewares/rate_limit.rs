@@ -96,11 +96,25 @@ impl MiddlewareLayer for RateLimit {
 
             match limiter.check_limit(&rate_limit_key, limit, timeout).await {
                 Ok(_) => Ok(Either::Left(req)),
-                Err(RateLimitError::RateLimitExceeded { .. }) => Ok(Either::Right(
-                    self.error_response
+                Err(RateLimitError::RateLimitExceeded { limit, ttl, .. }) => {
+                    let mut response = self
+                        .error_response
                         .to_http_response(req.accept().into())
-                        .await,
-                )),
+                        .await;
+                    response
+                        .headers_mut()
+                        .insert("X-RateLimit-Limit", limit.to_string().parse().unwrap());
+                    response
+                        .headers_mut()
+                        .insert("X-RateLimit-Remaining", "0".parse().unwrap());
+                    response
+                        .headers_mut()
+                        .insert("X-RateLimit-Reset", ttl.to_string().parse().unwrap());
+                    response
+                        .headers_mut()
+                        .insert("Retry-After", ttl.to_string().parse().unwrap());
+                    Ok(Either::Right(response))
+                }
                 Err(e) => {
                     // Other error, log and allow request (fail open)
                     tracing::error!("Rate limiter error: {:?}", e);

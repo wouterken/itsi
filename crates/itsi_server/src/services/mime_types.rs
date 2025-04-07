@@ -234,6 +234,7 @@ pub fn get_mime_type(path: &Path) -> &'static str {
         "dif" => "video/x-dv",
         "dir" => "application/x-director",
         "dir_list" => "text/html",
+        "dir_list_json" => "application/json",
         "dis" => "application/vnd.mobius.dis",
         "disco" => "text/xml",
         "disposition-notification" => "message/disposition-notification",

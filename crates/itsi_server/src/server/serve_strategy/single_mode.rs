@@ -24,7 +24,6 @@ use nix::unistd::Pid;
 use parking_lot::RwLock;
 use std::{
     collections::HashMap,
-    num::NonZeroU8,
     pin::Pin,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -218,16 +217,13 @@ impl SingleMode {
         let mut listener_task_set = JoinSet::new();
         let runtime = self.build_runtime();
 
-        let (thread_workers, job_sender) = build_thread_workers(
-            self.server_config.server_params.read().clone(),
-            Pid::this(),
-            NonZeroU8::try_from(self.server_config.server_params.read().threads).unwrap(),
-        )
-        .inspect_err(|e| {
-            if let Some(err_val) = e.value() {
-                print_rb_backtrace(err_val);
-            }
-        })?;
+        let (thread_workers, job_sender, nonblocking_sender) =
+            build_thread_workers(self.server_config.server_params.read().clone(), Pid::this())
+                .inspect_err(|e| {
+                    if let Some(err_val) = e.value() {
+                        print_rb_backtrace(err_val);
+                    }
+                })?;
 
         info!(
             threads = thread_workers.len(),
@@ -258,6 +254,7 @@ impl SingleMode {
                   let listener = listener.clone();
                   let shutdown_sender = shutdown_sender.clone();
                   let job_sender = job_sender.clone();
+                  let nonblocking_sender = nonblocking_sender.clone();
                   let workers_clone = thread_workers.clone();
                   let listener_clone = listener.clone();
                   let mut shutdown_receiver = shutdown_sender.subscribe();
@@ -277,8 +274,9 @@ impl SingleMode {
                                 let listener_info = listener_info.clone();
                                 let shutdown_receiver = shutdown_receiver.clone();
                                 let job_sender = job_sender.clone();
+                                let nonblocking_sender = nonblocking_sender.clone();
                                 acceptor_task_set.spawn(async move {
-                                  strategy.serve_connection(accept_result, job_sender, listener_info, shutdown_receiver).await;
+                                  strategy.serve_connection(accept_result, job_sender, nonblocking_sender, listener_info, shutdown_receiver).await;
                                 });
                               },
                               Err(e) => debug!("Listener.accept failed {:?}", e),
@@ -289,11 +287,10 @@ impl SingleMode {
                             lifecycle_event = lifecycle_rx.recv() => match lifecycle_event{
                               Ok(LifecycleEvent::Shutdown) => {
                                 shutdown_sender.send(RunningPhase::ShutdownPending).unwrap();
-                                // Tell any in-progress connections to stop accepting new requests
                                 tokio::time::sleep(Duration::from_millis(25)).await;
-                                // Tell workers to stop processing requests once they've flushed their buffers.
                                 for _i in 0..workers_clone.len() {
                                   job_sender.send(RequestJob::Shutdown).await.unwrap();
+                                  nonblocking_sender.send(RequestJob::Shutdown).await.unwrap();
                                 }
                                 break;
                               },
@@ -345,6 +342,7 @@ impl SingleMode {
         &self,
         stream: IoStream,
         job_sender: async_channel::Sender<RequestJob>,
+        nonblocking_sender: async_channel::Sender<RequestJob>,
         listener: Arc<ListenerInfo>,
         shutdown_channel: watch::Receiver<RunningPhase>,
     ) {
@@ -359,6 +357,7 @@ impl SingleMode {
         let service = ItsiHttpService {
             inner: Arc::new(ItsiHttpServiceInner {
                 sender: job_sender.clone(),
+                nonblocking_sender: nonblocking_sender.clone(),
                 server_params: self.server_config.server_params.read().clone(),
                 listener,
                 addr: addr.to_string(),
@@ -388,7 +387,6 @@ impl SingleMode {
             // A lifecycle event triggers shutdown.
             _ = shutdown_channel_clone.changed() => {
                 // Initiate graceful shutdown.
-                info!("Starting graceful shutdown");
                 serve.as_mut().graceful_shutdown();
 
                 // Now await the connection to finish shutting down.

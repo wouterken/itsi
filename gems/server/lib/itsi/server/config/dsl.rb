@@ -6,7 +6,7 @@ module Itsi
                     :hosts, :ports, :extensions, :content_types, :accepts, :options
 
         def self.evaluate(config = Itsi::Server::Config.config_file_path, &blk)
-          new(routes: ["*"]) do
+          new(routes: ["/"]) do
             if blk
               instance_exec(&blk)
             else
@@ -93,45 +93,64 @@ module Itsi
           @options[:log_target] = target.to_s
         end
 
-        def get(route, app_proc = nil, &blk)
-          endpoint(route, [:get], app_proc, &blk)
+        def get(route, app_proc = nil, nonblocking: false, &blk)
+          endpoint(route, [:get], app_proc, nonblocking: nonblocking,  &blk)
         end
 
-        def post(route, app_proc = nil, &blk)
-          endpoint(route, [:post], app_proc, &blk)
+        def post(route, app_proc = nil, nonblocking: false, &blk)
+          endpoint(route, [:post], app_proc, nonblocking: nonblocking,  &blk)
         end
 
-        def put(route, app_proc = nil, &blk)
-          endpoint(route, [:put], app_proc, &blk)
+        def put(route, app_proc = nil, nonblocking: false, &blk)
+          endpoint(route, [:put], app_proc, nonblocking: nonblocking,  &blk)
         end
 
-        def delete(route, app_proc = nil, &blk)
-          endpoint(route, [:delete], app_proc, &blk)
+        def delete(route, app_proc = nil, nonblocking: false, &blk)
+          endpoint(route, [:delete], app_proc, nonblocking: nonblocking,  &blk)
         end
 
-        def patch(route, app_proc = nil, &blk)
-          endpoint(route, [:patch], app_proc, &blk)
+        def patch(route, app_proc = nil, nonblocking: false, &blk)
+          endpoint(route, [:patch], app_proc, nonblocking: nonblocking,  &blk)
         end
 
-        def endpoint(route, methods=[], app_proc = nil, &blk)
+        def endpoint(route, methods=[], app_proc = nil, nonblocking: false, &blk)
           raise "You must provide either a block or an explicit handler for the endpoint" if app_proc.nil? && blk.nil?
 
           app_proc = @controller.method(app_proc).to_proc if app_proc.is_a?(Symbol)
 
           app_proc ||= blk
+          num_required, keywords = Itsi::Server::TypedHandlers::SourceParser.extract_expr_from_source_location(app_proc)
+          params_schema = keywords[:params]
+
+          if params_schema && num_required > 1
+            raise "Cannot accept multiple required parameters in a single endpoint. A single typed or untyped params argument is supported"
+          end
+          if num_required > 2
+            raise "Cannot accept more than two required parameters in a single endpoint. An can either accept a single request argument, or a request and a params argument (which may be typed or untyped)"
+          end
+          if num_required == 0
+            raise "Cannot accept zero required parameters in a single endpoint. Endpoint must accept a request parameter"
+          end
+
+          accepts_params = !params_schema.nil? || num_required > 1
+
+          if accepts_params
+            app_proc = Itsi::Server::TypedHandlers.handler_for(app_proc, params_schema)
+          end
+
 
           if route && methods.any?
             # For endpoints, it's usually assumed trailing slash and non-trailing slash behaviour is the same
             routes = route == "/" ? ["", "/"] : [route]
             location(*routes, methods: methods) do
-              @middleware[:app] = { preloader: -> { app_proc } }
+              @middleware[:app] = { preloader: -> { app_proc }, nonblocking: nonblocking }
             end
           else
-            @middleware[:app] = { preloader: -> { app_proc } }
+            @middleware[:app] = { preloader: -> { app_proc }, nonblocking: nonblocking }
           end
         end
 
-        def grpc(*handlers, reflection: true, **, &blk)
+        def grpc(*handlers, reflection: true, nonblocking: false, **, &blk)
           if @middleware[:app] && @middleware[:app][:request_type].to_s != "grpc"
             raise "App has already been set. You can use only one of `run` and `rackup_file` or `grpc` per location"
           end
@@ -140,7 +159,7 @@ module Itsi
 
           handlers.each do |handler|
             location(Regexp.new("#{Regexp.escape(handler.class.service_name)}/(?:#{handler.class.rpc_descs.keys.map(&:to_s).join("|")})")) do
-              @middleware[:app] = { preloader: -> { Itsi::Server::GrpcInterface.for(handler) }, request_type: "grpc" }
+              @middleware[:app] = { preloader: -> { Itsi::Server::GrpcInterface.for(handler) }, request_type: "grpc", nonblocking: nonblocking }
               instance_exec(&blk)
             end
           end
@@ -158,13 +177,13 @@ module Itsi
           end
         end
 
-        def run(app, sendfile: true, path_info: "/")
-          @middleware[:app] = { preloader: -> { Itsi::Server::RackInterface.for(app) }, sendfile: sendfile, base_path: "^(?<base_path>#{paths_from_parent.gsub(/\.\*\)$/, ')')}).*$", path_info: path_info }
+        def run(app, sendfile: true, nonblocking: false, path_info: "/")
+          @middleware[:app] = { preloader: -> { Itsi::Server::RackInterface.for(app) }, sendfile: sendfile, base_path: "^(?<base_path>#{paths_from_parent.gsub(/\.\*\)$/, ')')}).*$", path_info: path_info, nonblocking: nonblocking }
         end
 
-        def rackup_file(rackup_file, sendfile: true, path_info: "/")
+        def rackup_file(rackup_file, nonblocking: false, sendfile: true, path_info: "/")
           raise "Rackup file #{rackup_file} doesn't exist" unless File.exist?(rackup_file)
-          @middleware[:app] = { preloader: -> { Itsi::Server::RackInterface.for(rackup_file) }, sendfile: sendfile, base_path: "^(?<base_path>#{paths_from_parent.gsub(/\.\*\)$/, ')')}).*$", path_info: path_info }
+          @middleware[:app] = { preloader: -> { Itsi::Server::RackInterface.for(rackup_file) }, sendfile: sendfile, base_path: "^(?<base_path>#{paths_from_parent.gsub(/\.\*\)$/, ')')}).*$", path_info: path_info, nonblocking: nonblocking }
         end
 
         def include(path)
@@ -212,6 +231,12 @@ module Itsi
           @options[:multithreaded_reactor] = !!multithreaded
         end
 
+        def pin_worker_cores(pin_worker_cores)
+          raise "Pin worker cores must be set at the root" unless @parent.nil?
+
+          @options[:pin_worker_cores] = !!pin_worker_cores
+        end
+
         def auto_reload_config!
           if ENV["BUNDLE_BIN_PATH"]
             watch "Itsi.rb", [%w[bundle exec itsi restart]]
@@ -232,6 +257,12 @@ module Itsi
 
           klass_name = "Itsi::Scheduler" if klass_name == true
           @options[:scheduler_class] = klass_name if klass_name
+        end
+
+        def scheduler_threads(threads = 1)
+          raise "Scheduler threads must be set at the root" unless @parent.nil?
+
+          @options[:scheduler_threads] = threads
         end
 
         def request_timeout(request_timeout)
@@ -440,7 +471,7 @@ module Itsi
           if route_options
             result << deep_stringify_keys(
               {
-                route: Regexp.new("^#{route_options}$"),
+                route: Regexp.new("^#{route_options}/?$"),
                 methods: @methods.any? ? @methods : nil,
                 protocols: @protocols.any? ? @protocols : nil,
                 hosts: @hosts.any? ? @hosts : nil,
@@ -462,22 +493,27 @@ module Itsi
             case seg
             when Regexp
               seg.source
-            when /^:([A-Za-z_]\w*)(?:\(([^)]*)\))?$/
-              param_name = Regexp.last_match(1)
-              custom     = Regexp.last_match(2)
-              if custom && !custom.empty?
-                "(?<#{param_name}>#{custom})"
-              else
-                "(?<#{param_name}>[^/]+)"
-              end
-            when /\*/
-              seg.gsub(/\*/, ".*")
             else
-              Regexp.escape(seg)
+              parts = seg.split('/')
+              parts.map do |part|
+                case part
+                when /^:([A-Za-z_]\w*)(?:\(([^)]*)\))?$/
+                  param_name = Regexp.last_match(1)
+                  custom     = Regexp.last_match(2)
+                  if custom && !custom.empty?
+                    "(?<#{param_name}>#{custom})"
+                  else
+                    "(?<#{param_name}>[^/]+)"
+                  end
+                when /\*/
+                  part.gsub(/\*/, ".*")
+                else
+                  Regexp.escape(part)
+                end
+              end.join("/")
             end
           end.join("|")
-
-          if parent && parent.paths_from_parent && parent.paths_from_parent != "(?:/.*)"
+          if parent && parent.paths_from_parent && parent.paths_from_parent != "(?:/)"
             "#{parent.paths_from_parent}#{route_or_str != "" ? "(?:#{route_or_str})" : ""}"
           else
             route_or_str = "/#{route_or_str}" unless route_or_str.start_with?("/")

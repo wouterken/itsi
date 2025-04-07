@@ -1,4 +1,5 @@
 #![deny(unused_crate_dependencies)]
+pub mod default_responses;
 pub mod env;
 pub mod prelude;
 pub mod ruby_types;
@@ -43,6 +44,14 @@ fn init(ruby: &Ruby) -> Result<()> {
     request.define_method("path", method!(ItsiHttpRequest::path, 0))?;
     request.define_method("script_name", method!(ItsiHttpRequest::script_name, 0))?;
     request.define_method("query_string", method!(ItsiHttpRequest::query_string, 0))?;
+    request.define_method(
+        "content_type",
+        method!(ItsiHttpRequest::content_type_str, 0),
+    )?;
+    request.define_method(
+        "content_length",
+        method!(ItsiHttpRequest::content_length, 0),
+    )?;
     request.define_method("request_method", method!(ItsiHttpRequest::method, 0))?;
     request.define_method("version", method!(ItsiHttpRequest::version, 0))?;
     request.define_method("rack_protocol", method!(ItsiHttpRequest::rack_protocol, 0))?;
@@ -57,6 +66,9 @@ fn init(ruby: &Ruby) -> Result<()> {
     request.define_method("response", method!(ItsiHttpRequest::response, 0))?;
     request.define_method("json?", method!(ItsiHttpRequest::is_json, 0))?;
     request.define_method("html?", method!(ItsiHttpRequest::is_html, 0))?;
+    request.define_method("url_encoded?", method!(ItsiHttpRequest::is_url_encoded, 0))?;
+    request.define_method("multipart?", method!(ItsiHttpRequest::is_multipart, 0))?;
+    request.define_method("url_params", method!(ItsiHttpRequest::url_params, 0))?;
 
     let body_proxy = ruby.get_inner(&ITSI_BODY_PROXY);
     body_proxy.define_method("gets", method!(ItsiBodyProxy::gets, 0))?;
@@ -81,6 +93,7 @@ fn init(ruby: &Ruby) -> Result<()> {
     response.define_method("close_read", method!(ItsiHttpResponse::close_read, 0))?;
     response.define_method("close", method!(ItsiHttpResponse::close, 0))?;
     response.define_method("hijack", method!(ItsiHttpResponse::hijack, 1))?;
+    response.define_method("accept", method!(ItsiHttpResponse::accept_str, 0))?;
     response.define_method("json?", method!(ItsiHttpResponse::is_json, 0))?;
     response.define_method("html?", method!(ItsiHttpResponse::is_html, 0))?;
 

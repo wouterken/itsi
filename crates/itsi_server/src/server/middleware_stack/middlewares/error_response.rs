@@ -1,4 +1,5 @@
 use bytes::Bytes;
+use http::header::CONTENT_TYPE;
 use http::Response;
 use http_body_util::{combinators::BoxBody, Full};
 use serde::{Deserialize, Deserializer};
@@ -97,22 +98,36 @@ impl From<ErrorResponseDef> for ErrorResponse {
 
 impl ErrorResponse {
     pub(crate) async fn to_http_response(&self, accept: ResponseFormat) -> HttpResponse {
-        let body = match accept {
+        let mut resp = Response::builder().status(self.code);
+        let response = match accept {
             ResponseFormat::TEXT => {
-                Self::get_response_body(self.code, &self.plaintext, accept).await
+                resp = resp.header(CONTENT_TYPE, "text/plain");
+                resp.body(Self::get_response_body(self.code, &self.plaintext, accept).await)
             }
-            ResponseFormat::HTML => Self::get_response_body(self.code, &self.html, accept).await,
-            ResponseFormat::JSON => Self::get_response_body(self.code, &self.json, accept).await,
+            ResponseFormat::HTML => {
+                resp = resp.header(CONTENT_TYPE, "text/html");
+                resp.body(Self::get_response_body(self.code, &self.html, accept).await)
+            }
+            ResponseFormat::JSON => {
+                resp = resp.header(CONTENT_TYPE, "application/json");
+                resp.body(Self::get_response_body(self.code, &self.json, accept).await)
+            }
             ResponseFormat::UNKNOWN => match self.default {
                 DefaultFormat::Plaintext => {
-                    Self::get_response_body(self.code, &self.plaintext, accept).await
+                    resp = resp.header(CONTENT_TYPE, "text/plain");
+                    resp.body(Self::get_response_body(self.code, &self.plaintext, accept).await)
                 }
-                DefaultFormat::Html => Self::get_response_body(self.code, &self.html, accept).await,
-                DefaultFormat::Json => Self::get_response_body(self.code, &self.json, accept).await,
+                DefaultFormat::Html => {
+                    resp = resp.header(CONTENT_TYPE, "text/html");
+                    resp.body(Self::get_response_body(self.code, &self.html, accept).await)
+                }
+                DefaultFormat::Json => {
+                    resp = resp.header(CONTENT_TYPE, "application/json");
+                    resp.body(Self::get_response_body(self.code, &self.json, accept).await)
+                }
             },
         };
-
-        Response::builder().status(self.code).body(body).unwrap()
+        response.unwrap()
     }
 
     async fn get_response_body(
@@ -128,7 +143,7 @@ impl ErrorResponse {
                 // Convert the PathBuf to a &str (assumes valid UTF-8).
                 if let Some(path_str) = path.to_str() {
                     let response = ROOT_STATIC_FILE_SERVER
-                        .serve_single(path_str, accept.clone())
+                        .serve_single(path_str, accept.clone(), &[])
                         .await;
                     if response.status().is_success() {
                         return response.into_body();

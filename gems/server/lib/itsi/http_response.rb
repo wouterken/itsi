@@ -10,6 +10,8 @@ module Itsi
     def respond _body=nil, _status=200, _header=nil, status: _status, headers: _header, body: _body, hijack: false, &blk
       self.status = status
 
+      body = body.to_s unless body.is_a?(String)
+
       if headers
         headers.each do |key, value|
           if value.is_a?(Array)

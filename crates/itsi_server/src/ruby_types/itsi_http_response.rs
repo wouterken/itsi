@@ -2,8 +2,9 @@ use bytes::{Bytes, BytesMut};
 use derive_more::Debug;
 use futures::stream::{unfold, StreamExt};
 use http::{
-    header::TRANSFER_ENCODING, request::Parts, HeaderMap, HeaderName, HeaderValue, Request,
-    Response, StatusCode,
+    header::{ACCEPT, TRANSFER_ENCODING},
+    request::Parts,
+    HeaderMap, HeaderName, HeaderValue, Request, Response, StatusCode,
 };
 use http_body_util::{combinators::BoxBody, Empty, Full, StreamBody};
 use hyper::{body::Frame, upgrade::Upgraded};
@@ -298,11 +299,12 @@ impl ItsiHttpResponse {
         self.data.response_writer.write().take();
         Ok(true)
     }
-    fn accept_str(&self) -> &str {
+
+    pub fn accept_str(&self) -> &str {
         self.data
             .parts
             .headers
-            .get("Content-Type")
+            .get(ACCEPT)
             .and_then(|hv| hv.to_str().ok()) // handle invalid utf-8
             .unwrap_or("application/x-www-form-urlencoded")
     }

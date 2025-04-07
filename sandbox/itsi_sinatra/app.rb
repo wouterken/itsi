@@ -1,4 +1,3 @@
-require 'debug'
 require 'sinatra'
 require 'itsi/server'
 

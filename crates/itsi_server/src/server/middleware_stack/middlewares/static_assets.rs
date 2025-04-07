@@ -19,7 +19,6 @@ use magnus::error::Result;
 use regex::Regex;
 use serde::Deserialize;
 use std::{collections::HashMap, path::PathBuf, sync::OnceLock, time::Duration};
-use tracing::info;
 
 #[derive(Debug, Deserialize)]
 pub struct StaticAssets {
@@ -33,7 +32,7 @@ pub struct StaticAssets {
     pub headers: Option<HashMap<String, String>>,
     pub allowed_extensions: Vec<String>,
     pub relative_path: bool,
-    pub serve_dot_files: bool,
+    pub serve_hidden_files: bool,
     pub base_path: String,
     #[serde(skip)]
     pub base_path_regex: OnceLock<Regex>,
@@ -69,7 +68,7 @@ impl MiddlewareLayer for StaticAssets {
                 try_html_extension: self.try_html_extension,
                 max_file_size: self.max_file_size_in_memory,
                 recheck_interval: Duration::from_secs(self.file_check_interval),
-                serve_dot_files: self.serve_dot_files,
+                serve_hidden_files: self.serve_hidden_files,
                 allowed_extensions: self.allowed_extensions.clone(),
             }))
             .map_err(ItsiError::new)?;
@@ -79,7 +78,7 @@ impl MiddlewareLayer for StaticAssets {
     async fn before(
         &self,
         req: HttpRequest,
-        _context: &mut HttpRequestContext,
+        context: &mut HttpRequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
         // Only handle GET and HEAD requests
         if req.method() != Method::GET && req.method() != Method::HEAD {
@@ -98,12 +97,6 @@ impl MiddlewareLayer for StaticAssets {
                 .map(|m| m.as_str())
                 .unwrap_or("/");
 
-            info!("Base path is {}", base_path);
-            info!("Full path is {}", abs_path);
-            info!(
-                "Stripped is {}",
-                abs_path.strip_prefix(base_path).unwrap_or("")
-            );
             match abs_path.strip_prefix(base_path) {
                 Some(suffix) => suffix,
                 None => return Ok(Either::Left(req)),
@@ -131,9 +124,9 @@ impl MiddlewareLayer for StaticAssets {
                 serve_range,
                 if_modified_since,
                 is_head_request,
+                &context.supported_encoding_set,
             )
             .await;
-
         if response.is_none() {
             Ok(Either::Left(req))
         } else {

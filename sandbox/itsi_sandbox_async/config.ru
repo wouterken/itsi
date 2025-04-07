@@ -1,4 +1,3 @@
-require 'debug'
 require "osprey/scheduler"
 
 run lambda { |env|

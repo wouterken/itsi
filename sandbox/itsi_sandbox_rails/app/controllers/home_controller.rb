@@ -1,8 +1,23 @@
 require "net/http"
+require 'debug'
 
 class HomeController < ApplicationController
   def index
     render json: { message: "Hello, World!" }
+  end
+
+  def do_send_file
+    file_path = Rails.root.join('app', 'controllers', 'home_controller.rb')
+    if File.exist?(file_path)
+      send_file file_path, type: 'text/plain', disposition: 'attachment'
+    else
+      render json: { error: 'File not found' }, status: :not_found
+    end
+  end
+
+  def do_send_data
+    data = "This is some sample data to send."
+    send_data data, filename: 'sample.txt', type: 'text/plain', disposition: 'attachment'
   end
 
   def full_hijack

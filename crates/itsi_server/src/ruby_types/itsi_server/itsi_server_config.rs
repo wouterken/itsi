@@ -55,8 +55,10 @@ pub struct ServerParams {
     pub notify_watchers: Option<Vec<(String, Vec<Vec<String>>)>>,
     /// Worker params
     pub threads: u8,
+    pub scheduler_threads: Option<u8>,
     pub streamable_body: bool,
     pub multithreaded_reactor: bool,
+    pub pin_worker_cores: bool,
     pub scheduler_class: Option<String>,
     pub oob_gc_responses_threshold: Option<u64>,
     pub middleware_loader: HeapValue<Proc>,
@@ -107,6 +109,9 @@ impl ServerParams {
         let multithreaded_reactor: bool = rb_param_hash
             .fetch::<_, Option<bool>>("multithreaded_reactor")?
             .unwrap_or(workers == 1);
+        let pin_worker_cores: bool = rb_param_hash
+            .fetch::<_, Option<bool>>("pin_worker_cores")?
+            .unwrap_or(true);
         let shutdown_timeout: f64 = rb_param_hash.fetch("shutdown_timeout")?;
 
         let hooks: Option<RHash> = rb_param_hash.fetch("hooks")?;
@@ -128,11 +133,12 @@ impl ServerParams {
             .unwrap_or_default();
         let preload: bool = rb_param_hash.fetch("preload")?;
         let request_timeout: Option<u64> = rb_param_hash.fetch("request_timeout")?;
-        let request_timeout = request_timeout.map(|to| Duration::from_secs(to));
+        let request_timeout = request_timeout.map(Duration::from_secs);
 
         let notify_watchers: Option<Vec<(String, Vec<Vec<String>>)>> =
             rb_param_hash.fetch("notify_watchers")?;
         let threads: u8 = rb_param_hash.fetch("threads")?;
+        let scheduler_threads: Option<u8> = rb_param_hash.fetch("scheduler_threads")?;
         let streamable_body: bool = rb_param_hash.fetch("streamable_body")?;
         let scheduler_class: Option<String> = rb_param_hash.fetch("scheduler_class")?;
         let oob_gc_responses_threshold: Option<u64> =
@@ -209,12 +215,14 @@ impl ServerParams {
             worker_memory_limit,
             silence,
             multithreaded_reactor,
+            pin_worker_cores,
             shutdown_timeout,
             hooks,
             preload,
             request_timeout,
             notify_watchers,
             threads,
+            scheduler_threads,
             streamable_body,
             scheduler_class,
             oob_gc_responses_threshold,

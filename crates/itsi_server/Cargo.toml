@@ -1,6 +1,6 @@
 [package]
 name = "itsi-server"
-version = "0.1.17"
+version = "0.1.18"
 edition = "2021"
 authors = ["Wouter Coppieters <wc@pico.net.nz>"]
 license = "MIT"
@@ -84,3 +84,4 @@ md5 = "0.7.0"
 percent-encoding = "2.3.1"
 sha-crypt = "0.5.0"
 argon2 = "0.5.3"
+core_affinity = "0.8.3"

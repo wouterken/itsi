@@ -11,7 +11,6 @@ use magnus::{
 use nix::unistd::Pid;
 use parking_lot::{Mutex, RwLock};
 use std::{
-    num::NonZeroU8,
     ops::Deref,
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
@@ -55,34 +54,66 @@ static CLASS_FIBER: Lazy<RClass> = Lazy::new(|ruby| {
 });
 
 pub struct TerminateWakerSignal(bool);
-type ThreadWorkerBuildResult = Result<(Arc<Vec<Arc<ThreadWorker>>>, Sender<RequestJob>)>;
+type ThreadWorkerBuildResult = Result<(
+    Arc<Vec<Arc<ThreadWorker>>>,
+    Sender<RequestJob>,
+    Sender<RequestJob>,
+)>;
 
-#[instrument(name = "boot", parent=None, skip(params, threads, pid))]
-pub fn build_thread_workers(
-    params: Arc<ServerParams>,
-    pid: Pid,
-    threads: NonZeroU8,
-) -> ThreadWorkerBuildResult {
-    let (sender, receiver) = async_channel::bounded((threads.get() as u16 * 30) as usize);
-    let receiver_ref = Arc::new(receiver);
-    let sender_ref = sender;
+#[instrument(name = "boot", parent=None, skip(params, pid))]
+pub fn build_thread_workers(params: Arc<ServerParams>, pid: Pid) -> ThreadWorkerBuildResult {
+    let blocking_thread_count = params.threads;
+    let nonblocking_thread_count = params.scheduler_threads;
+
+    let (blocking_sender, blocking_receiver) =
+        async_channel::bounded((blocking_thread_count as u16 * 30) as usize);
+    let blocking_receiver_ref = Arc::new(blocking_receiver);
+    let blocking_sender_ref = blocking_sender;
     let scheduler_class = load_scheduler_class(params.scheduler_class.clone())?;
+
+    let mut workers = (1..=blocking_thread_count)
+        .map(|id| {
+            ThreadWorker::new(
+                params.clone(),
+                id,
+                format!("{:?}#{:?}", pid, id),
+                blocking_receiver_ref.clone(),
+                blocking_sender_ref.clone(),
+                if nonblocking_thread_count.is_some() {
+                    None
+                } else {
+                    scheduler_class
+                },
+            )
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    let nonblocking_sender_ref = if let (Some(nonblocking_thread_count), Some(scheduler_class)) =
+        (nonblocking_thread_count, scheduler_class)
+    {
+        let (nonblocking_sender, nonblocking_receiver) =
+            async_channel::bounded((nonblocking_thread_count as u16 * 30) as usize);
+        let nonblocking_receiver_ref = Arc::new(nonblocking_receiver);
+        let nonblocking_sender_ref = nonblocking_sender.clone();
+        for id in 0..nonblocking_thread_count {
+            workers.push(ThreadWorker::new(
+                params.clone(),
+                id,
+                format!("{:?}#{:?}", pid, id),
+                nonblocking_receiver_ref.clone(),
+                nonblocking_sender_ref.clone(),
+                Some(scheduler_class),
+            )?)
+        }
+        nonblocking_sender
+    } else {
+        blocking_sender_ref.clone()
+    };
+
     Ok((
-        Arc::new(
-            (1..=u8::from(threads))
-                .map(|id| {
-                    ThreadWorker::new(
-                        params.clone(),
-                        id,
-                        format!("{:?}#{:?}", pid, id),
-                        receiver_ref.clone(),
-                        sender_ref.clone(),
-                        scheduler_class,
-                    )
-                })
-                .collect::<Result<Vec<_>>>()?,
-        ),
-        sender_ref,
+        Arc::new(workers),
+        blocking_sender_ref,
+        nonblocking_sender_ref,
     ))
 }
 
