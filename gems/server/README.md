@@ -1,5 +1,7 @@
 ---
 type: docs
+sidebar:
+  exclude: true
 ---
 
 # ItsiServer

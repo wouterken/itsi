@@ -73,13 +73,18 @@ impl ClusterMode {
                 Ok(())
             }
             LifecycleEvent::Restart => {
-                self.server_config.dup_fds()?;
-                self.shutdown().await.ok();
-                info!("Shutdown complete. Calling reload exec");
-                self.server_config.reload_exec()?;
+                if self.server_config.check_config() {
+                    self.server_config.dup_fds()?;
+                    self.shutdown().await.ok();
+                    info!("Shutdown complete. Calling reload exec");
+                    self.server_config.reload_exec()?;
+                }
                 Ok(())
             }
             LifecycleEvent::Reload => {
+                if !self.server_config.check_config() {
+                    return Ok(());
+                }
                 let should_reexec = self.server_config.clone().reload(true)?;
                 if should_reexec {
                     self.server_config.dup_fds()?;
@@ -286,6 +291,7 @@ impl ClusterMode {
         self.build_runtime().block_on(async {
           let self_ref = self_ref.clone();
           let mut memory_check_interval = time::interval(time::Duration::from_secs(2));
+
           loop {
             tokio::select! {
               _ = receiver.changed() => {

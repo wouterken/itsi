@@ -33,7 +33,7 @@ module Itsi
       # 3. Default values.
       def self.build_config(args, config_file_path, builder_proc = nil)
         args.transform_keys!(&:to_sym)
-        itsifile_config = \
+        itsifile_config, errors = \
           if builder_proc
             DSL.evaluate(&builder_proc)
           elsif args[:static]
@@ -87,33 +87,40 @@ module Itsi
           Bundler.require(preload)
         end
 
-        {
-          workers: args.fetch(:workers) { itsifile_config.fetch(:workers, 1) },
-          worker_memory_limit: args.fetch(:worker_memory_limit) { itsifile_config.fetch(:worker_memory_limit, nil) },
-          silence: args.fetch(:silence) { itsifile_config.fetch(:silence, false) },
-          shutdown_timeout: args.fetch(:shutdown_timeout) { itsifile_config.fetch(:shutdown_timeout, 5) },
-          hooks: itsifile_config.fetch(:hooks, nil),
-          preload: !!preload,
-          request_timeout: itsifile_config.fetch(:request_timeout, nil),
-          notify_watchers: itsifile_config.fetch(:notify_watchers, nil),
-          threads: args.fetch(:threads) { itsifile_config.fetch(:threads, 1) },
-          scheduler_threads: args.fetch(:scheduler_threads) { itsifile_config.fetch(:scheduler_threads, nil) },
-          streamable_body: args.fetch(:streamable_body) { itsifile_config.fetch(:streamable_body, false) },
-          multithreaded_reactor: args.fetch(:multithreaded_reactor) do
-            itsifile_config.fetch(:multithreaded_reactor, nil)
-          end,
-          pin_worker_cores: args.fetch(:pin_worker_cores) { itsifile_config.fetch(:pin_worker_cores, true) },
-          scheduler_class: args.fetch(:scheduler_class) { itsifile_config.fetch(:scheduler_class, nil) },
-          oob_gc_responses_threshold: args.fetch(:oob_gc_responses_threshold) do
-            itsifile_config.fetch(:oob_gc_responses_threshold, nil)
-          end,
-          log_level: args.fetch(:log_level) { itsifile_config.fetch(:log_level, nil) },
-          log_format: args.fetch(:log_format) { itsifile_config.fetch(:log_format, nil) },
-          log_target: args.fetch(:log_target) { itsifile_config.fetch(:log_target, nil) },
-          binds: args.fetch(:binds) { itsifile_config.fetch(:binds, ["http://0.0.0.0:3000"]) },
-          middleware_loader: middleware_loader,
-          listeners: args.fetch(:listeners) { nil }
-        }.transform_keys(&:to_s)
+        [
+          {
+            workers: args.fetch(:workers) { itsifile_config.fetch(:workers, 1) },
+            worker_memory_limit: args.fetch(:worker_memory_limit) { itsifile_config.fetch(:worker_memory_limit, nil) },
+            silence: args.fetch(:silence) { itsifile_config.fetch(:silence, false) },
+            shutdown_timeout: args.fetch(:shutdown_timeout) { itsifile_config.fetch(:shutdown_timeout, 5) },
+            hooks: itsifile_config.fetch(:hooks, nil),
+            preload: !!preload,
+            request_timeout: itsifile_config.fetch(:request_timeout, nil),
+            notify_watchers: itsifile_config.fetch(:notify_watchers, nil),
+            threads: args.fetch(:threads) { itsifile_config.fetch(:threads, 1) },
+            scheduler_threads: args.fetch(:scheduler_threads) { itsifile_config.fetch(:scheduler_threads, nil) },
+            streamable_body: args.fetch(:streamable_body) { itsifile_config.fetch(:streamable_body, false) },
+            multithreaded_reactor: args.fetch(:multithreaded_reactor) do
+              itsifile_config.fetch(:multithreaded_reactor, nil)
+            end,
+            pin_worker_cores: args.fetch(:pin_worker_cores) { itsifile_config.fetch(:pin_worker_cores, true) },
+            scheduler_class: args.fetch(:scheduler_class) { itsifile_config.fetch(:scheduler_class, nil) },
+            oob_gc_responses_threshold: args.fetch(:oob_gc_responses_threshold) do
+              itsifile_config.fetch(:oob_gc_responses_threshold, nil)
+            end,
+            log_level: args.fetch(:log_level) { itsifile_config.fetch(:log_level, nil) },
+            log_format: args.fetch(:log_format) { itsifile_config.fetch(:log_format, nil) },
+            log_target: args.fetch(:log_target) { itsifile_config.fetch(:log_target, nil) },
+            binds: args.fetch(:binds) { itsifile_config.fetch(:binds, ["http://0.0.0.0:3000"]) },
+            middleware_loader: middleware_loader,
+            listeners: args.fetch(:listeners) { nil }
+          }.transform_keys(&:to_s),
+          errors.flat_map do |(error, message)|
+            location =  message[/(.*?)\:in/,1]
+            file, lineno = location.split(":")
+            [error.message, "#{location}: >> `#{IO.readlines(file)[lineno.to_i - 1]}`"]
+          end
+        ]
       end
 
       # Reloads the entire process

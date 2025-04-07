@@ -46,6 +46,8 @@ module Itsi
           server
         end
         background ? Thread.new(&run) : run[]
+      rescue
+        exit(0)
       end
 
       def static(cli_params)

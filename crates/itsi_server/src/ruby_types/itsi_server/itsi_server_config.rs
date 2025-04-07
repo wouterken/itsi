@@ -27,6 +27,7 @@ use std::{
     sync::{Arc, OnceLock},
     time::Duration,
 };
+use tracing::error;
 static DEFAULT_BIND: &str = "http://localhost:3000";
 static ID_BUILD_CONFIG: LazyId = LazyId::new("build_config");
 static ID_RELOAD_EXEC: LazyId = LazyId::new("reload_exec");
@@ -249,6 +250,7 @@ impl ItsiServerConfig {
             itsifile_path.as_ref(),
             itsi_config_proc.clone(),
         )?;
+
         cli_params.delete::<_, Value>(Symbol::new("listeners"))?;
 
         let watcher_fd = if let Some(watchers) = server_params.notify_watchers.clone() {
@@ -276,7 +278,6 @@ impl ItsiServerConfig {
                 self.itsi_config_proc.clone(),
             )
         })?;
-
         let is_single_mode = self.server_params.read().workers == 1;
 
         let requires_exec = if !is_single_mode && !server_params.preload {
@@ -305,10 +306,20 @@ impl ItsiServerConfig {
             .as_ref()
             .clone()
             .map(|hv| hv.clone().inner());
-        let rb_param_hash: RHash = ruby.get_inner_ref(&ITSI_SERVER_CONFIG).funcall(
-            *ID_BUILD_CONFIG,
-            (cli_params, itsifile_path.cloned(), inner),
-        )?;
+        let (rb_param_hash, errors): (RHash, Vec<String>) = ruby
+            .get_inner_ref(&ITSI_SERVER_CONFIG)
+            .funcall(
+                *ID_BUILD_CONFIG,
+                (cli_params, itsifile_path.cloned(), inner),
+            )
+            .unwrap();
+        if !errors.is_empty() {
+            Self::print_config_errors(errors);
+            return Err(magnus::Error::new(
+                magnus::exception::standard_error(),
+                "Invalid server config",
+            ));
+        }
         Ok(Arc::new(ServerParams::from_rb_hash(rb_param_hash)?))
     }
 
@@ -320,6 +331,29 @@ impl ItsiServerConfig {
         // Set the new flags back on the file descriptor
         fcntl(fd, FcntlArg::F_SETFD(flags))?;
         Ok(())
+    }
+
+    pub fn get_config_errors(&self) -> Option<Vec<String>> {
+        let errors = call_with_gvl(|ruby| {
+            let inner = self
+                .itsi_config_proc
+                .as_ref()
+                .clone()
+                .map(|hv| hv.clone().inner());
+            let cli_params = self.cli_params.cloned();
+            let itsifile_path = self.itsifile_path.as_ref().cloned();
+            let (_, errors): (RHash, Vec<String>) = ruby
+                .get_inner_ref(&ITSI_SERVER_CONFIG)
+                .funcall(*ID_BUILD_CONFIG, (cli_params, itsifile_path, inner))
+                .unwrap();
+            errors
+        });
+
+        if errors.is_empty() {
+            None
+        } else {
+            Some(errors)
+        }
     }
 
     pub fn dup_fds(self: &Arc<Self>) -> Result<()> {
@@ -352,6 +386,21 @@ impl ItsiServerConfig {
             close(r_fd.as_raw_fd()).ok();
         }
         Ok(())
+    }
+
+    pub fn print_config_errors(errors: Vec<String>) {
+        error!("Refusing to reload configuration due to fatal errors:");
+        for error in errors {
+            error!("{}", error);
+        }
+    }
+
+    pub fn check_config(&self) -> bool {
+        if let Some(errors) = self.get_config_errors() {
+            Self::print_config_errors(errors);
+            return false;
+        }
+        true
     }
 
     pub fn reload_exec(self: &Arc<Self>) -> Result<()> {

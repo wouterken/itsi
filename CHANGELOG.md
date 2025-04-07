@@ -1,6 +1,8 @@
 ---
 title: Changelog
 type: docs
+sidebar:
+  exclude: true
 ---
 
 ## [Unreleased]

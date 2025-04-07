@@ -10,7 +10,7 @@ module Itsi
 
           proc_line = source_location.last - 1
           first_line = source_lines[proc_line]
-          binding.b
+
           until first_line =~ /(?:lambda|proc|->|def|.*?do\s*\|)/ || proc_line.zero?
             proc_line -= 1
             first_line = source_lines[proc_line]

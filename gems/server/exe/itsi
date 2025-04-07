@@ -57,7 +57,7 @@ parser = OptionParser.new do |opts|
     options[:worker_memory_limit] = ml
   end
 
-  opts.on("-f", "--fiber_scheduler [CLASS_NAME]", [String],
+  opts.on("-f", "--fiber_scheduler [CLASS_NAME]", String,
           "Scheduler class to use (default: nil). Provide blank or true to use Itsi::Scheduler, or a classname to use an alternative scheduler") do |scheduler_class|
     if scheduler_class.nil? || scheduler_class == "true"
       options[:scheduler_class] = "Itsi::Scheduler"
@@ -154,7 +154,6 @@ if ENV['COMP_LINE'] || ARGV.include?('--completion')
 end
 
 parser.parse!
-
 case (command = ARGV.shift)
 when *COMMANDS.keys
   required_arity = Itsi::Server.method(command).parameters&.select{|c| c.first == :req }&.length&.succ || 2

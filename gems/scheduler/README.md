@@ -1,6 +1,8 @@
 ---
 title: Itsi Scheduler
 type: docs
+sidebar:
+  exclude: true
 ---
 
 # ItsiScheduler

@@ -401,6 +401,9 @@ impl SingleMode {
     /// Not that when running in single mode this will not unload
     /// old code. If you need a clean restart, use the `restart` (SIGHUP) method instead
     pub fn reload(&self) -> Result<()> {
+        if !self.server_config.check_config() {
+            return Ok(());
+        }
         let should_reexec = self.server_config.clone().reload(false)?;
         if should_reexec {
             self.server_config.dup_fds()?;
@@ -414,6 +417,9 @@ impl SingleMode {
 
     /// Restart the server while keeping connections open.
     pub fn restart(&self) -> Result<()> {
+        if !self.server_config.check_config() {
+            return Ok(());
+        }
         self.server_config.dup_fds()?;
         self.server_config.reload_exec()?;
         Ok(())

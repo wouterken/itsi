@@ -2,18 +2,24 @@ module Itsi
   class Server
     module Config
       class DSL
+        require_relative "option"
+
+
         attr_reader :parent, :children, :middleware, :controller_class, :routes, :methods, :protocols,
                     :hosts, :ports, :extensions, :content_types, :accepts, :options
 
         def self.evaluate(config = Itsi::Server::Config.config_file_path, &blk)
-          new(routes: ["/"]) do
+          config = new(routes: ["/"]) do
             if blk
               instance_exec(&blk)
             else
               code = IO.read(config)
               instance_eval(code, config.to_s, 1)
             end
-          end.options
+          end
+          [config.options, config.errors]
+        rescue StandardError => e
+          [{}, [[e, e.backtrace[0]]]]
         end
 
         def initialize(
@@ -54,13 +60,21 @@ module Itsi
             end
           }
 
+          @errors = []
           instance_exec(&block)
         end
 
-        def workers(workers)
-          raise "Workers must be set at the root" unless @parent.nil?
+        def errors
+          @children.map(&:errors).flatten + @errors
+        end
 
-          @options[:workers] = [workers.to_i, 1].max
+        Option.subclasses.each do |option|
+          option_name = option.option_name
+          define_method(option_name) do |*args, **kwargs, &blk|
+            @options[option_name] = option.new(@parent, *args, **kwargs, &blk).build!
+          rescue => e
+            @errors << [e, caller[1]]
+          end
         end
 
         def threads(threads)

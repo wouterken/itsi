@@ -1,5 +1,5 @@
 # Hugo configuration file
-title: My Site
+title: Itsi
 
 # import hextra as module
 module:
@@ -9,17 +9,16 @@ module:
     - source: "../crates"
       target: "content/crates"
       includeFiles: ["*.md", "*/**.md", "**/**.md"]
-    - source: "../gems/scheduler/README.md"
-      target: "content/gems/_index.md"
     - source: "../gems"
-      target: "content/gems"
-      includeFiles: ["*.md", "*/*.md"]
+      target: "content/Docs"
+      includeFiles: ["*.md", "*/*.md", "**/**.md"]
       excludeFiles: ["*/tmp/**.md"]
     - source: "content"
       target: "content"
     - source: "static"
       target: "static"
 
+contentDir: content/gems
 markup:
   # allow raw html
   goldmark:
@@ -32,17 +31,14 @@ markup:
 
 menu:
   main:
-    - name: Docs
-      pageRef: /docs
+    - name: Features
+      pageRef: /features
       weight: 1
     - name: About
       pageRef: /about
       weight: 2
-    - name: Crates
-      pageRef: /crates
-      weight: 2
     - name: Contact ↗
-      url: "https://github.com/imfing"
+      url: "https://github.com/wouterken"
       weight: 3
     - name: Search
       weight: 4
@@ -50,14 +46,9 @@ menu:
         type: search
     - name: GitHub
       weight: 5
-      url: "https://github.com/imfing/hextra-starter-template"
+      url: "https://github.com/wouterken/itsi"
       params:
         icon: github
-    - name: Twitter
-      weight: 6
-      url: "https://twitter.com/"
-      params:
-        icon: x-twitter
 
 params:
   navbar:
@@ -67,10 +58,6 @@ params:
   footer:
     displayCopyright: false
     displayPoweredBy: true
-
-  editURL:
-    enable: true
-    base: "https://github.com/imfing/hextra-starter-template/edit/main/content"
 
 ignoreFiles:
   - "\\.rs$"
