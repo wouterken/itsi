@@ -1,6 +1,6 @@
 [package]
 name = "itsi-server"
-version = "0.1.18"
+version = "0.1.19"
 edition = "2021"
 authors = ["Wouter Coppieters <wc@pico.net.nz>"]
 license = "MIT"
@@ -57,7 +57,10 @@ pin-project = "1.1.9"
 rand = "0.9.0"
 rcgen = { version = "0.13.2", features = ["x509-parser", "pem"] }
 regex = "1.11.1"
-reqwest = { version = "0.12.15", features = ["stream"] }
+reqwest = { version = "0.12.15", features = [
+  "stream",
+  "rustls-tls",
+], default-features = false }
 redis = { version = "0.29.2", features = [
   "tokio-comp",
   "r2d2",

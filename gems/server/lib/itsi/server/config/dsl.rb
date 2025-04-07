@@ -113,7 +113,7 @@ module Itsi
           endpoint(route, [:patch], app_proc, nonblocking: nonblocking,  &blk)
         end
 
-        def endpoint(route, methods=[], app_proc = nil, nonblocking: false, &blk)
+        def endpoint(route=nil, methods=[], app_proc = nil, nonblocking: false, &blk)
           raise "You must provide either a block or an explicit handler for the endpoint" if app_proc.nil? && blk.nil?
 
           app_proc = @controller.method(app_proc).to_proc if app_proc.is_a?(Symbol)
@@ -139,14 +139,18 @@ module Itsi
           end
 
 
-          if route && methods.any?
+          if route || methods.any?
             # For endpoints, it's usually assumed trailing slash and non-trailing slash behaviour is the same
             routes = route == "/" ? ["", "/"] : [route]
             location(*routes, methods: methods) do
               @middleware[:app] = { preloader: -> { app_proc }, nonblocking: nonblocking }
             end
           else
-            @middleware[:app] = { preloader: -> { app_proc }, nonblocking: nonblocking }
+            app = { preloader: -> { app_proc }, nonblocking: nonblocking }
+            @middleware[:app] = app
+            location("*") do
+              @middleware[:app] = app
+            end
           end
         end
 
@@ -178,12 +182,21 @@ module Itsi
         end
 
         def run(app, sendfile: true, nonblocking: false, path_info: "/")
-          @middleware[:app] = { preloader: -> { Itsi::Server::RackInterface.for(app) }, sendfile: sendfile, base_path: "^(?<base_path>#{paths_from_parent.gsub(/\.\*\)$/, ')')}).*$", path_info: path_info, nonblocking: nonblocking }
+          app_args = { preloader: -> { Itsi::Server::RackInterface.for(app) }, sendfile: sendfile, base_path: "^(?<base_path>#{paths_from_parent.gsub(/\.\*\)$/, ')')}).*$", path_info: path_info, nonblocking: nonblocking }
+          base_path =  "^(?<base_path>#{paths_from_parent.gsub(/\.\*\)$/, ')')}).*$"
+          @middleware[:app] = app_args
+          location("*") do
+            @middleware[:app] = app_args
+          end
         end
 
         def rackup_file(rackup_file, nonblocking: false, sendfile: true, path_info: "/")
           raise "Rackup file #{rackup_file} doesn't exist" unless File.exist?(rackup_file)
-          @middleware[:app] = { preloader: -> { Itsi::Server::RackInterface.for(rackup_file) }, sendfile: sendfile, base_path: "^(?<base_path>#{paths_from_parent.gsub(/\.\*\)$/, ')')}).*$", path_info: path_info, nonblocking: nonblocking }
+          app_args = { preloader: -> { Itsi::Server::RackInterface.for(rackup_file) }, sendfile: sendfile, base_path: "^(?<base_path>#{paths_from_parent.gsub(/\.\*\)$/, ')')}).*$", path_info: path_info, nonblocking: nonblocking }
+          @middleware[:app] = app_args
+          location("*") do
+            @middleware[:app] = app_args
+          end
         end
 
         def include(path)

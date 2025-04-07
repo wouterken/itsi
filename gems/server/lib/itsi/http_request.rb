@@ -29,6 +29,7 @@ module Itsi
       path = self.path
       host = self.host
       version = self.version
+
       {
         "SERVER_SOFTWARE" => "Itsi",
         "SCRIPT_NAME" => script_name,
