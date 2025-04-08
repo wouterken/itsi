@@ -10,12 +10,16 @@ module Itsi
     INTERCEPTED_SIGNALS = ["INT"].freeze
 
     def trap(signal, *args, &block)
-      unless INTERCEPTED_SIGNALS.include?(signal.to_s) && block.nil? && Itsi::Server.running?
+      unless INTERCEPTED_SIGNALS.include?(signal.to_s) && block.nil? && server_running?
         return super(signal, *args, &block)
       end
 
       Itsi::Server.reset_signal_handlers
       nil
+    end
+
+    def server_running?
+      Itsi::Server.respond_to?(:running) && Itsi::Server.running?
     end
   end
 end

@@ -79,9 +79,8 @@ module RubyLsp
               detail: option.detail,
               description: option.documentation
             ),
-            # Leave documentation nil initially so that the resolve handler can fill it in.
             documentation: Interface::MarkupContent.new(
-              kind: Constant::MarkupKind::MARKDOWN,
+              kind: Constant::MarkupKind::PLAIN_TEXT,
               value: option.documentation
             ),
             insert_text: option.insert_text,

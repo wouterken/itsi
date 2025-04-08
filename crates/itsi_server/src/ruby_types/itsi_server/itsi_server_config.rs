@@ -101,6 +101,11 @@ impl ServerParams {
         Ok(())
     }
 
+    pub async fn initialize_middleware(self: &Arc<Self>) -> Result<()> {
+        self.middleware.get().unwrap().initialize_layers().await?;
+        Ok(())
+    }
+
     fn from_rb_hash(rb_param_hash: RHash) -> Result<ServerParams> {
         let workers = rb_param_hash
             .fetch::<_, Option<u8>>("workers")?
@@ -391,7 +396,7 @@ impl ItsiServerConfig {
     pub fn print_config_errors(errors: Vec<String>) {
         error!("Refusing to reload configuration due to fatal errors:");
         for error in errors {
-            error!("{}", error);
+            eprintln!("{}", error);
         }
     }
 

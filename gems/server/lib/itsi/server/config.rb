@@ -118,7 +118,21 @@ module Itsi
           errors.flat_map do |(error, message)|
             location =  message[/(.*?)\:in/,1]
             file, lineno = location.split(":")
-            [error.message, "#{location}: >> `#{IO.readlines(file)[lineno.to_i - 1]}`"]
+            lineno = lineno.to_i
+            err_message = error.kind_of?(NoMethodError) ? error.detailed_message : error.message
+            file_lines = IO.readlines(file)
+            [
+              err_message,
+              "   --> #{File.expand_path(file)}:#{lineno}",
+              *(([lineno-2, 0].max...[file_lines.length, lineno.succ.succ].min).map do |currline|
+                [
+                  " #{currline.succ.to_s.rjust(3)} | #{file_lines[currline].strip}",
+                  if currline == lineno-1
+                    "     | ^^^ "
+                  end
+                ].compact
+              end.flatten)
+            ]
           end
         ]
       end

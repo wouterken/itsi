@@ -238,7 +238,7 @@ impl SingleMode {
         runtime.block_on(
           async  {
               let server_params = self.server_config.server_params.read().clone();
-              server_params.middleware.get().unwrap().initialize_layers().await?;
+              server_params.initialize_middleware().await?;
               let tokio_listeners = server_params.listeners.lock()
                   .drain(..)
                   .map(|list| {

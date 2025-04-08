@@ -5,7 +5,7 @@ module Itsi
         require_relative "option"
 
 
-        attr_reader :parent, :children, :middleware, :controller_class, :routes, :methods, :protocols,
+        attr_reader :parent, :children, :middleware, :controller_class, :routes, :http_methods, :protocols,
                     :hosts, :ports, :extensions, :content_types, :accepts, :options
 
         def self.evaluate(config = Itsi::Server::Config.config_file_path, &blk)
@@ -42,7 +42,7 @@ module Itsi
 
           @controller = controller
           @routes = Array(routes).flatten
-          @methods = methods.map { |s| s.is_a?(Regexp) ? s : s.to_s }
+          @http_methods = methods.map { |s| s.is_a?(Regexp) ? s : s.to_s }
           @protocols = protocols.map { |s| s.is_a?(Regexp) ? s : s.to_s }
           @hosts = hosts.map { |s| s.is_a?(Regexp) ? s : s.to_s }
           @ports = ports.map { |s| s.is_a?(Regexp) ? s : s.to_s }
@@ -153,10 +153,10 @@ module Itsi
           end
 
 
-          if route || methods.any?
+          if route || http_methods.any?
             # For endpoints, it's usually assumed trailing slash and non-trailing slash behaviour is the same
             routes = route == "/" ? ["", "/"] : [route]
-            location(*routes, methods: methods) do
+            location(*routes, methods: http_methods) do
               @middleware[:app] = { preloader: -> { app_proc }, nonblocking: nonblocking }
             end
           else
@@ -323,7 +323,7 @@ module Itsi
             @children << DSL.new(
               self,
               routes: routes,
-              methods: Array(methods) | self.methods,
+              methods: Array(methods) | self.http_methods,
               protocols: Array(protocols) | self.protocols,
               hosts: Array(hosts) | self.hosts,
               ports: Array(ports) | self.ports,
@@ -499,7 +499,7 @@ module Itsi
             result << deep_stringify_keys(
               {
                 route: Regexp.new("^#{route_options}/?$"),
-                methods: @methods.any? ? @methods : nil,
+                methods: @http_methods.any? ? @http_methods : nil,
                 protocols: @protocols.any? ? @protocols : nil,
                 hosts: @hosts.any? ? @hosts : nil,
                 ports: @ports.any? ? @ports : nil,

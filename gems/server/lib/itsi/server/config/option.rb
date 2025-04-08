@@ -31,6 +31,7 @@ Dir[File.expand_path(File.dirname(__FILE__) + "/options/**.rb")].each do |file|
 
   documentation_file = "#{file[/(.*)\.rb/,1]}.md"
   if File.exist?(documentation_file)
-    new_class.documentation IO.read(documentation_file)
+    new_class.documentation IO.read(documentation_file).gsub(/\s*-+.*?\n.*?-+/m,'').gsub(/^(```.*?)\{.*?\}/, "\\1")
+
   end
 end

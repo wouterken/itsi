@@ -242,12 +242,12 @@ impl ItsiHttpRequest {
             .parts
             .uri
             .path()
-            .strip_prefix(&self.script_name)
+            .strip_prefix(self.script_name()?)
             .unwrap_or(self.parts.uri.path()))
     }
 
     pub(crate) fn script_name(&self) -> MagnusResult<&str> {
-        Ok(&self.script_name)
+        Ok(self.script_name.trim_end_matches("/"))
     }
 
     pub(crate) fn query_string(&self) -> MagnusResult<&str> {
