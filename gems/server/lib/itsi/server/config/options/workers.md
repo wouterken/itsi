@@ -1,7 +1,7 @@
 ---
 title: Workers
-url: /features/workers
-prev: /features
+url: /options/workers
+prev: /options
 weight: 1
 ---
 Itsi is a preforking server. It can run as either a single process or in clustered mode.

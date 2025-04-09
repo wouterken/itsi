@@ -17,7 +17,6 @@ target/
 .terraform*
 terraform.tfstate*
 .itsi.pid
-sandbox/itsi_file/public
-sandbox/itsi_file/spa
+sandbox
 gems/scheduler/ext
 gems/server/ext

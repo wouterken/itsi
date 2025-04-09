@@ -2,8 +2,9 @@ module Itsi
   class Server
     module Config
       class DSL
+        require_relative "config_helpers"
         require_relative "option"
-
+        require_relative "middleware"
 
         attr_reader :parent, :children, :middleware, :controller_class, :routes, :http_methods, :protocols,
                     :hosts, :ports, :extensions, :content_types, :accepts, :options
@@ -18,7 +19,7 @@ module Itsi
             end
           end
           [config.options, config.errors]
-        rescue StandardError => e
+        rescue Exception => e
           [{}, [[e, e.backtrace[0]]]]
         end
 
@@ -71,16 +72,19 @@ module Itsi
         Option.subclasses.each do |option|
           option_name = option.option_name
           define_method(option_name) do |*args, **kwargs, &blk|
-            @options[option_name] = option.new(@parent, *args, **kwargs, &blk).build!
+            @options[option_name] = option.new(self, *args, **kwargs, &blk).build!
           rescue => e
             @errors << [e, caller[1]]
           end
         end
 
-        def threads(threads)
-          raise "Threads must be set at the root" unless @parent.nil?
-
-          @options[:threads] = [threads.to_i, 1].max
+        Middleware.subclasses.each do |middleware|
+          middleware_name = middleware.middleware_name
+          define_method(middleware_name) do |*args, **kwargs, &blk|
+            @middleware[middleware_name] = middleware.new(@parent, *args, **kwargs, &blk).build!
+          rescue => e
+            @errors << [e, caller[1]]
+          end
         end
 
         def oob_gc_responses_threshold(threshold)
@@ -93,12 +97,6 @@ module Itsi
           raise "Log level must be set at the root" unless @parent.nil?
 
           @options[:log_level] = level.to_s
-        end
-
-        def log_format(format)
-          raise "Log format must be set at the root" unless @parent.nil?
-
-          @options[:log_format] = format.to_s
         end
 
         def log_target(target)
@@ -341,9 +339,6 @@ module Itsi
           end
         end
 
-        def log_requests(**args)
-          @middleware[:log_requests] = args
-        end
 
         def allow_list(**args)
           args[:allowed_patterns] = Array(args[:allowed_patterns]).map do |pattern|

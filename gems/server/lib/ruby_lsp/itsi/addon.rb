@@ -40,14 +40,21 @@ module RubyLsp
         @node_context = node_context
         @dispatcher = dispatcher
 
+        @options_by_name = ::Itsi::Server::Config::Option.subclasses.group_by(&:option_name).map{|k,v| [k,v.first]}.to_h
+        @middlewares_by_name = ::Itsi::Server::Config::Middleware.subclasses.group_by(&:middleware_name).map{|k,v| [k,v.first]}.to_h
         # Register for call nodes for hover events
         dispatcher.register(self, :on_call_node_enter)
       end
 
       def on_call_node_enter(node)
-        if (matched_class = ::Itsi::Server::Config::Option.subclasses.find { |sc| sc.option_name == node.message.to_sym })
+        if (matched_class = @options_by_name[node.message.to_sym])
           @response_builder.push(
-            "Method **#{matched_class.option_name}**\n\n#{matched_class.documentation}",
+            matched_class.documentation,
+            category: :documentation
+          )
+        elsif (matched_class = @middlewares_by_name[node.message.to_sym])
+          @response_builder.push(
+            matched_class.documentation,
             category: :documentation
           )
         end
@@ -84,6 +91,27 @@ module RubyLsp
               value: option.documentation
             ),
             insert_text: option.insert_text,
+            insert_text_format: Constant::InsertTextFormat::SNIPPET,
+            data: {
+              delegateCompletion: true
+            }
+          )
+          @response_builder << completion_item
+        end
+
+        ::Itsi::Server::Config::Middleware.subclasses.each do |middleware|
+          completion_item = Interface::CompletionItem.new(
+            label: middleware.middleware_name,
+            kind: Constant::CompletionItemKind::METHOD,
+            label_details: Interface::CompletionItemLabelDetails.new(
+              detail: middleware.detail,
+              description: middleware.documentation
+            ),
+            documentation: Interface::MarkupContent.new(
+              kind: Constant::MarkupKind::PLAIN_TEXT,
+              value: middleware.documentation
+            ),
+            insert_text: middleware.insert_text,
             insert_text_format: Constant::InsertTextFormat::SNIPPET,
             data: {
               delegateCompletion: true

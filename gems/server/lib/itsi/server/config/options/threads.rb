@@ -9,15 +9,10 @@ module Itsi
 
         detail "Number of threads to run per worker"
 
-        def initialize(parent, threads=1)
-          @parent = parent
-          @threads = threads
-          raise "Thread count must be a positive integer" unless threads.is_a?(Integer) && threads > 0
+        schema do
+          Range(1..255)
         end
 
-        def build!
-          workers
-        end
       end
     end
   end

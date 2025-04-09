@@ -1,8 +1,12 @@
+
 workers 1
 threads 1
-fiber_scheduler true
 
 scheduler_threads 1
+
+log_requests \
+  before: { level: 'INFO', format: "I am the eggman" },
+  after: { level: "INFO", format: "[{request_id}] └─ {status} in {response_time}" }
 
 request_timeout 2
 
@@ -13,8 +17,6 @@ bind 'http://localhost:3000'
 shutdown_timeout 10
 
 auto_reload_config!
-
-log_format :plain
 
 get "/root" do |req|
   req.ok "Got from root"
@@ -471,3 +473,8 @@ run(->(env){
 # Example with both caching and ETags
 
 # Simple ETag test endpoint with predictable content
+
+
+log_requests \
+  before: { level: 'INFO', format: "I am the eggman" },
+  after: { level: "INFO", format: "[{request_id}] └─ {status} in {response_time}" }

@@ -1,49 +1,24 @@
-- Give opportunity to route to default error pages
 
-- Allow List/Deny List/Intrusion Protection
-  - Default error response:
-    403 (HTML + JSON). Supports override
-
-- Auth API key/Basic/JWT
-  - Default error response:
-    401 (HTML + JSON). Supports override
-
-- Rate Limiter
-  - Default error response:
-    429 (HTML + JSON). Supports override
-
-- Max Body Size Filter
-  - Default error response:
-    413 (HTML + JSON). Supports override
-
-- Proxy:
-  - All of them.
-    - 502, 503, 504 AND add cycling through backends on failures.
-
-
-Polish and Release (At Lake):
-  - Add Itsi mascott to all pages (default app, error pages)
-  - Offer password hash generation, and load from files for basic auth, api key, jwt.
-  - Script name derived from location in hierarchy instead of a static param.
-  - Optional timeout for itsi service. Optional force kill of thread.
-  - Revamp error system (look at Anyhow):
-     Better internal errors (Break things on purpose and see how quickly we can detect where. Make clear when specific middleware fails)
-  - Establish pattern for separate files for dsl feature, accumulated errors, ruby-dsl and "Did you mean" function.
-  - Faster/slicker default app, and static file serve page.
-  - Performant Request convenience functions (body JSON, body form-encoded, file uploads)-- Performant Response convenience functions respond_json, respond_html, respond_file
-  - Optimize static file server
-
-Feature complete!
-
--- Feature breakdown. For each feature make sure we have
+Feature complete. Polish and Release (At Lake):
+-- Feature breakdown. Per feature make sure we have
 --- Clean Code
 --- Ultra robust config, with sane and safe defaults.
 --- Complete Documentation (Readme + Blog)
 --- Tests.
---- Debug Logging
+--- Targetable Debug Logging
 --- Parameters for everything
---- No unwrap
+--- Go on unwrap hunt
 --- Beautiful LSP and did you mean integration
+Changelog.md
+Remove sandbox, add examples
+Publish Dockerfile
+
+Missing Features:
+-- Config file testing
+-- Targetable Debug Logging
+-- Nicer route print in middleware
+-- CSP Reporting
+-- Fix default config (make sane choices)
 
 - Feature List:
 -- HTTP
@@ -56,9 +31,9 @@ Feature complete!
 -- Streaming Bodies
 -- Rate Limiter
 -- Auth JWT/Basic/API
--- gRPC
--- File Watcher
--- Allow/Deny
+-- gRPC Server (Plug in existing Ruby gRPC handlers)
+-- File Watcher and auto-reloading
+-- Allow/Deny lists
 -- Cache control
 -- compression
 -- CORS
@@ -74,28 +49,36 @@ Feature complete!
 -- Logging
 -- Cluster
 -- Single
--- Restart
--- Stream body
--- Thread high/low
+-- Graceful and Hot Restart
+-- Streaming body
 -- Unix Sockets
--- Uneven request distribution (Retry central acceptor, core affinity)
--- Mini apps, one-file sites.
--- Lsp and Did you mean
+-- Support for running high-performance mini-apps, written and served directly from the singular Itsi.rb configuration file.
+-- Well documented complete with LSP support.
 -- Author Final default Itsi-file
 -- Add notes on: PGGSSENCMODE="disable" and OBJC_DISABLE_INITIALIZE_FORK_SAFETY=
 
-
 Later:
 - OTel
-- Optimize Hash creation for Rack
+- Even faster Hash creation for Rack
 - Image resizer
 - First class Rackless Websockets
 - Implement better Request timeouts (non-fiber mode. Kill stuck threads. Default to nil)
 - Print out warning if we can detect that a location block will never be hit.
-- Optimize: Avoid double encoding in compression filter if already compressed
 - Built in obs Dashboard + Stats
 - Support UDP
 - Support unix socket proxy
--- Hunt down sporradic bad file desc during tests
 -- WASM pluggable middleware
--- proto proxy
+-- gRPC proxying
+
+
+
+-- Stretch goals:
+  - H3
+  - OpenAPI gen
+  - Finish Single acceptor mode (Optional)
+    - Introduce Option
+    - Finish Unix implementation
+    - Kill a single worker (impact)
+    - Clean shutdown and restart while in single acceptor mode
+    - Fix Hang
+    - Introduce Socket Options

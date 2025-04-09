@@ -3,6 +3,7 @@
 module Itsi
   class Server
     module Config
+      require_relative "config/typed_struct"
       require_relative "config/dsl"
       require_relative "default_app/default_app"
 
@@ -121,17 +122,22 @@ module Itsi
             lineno = lineno.to_i
             err_message = error.kind_of?(NoMethodError) ? error.detailed_message : error.message
             file_lines = IO.readlines(file)
-            [
-              err_message,
-              "   --> #{File.expand_path(file)}:#{lineno}",
-              *(([lineno-2, 0].max...[file_lines.length, lineno.succ.succ].min).map do |currline|
+            info_lines = if error.kind_of?(SyntaxError)
+              []
+            else
+              ([lineno-2, 0].max...[file_lines.length, lineno.succ.succ].min).map do |currline|
                 [
                   " #{currline.succ.to_s.rjust(3)} | #{file_lines[currline].strip}",
                   if currline == lineno-1
                     "     | ^^^ "
                   end
                 ].compact
-              end.flatten)
+              end.flatten
+            end
+            [
+              err_message,
+              "   --> #{File.expand_path(file)}:#{lineno}",
+              *info_lines
             ]
           end
         ]

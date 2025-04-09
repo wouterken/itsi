@@ -1,6 +1,6 @@
 ---
 title: Threads
-url: /features/threads
+url: /options/threads
 weight: 2
 ---
 Itsi supports running in threaded mode. Threaded mode is helpful for applications that require high concurrency and low latency.
@@ -19,7 +19,7 @@ threads 1
 ```
 
 ```ruby {filename="Itsi.rb"}
-# Each worker will start 4 threads (total available concurrency is equal)
+# Each worker will start 4 threads
 threads 4
 ```
 

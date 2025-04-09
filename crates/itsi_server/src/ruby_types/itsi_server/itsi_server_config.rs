@@ -339,25 +339,36 @@ impl ItsiServerConfig {
     }
 
     pub fn get_config_errors(&self) -> Option<Vec<String>> {
-        let errors = call_with_gvl(|ruby| {
+        let rb_param_hash = call_with_gvl(|ruby| {
             let inner = self
                 .itsi_config_proc
                 .as_ref()
                 .clone()
                 .map(|hv| hv.clone().inner());
             let cli_params = self.cli_params.cloned();
-            let itsifile_path = self.itsifile_path.as_ref().cloned();
-            let (_, errors): (RHash, Vec<String>) = ruby
+            let itsifile_path = self.itsifile_path.clone();
+
+            let (rb_param_hash, errors): (RHash, Vec<String>) = ruby
                 .get_inner_ref(&ITSI_SERVER_CONFIG)
                 .funcall(*ID_BUILD_CONFIG, (cli_params, itsifile_path, inner))
                 .unwrap();
-            errors
+            if !errors.is_empty() {
+                return Err(errors);
+            }
+            Ok(rb_param_hash)
         });
-
-        if errors.is_empty() {
-            None
-        } else {
-            Some(errors)
+        match rb_param_hash {
+            Ok(rb_param_hash) => match ServerParams::from_rb_hash(rb_param_hash) {
+                Ok(test_params) => {
+                    if let Err(err) = Arc::new(test_params).preload_ruby() {
+                        let err_val = call_with_gvl(|_| format!("{}", err));
+                        return Some(vec![err_val]);
+                    }
+                    None
+                }
+                Err(err) => Some(vec![format!("{:?}", err)]),
+            },
+            Err(err) => Some(err),
         }
     }
 

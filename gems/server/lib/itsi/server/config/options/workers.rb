@@ -9,15 +9,10 @@ module Itsi
 
         detail "Number of worker processes to run"
 
-        def initialize(parent, workers=1)
-          @parent = parent
-          @workers = workers
-          raise "Worker count must be a positive integer" unless workers.is_a?(Integer) && workers > 0
+        schema do
+          Range(1..255)
         end
 
-        def build!
-          workers
-        end
       end
     end
   end

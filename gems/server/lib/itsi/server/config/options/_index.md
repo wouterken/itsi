@@ -1,10 +1,11 @@
 ---
-title: Features
+title: Options
 type: docs
-next: /features/server/lib/itsi/server/config/options/workers/
-url: /features
+next: /options/server/lib/itsi/server/config/options/workers/
+url: /options
 cascade:
   type: docs
+weight: 1
 ---
 
 Itsi is a powerful, flexible, and easy-to-use server-side framework for building web applications.

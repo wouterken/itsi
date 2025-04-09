@@ -41,13 +41,12 @@ module Itsi
           write_pid
           @running = server
           server.start
-          @running = false
+          @running = nil
           Signal.trap(:INT, previous_handler)
           server
         end
         background ? Thread.new(&run) : run[]
       rescue
-        exit(0)
       end
 
       def static(cli_params)

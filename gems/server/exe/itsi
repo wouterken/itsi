@@ -8,8 +8,8 @@ require "optparse"
 COMMANDS = {
   "init" => "Initialize a new Itsi.rb server configuration file",
   "status" => "Show the status of the server",
-  "start" => "Start the Isti server",
-  "serve" => "Start the Isti server",
+  "start" => "Start the Itsi server",
+  "serve" => "Start the Itsi server",
   "stop" => "Stop the server",
   "reload" => "Reload the server",
   "restart" => "Restart the server",

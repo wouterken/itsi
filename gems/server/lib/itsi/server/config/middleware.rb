@@ -1,7 +1,7 @@
 module Itsi
   class Server
     module Config
-      class Option
+      class Middleware
         include ConfigHelpers
       end
     end

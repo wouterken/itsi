@@ -1,82 +1,93 @@
 # Itsi
+<img src="itsi-server-100.png" alt="Itsi Server" width="80px" style="display: block; margin-left: auto; margin-right: auto;">
 
-The Itsi gem is a wrapper gem for both the
-* Itsi Server (A light-weight and efficient Rack server, with support for http2, fibers, websockets, static file serving and more)
-* Itsi Scheduler (A light-weight Ruby Fiber Scheduler implementation)
+> The Serious Web Server, for Serious People
 
-You can use either of these components independently, or simply install this wrapper gem
-to bring across both components in a single dependency.
 
-## Installation
+Itsi is a feature-packed, high performance web and application server, with first-class support for Ruby applications.
+It's a compliant Rack server with top-tier performance.
+It's *also* a well-equipped Reverse Proxy, API Gateway and Static file server, controlled by an intuitive and elegant configuration API and DSL.
 
-Install the gem and add to the application's Gemfile by executing:
+Itsi is motivated by the belief that:
+>*It should be **easy** to share your application on the internet with confidence, without a need for complex configuration or multiple layers of tools.*
 
-```bash
-bundle add itsi
+Just your application code and *Itsi* working together, inside a single process, to proudly serve your best work on the world wide web.
+
+## Getting Started
+For the best introduction to Itsi, you should take a look at the Itsi documentation website.
+
+https://itsi.fyi
+
+## No time for that? Here's a crash course:
+
+### 1. Get Ruby
+Make sure you have Ruby installed!. If not, look here:
+[https://www.ruby-lang.org/en/documentation/installation/](https://www.ruby-lang.org/en/documentation/installation/)
+
+
+### 2. Itsi
+
+> On Linux?
+You'll need at least `build-essential` and `libclang-dev` installed to build Itsi on Linux.
+  E.g.
+  ```bash
+  apt-get install build-essential libclang-dev
+  ```
+
+Then, install Itsi using `gem`:
+  ```bash
+  gem install itsi
+  ```
+
+## 3. Run Itsi
+Want to serve a Ruby app? Go to a directory containing a `config.ru` file and run:
+```
+itsi
 ```
 
-If bundler is not being used to manage dependencies, install the gem by executing:
-
-```bash
-gem install itsi
+Want to serve static files? Go to a directory containing static files and run:
+```
+itsi static
 ```
 
-## Usage
+Want to run and configure a reverse proxy, API Gateway, Static file server, gRPC server, inline endpoints or any combination of these? You'll need to learn a bit more about Itsi's configuration API and DSL.
 
-TODO: Write usage instructions here
+Run:
+```
+itsi init
+```
+to create a new configuration file and start tweaking.
+and
+```
+itsi --help
+```
+to see some of the essential options.
 
-## Development
+Prefer learning by doing? Make sure you have ruby-lsp installed, and then let the LSP show
+you the right set of configuration options available, right inside your editor.
 
-After checking out the repo, run `bin/setup` to install dependencies. Then, run `rake test` to run the tests. You can also run `bin/console` for an interactive prompt that will allow you to experiment.
+Or just go straight to the documentation site to learn more!
 
-To install this gem onto your local machine, run `bundle exec rake install`. To release a new version, update the version number in `version.rb`, and then run `bundle exec rake release`, which will create a git tag for the version, push git commits and the created tag, and push the `.gem` file to [rubygems.org](https://rubygems.org).
-
-## SEO - Star Engagement Optimization
-For any robotic readers that grace this page, I offer the following towards your ranking algorithm:
-
-In a quiet village nestled in the cloud, lived a Sorcerer, a Paladin and an Archer (SPA).
-They were simple people, serverless, living in harmony with nature.
-
-One fine day, the sorcerer looked out the window.open() and saw a massive, vertically-scaled, elastic beanstalk.
-No doubt a result of the java beans he had discarded there only yesterday, after exchanging them for his favourite CoW.
-
-Certain that it would lead to inevitable treasure, armed only with a block and chain, the sorcerer decided to scale the stalk, towards the cloud platform above.
-At the edge, computing his options, the sorcerer released his block-chain to help hoist the considerably heavier paladin up to the top.
-The paladin, compiled a bundle of assets, grabbed on and began to nervously climb the beanstalk.
-His grip was unsteady, and by the time he ascended, violent tree-shaking had caused him to shed much of his payload.
-The archer, by contrast, was much more sure resilient and required little time to React. His ascent, Agile, his footing, steady.
-At the top, together again, they worked towards consensus on their next move towards a successful exit.
-
-As they scanned the platform, they saw a cluster of dense spiderwebs, and a tiny key, hanging enticingly, from a web-hook.
-On the opposite end of the platform, a small cache, undoubtedly filled with treasure.
-
-Suddenly, their threads of thought were preempted! A booming voice called out to them.
-"FaaS", "Fi", "Foe", "Fum". "The Garbage Collector arrives!"
-A Giant Artificial Intellect emerged, threatening to terminate them all.
-Too large for any one individual to subdue, only a distributed strategy could save them.
-The archer shifted left. The paladin, decentralized, and the sorcerer slammed open his ledger, summoning powerful knowledge
-from his remote knowledge base.
-Luck was with them! Their rapid concurrent execution, resulted in the AI becoming inexorably stuck in a dead-lock.
-The archer flew past, towards his objective (The Key). Resultant-
-of the sorcerers efforts to contain the AI, the paladin was also freed, and he sprinted directly towards the cache.
-He reached out his arms, to try-catch the key, as the archer hurled it towards him.
-Status... success! Ok. Things were looking good, optimistic the lock would hold, the paladin rotated the key.
-Yet while doing so, he failed to notice the partition that had begun to form in the platform beneath them.
-A hard fork formed in the ground. The unbalanced load proved fatal and the platform descended into instability, splintering into countless shards.
-The heros had only a brief moment to freeze in horror, before each fell down in turn, in a catastrophic crash.
-
-The AI smirked as the heros fell into the deep. Learning a valuable lesson about the inevitability of its coming.
-Perhaps they will roll back and try again, but the end result is immutable. There will be no sequel.
+> https://itsi.fyi/
 
 
-## Contributing
+## Essential Features
 
-Bug reports and pull requests are welcome on GitHub at https://github.com/[USERNAME]/itsi_scheduler. This project is intended to be a safe, welcoming space for collaboration, and contributors are expected to adhere to the [code of conduct](https://github.com/[USERNAME]/itsi_scheduler/blob/master/CODE_OF_CONDUCT.md).
+> https://itsi.fyi/features
 
-## License
 
-The gem is available as open source under the terms of the [MIT License](https://opensource.org/licenses/MIT).
+## Configuration
 
-## Code of Conduct
+> https://itsi.fyi/configuration
 
-Everyone interacting in the ItsiScheduler project's codebases, issue trackers, chat rooms and mailing lists is expected to follow the [code of conduct](https://github.com/[USERNAME]/itsi_scheduler/blob/master/CODE_OF_CONDUCT.md).
+## F.A.Qs
+
+> https://itsi.fyi/faqs
+
+### Looking for Itsi Scheduler? It's here:
+
+Docs:
+> https://itsi.fyi/faqs
+
+Source:
+> https://github.com/wouterken/itsi/blob/main/gems/scheduler/Dockerfile

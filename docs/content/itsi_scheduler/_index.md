@@ -1,3 +1,10 @@
+---
+title: Itsi Scheduler
+type: docs
+weight: 4
+sidebar:
+  exclude: true
+---
 <img src="itsi-scheduler-100.png"  width="80px" style="display: block; margin-left: auto; margin-right: auto;">
 
 `Itsi Scheduler` is an implementation of a Ruby [Fiber Scheduler](https://docs.ruby-lang.org/en/3.2/Fiber/Scheduler.html).
@@ -24,25 +31,52 @@ that synchronous and asynchronous code is identical! (I.e. Ruby's functions are 
 ## Getting Started
 To install and use Itsi Scheduler follow the below instructions:
 
+{{% steps %}}
+
 
 ### 1 - Install Itsi Scheduler
 
-**Prerequisites**
+{{< tabs items="Linux,Mac,Windows" >}}
+  {{< tab >}}
+  **Prerequisites**
 
-You'll need at least `build-essential` and `libclang-dev` installed to build Itsi on Linux.
-E.g.
-```bash
-apt-get install build-essential libclang-dev
-```
+  You'll need at least `build-essential` and `libclang-dev` installed to build Itsi on Linux.
+  E.g.
+  ```bash
+  apt-get install build-essential libclang-dev
+  ```
 
-Then use `gem` to install the Itsi package. This will in turn install both the
-`itsi-server` gem, and the `itsi-scheduler` gem.
+  Then use `gem` to install the Itsi package. This will in turn install both the
+  `itsi-server` gem, and the `itsi-scheduler` gem.
 
 
-```bash
-gem install itsi-scheduler
-```
+  ```bash
+  gem install itsi-scheduler
+  ```
 
+  {{< callout type="info" >}}
+  Are you looking for Itsi server too? In this case, use `gem install itsi` (to get both Itsi scheduler and server)
+  Or `gem install itsi-server` to install just Itsi Server.
+  {{< /callout >}}
+
+  {{< /tab >}}
+  {{< tab >}}
+  **Mac**:
+  ```bash
+  gem install itsi-scheduler
+  ```
+  {{< callout type="info" >}}
+  Are you looking for Itsi server too? In this case, use `gem install itsi` (to get both Itsi scheduler and server)
+  Or `gem install itsi-server` to install just Itsi Server.
+  {{< /callout >}}
+
+  {{< /tab >}}
+  {{< tab >}}**Windows**: Itsi currently doesn't support native Windows builds, but it runs great on [https://learn.microsoft.com/en-us/windows/wsl/install](WSL).
+
+  Follow the linked instructions to Install a linux distribution like Ubuntu or Debian and then follow the instructions in the Linux tab.
+  {{< /tab >}}
+
+{{< /tabs >}}
 
 ### 2 - Use Itsi Scheduler
 
@@ -68,3 +102,4 @@ puts results.map(&:inspect)
 ```
 
 and run many blocking operations simultaneously all while occupying only a single Ruby thread!
+{{% /steps %}}
