@@ -1,24 +1,29 @@
-
-Feature complete. Polish and Release (At Lake):
--- Feature breakdown. Per feature make sure we have
---- Clean Code
---- Ultra robust config, with sane and safe defaults.
---- Complete Documentation (Readme + Blog)
---- Tests.
---- Targetable Debug Logging
---- Parameters for everything
---- Go on unwrap hunt
---- Beautiful LSP and did you mean integration
-Changelog.md
-Remove sandbox, add examples
-Publish Dockerfile
-
 Missing Features:
 -- Config file testing
 -- Targetable Debug Logging
 -- Nicer route print in middleware
 -- CSP Reporting
 -- Fix default config (make sane choices)
+-- Retest with async::scheduler
+-- Bundle a bunch of default intrusion protection rules.
+-- Parameterize header timeout
+-- Add additional socket params (and look for others)
+-- Go on unwrap hunt
+
+Feature complete! Polish and Release (At Lake):
+-- Feature breakdown. Per feature make sure we have
+--- Clean Code
+--- Ultra robust config, with sane and safe defaults.
+--- Complete Documentation (Readme + Blog)
+--- Tests.
+--- Targetable Debug Logging
+
+
+Fill in initial version in Changelog.md
+Fully remove sandbox, add examples
+Publish sample Dockerfile
+Retest in live environment
+*maybe* leave service running on live server to verify let's encrypt renewals.
 
 - Feature List:
 -- HTTP
@@ -62,15 +67,12 @@ Later:
 - Even faster Hash creation for Rack
 - Image resizer
 - First class Rackless Websockets
-- Implement better Request timeouts (non-fiber mode. Kill stuck threads. Default to nil)
 - Print out warning if we can detect that a location block will never be hit.
 - Built in obs Dashboard + Stats
 - Support UDP
 - Support unix socket proxy
--- WASM pluggable middleware
--- gRPC proxying
-
-
+- WASM pluggable middleware
+- gRPC proxying
 
 -- Stretch goals:
   - H3

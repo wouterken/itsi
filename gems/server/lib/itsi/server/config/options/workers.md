@@ -4,8 +4,8 @@ url: /options/workers
 prev: /options
 weight: 1
 ---
-Itsi is a preforking server. It can run as either a single process or in clustered mode.
-You can switch between the two without downtime.
+Itsi is a preforking server. It can run as either a single process (`workers 1`) or in clustered mode (`workers > 1`).
+<br/>You can switch between the two without downtime.
 
 ## Configuration File
 The number of workers to use can be specified inside the configuration file (usually `./Itsi.rb` at the project root)

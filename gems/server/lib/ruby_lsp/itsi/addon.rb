@@ -87,7 +87,7 @@ module RubyLsp
               description: option.documentation
             ),
             documentation: Interface::MarkupContent.new(
-              kind: Constant::MarkupKind::PLAIN_TEXT,
+              kind: Constant::MarkupKind::MARKDOWN,
               value: option.documentation
             ),
             insert_text: option.insert_text,
@@ -108,7 +108,7 @@ module RubyLsp
               description: middleware.documentation
             ),
             documentation: Interface::MarkupContent.new(
-              kind: Constant::MarkupKind::PLAIN_TEXT,
+              kind: Constant::MarkupKind::MARKDOWN,
               value: middleware.documentation
             ),
             insert_text: middleware.insert_text,

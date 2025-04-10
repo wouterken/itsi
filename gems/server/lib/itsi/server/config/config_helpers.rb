@@ -18,7 +18,10 @@ module Itsi
 
             documentation_file = "#{file[/(.*)\.rb/,1]}.md"
             if File.exist?(documentation_file) && new_class
-              new_class.documentation IO.read(documentation_file).gsub(/^---.*?\n.*?-+/m,'').gsub(/^(```.*?)\{.*?\}.*$/, "\\1")
+              new_class.documentation IO.read(documentation_file)
+                .gsub(/^---.*?\n.*?-+/m,'') # Strip frontmatter
+                .gsub(/^(```.*?)\{.*?\}.*$/, "\\1") # Strip filename from code blocks
+                .gsub(/^\{\{[^\}]+\}\}/, "") # Strip Hugo blocks
             end
           end
         end

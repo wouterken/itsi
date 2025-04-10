@@ -3,8 +3,6 @@ module Itsi
     module Config
       class Workers < Option
 
-        attr_accessor :workers
-
         insert_text "workers ${1|1,2,Etc.nprocessors|}"
 
         detail "Number of worker processes to run"

@@ -164,6 +164,11 @@ module Itsi
         {
           Bool: Validation.new(:Bool, [[true, false]]),
           Required: Validation.new(:Required, ->(value) { !value.nil? }),
+          Or: ->(validation_a, validation_b){
+            Validation.new(:Or, ->(v){
+              validation_a.validate!(v) || validation_b.validate!(v)
+            })
+          },
           Range: ->(input_range) {
             Validation.new(:Range, [input_range])
           },

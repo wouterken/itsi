@@ -3,8 +3,6 @@ module Itsi
     module Config
       class Threads < Option
 
-        attr_accessor :threads
-
         insert_text "threads ${1|1,2,Etc.nprocessors|}"
 
         detail "Number of threads to run per worker"

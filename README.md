@@ -21,7 +21,7 @@ https://itsi.fyi
 ## No time for that? Here's a crash course:
 
 ### 1. Get Ruby
-Make sure you have Ruby installed!. If not, look here:
+Make sure you have Ruby installed! If not, look here:
 [https://www.ruby-lang.org/en/documentation/installation/](https://www.ruby-lang.org/en/documentation/installation/)
 
 
@@ -56,17 +56,18 @@ Run:
 ```
 itsi init
 ```
-to create a new configuration file and start tweaking.
-and
+to create a new `Itsi.rb` configuration file and start tweaking.
+
+Need help with the Itsi CLI?
 ```
 itsi --help
 ```
 to see some of the essential options.
 
-Prefer learning by doing? Make sure you have ruby-lsp installed, and then let the LSP show
-you the right set of configuration options available, right inside your editor.
+Prefer learning by doing? Make sure you have [ruby-lsp](https://shopify.github.io/ruby-lsp/) installed, and then let the LSP show
+you the right set of configuration options available inside `Itsi.rb`, from right inside your editor.
 
-Or just go straight to the documentation site to learn more!
+Or just go straight to the comprehensive documentation site to see it all!
 
 > https://itsi.fyi/
 
@@ -84,10 +85,10 @@ Or just go straight to the documentation site to learn more!
 
 > https://itsi.fyi/faqs
 
-### Looking for Itsi Scheduler? It's here:
+### Looking for Itsi Scheduler? Find it here:
 
 Docs:
-> https://itsi.fyi/faqs
+> https://itsi.fyi/itsi_scheduler
 
-Source:
-> https://github.com/wouterken/itsi/blob/main/gems/scheduler/Dockerfile
+Source Code:
+> https://github.com/wouterken/itsi/blob/main/gems/scheduler

@@ -1,9 +1,0 @@
-source "https://rubygems.org"
-
-gem "itsi-server", path: "../../gems/server"
-gem "itsi-scheduler", path: "../../gems/scheduler"
-
-gem 'rackup'
-gem 'sinatra'
-
-gem 'debug'

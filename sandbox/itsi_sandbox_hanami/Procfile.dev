@@ -1,2 +1,0 @@
-web: bundle exec hanami server
-assets: bundle exec hanami assets watch

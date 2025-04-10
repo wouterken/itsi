@@ -1,9 +1,16 @@
+---
+title: Itsi Scheduler
+type: docs
+weight: 4
+sidebar:
+  exclude: true
+---
 <img src="itsi-scheduler-100.png"  width="80px" style="display: block; margin-left: auto; margin-right: auto;">
 
 `Itsi Scheduler` is an implementation of a Ruby [Fiber Scheduler](https://docs.ruby-lang.org/en/3.2/Fiber/Scheduler.html).
 
-When combined with Itsi server, you can write endpoints that look and feel exactly like regular synchronous Ruby code,
-but behind the scenes, the scheduler will transparently yield and resume concurrent request fibers, to prevent threads from blocking and greatly increase concurrency in IO heavy workloads.
+When combined with Itsi Server, you can write endpoints that look and feel exactly like regular synchronous Ruby code,
+but behind the scenes, the scheduler will transparently yield and resume concurrent request fibers, to prevent threads from blocking and greatly increase throughput for IO heavy workloads.
 
 If you're purely after a light-weight, yet efficient Ruby scheduler,
 you can use Itsi Scheduler as a standalone scheduler for any Ruby application.
@@ -67,4 +74,4 @@ end.value
 puts results.map(&:inspect)
 ```
 
-and run many blocking operations simultaneously all while occupying only a single Ruby thread!
+to run many blocking operations simultaneously all while occupying only a single Ruby thread!

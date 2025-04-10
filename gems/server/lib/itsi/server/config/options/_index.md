@@ -8,9 +8,12 @@ cascade:
 weight: 1
 ---
 
-Itsi is a powerful, flexible, and easy-to-use server-side framework for building web applications.
+Most of Itsi's capabilities are unlocked via the Itsi.rb config file.
+The config file uses a simple DSL, where you can write plain Ruby to define your application's configuration.
+For the best development experience, be sure to use [RubyLSP](https://shopify.github.io/ruby-lsp/) for snippets, autocomplete and documentation, right in your editor.
 
-## Hello, World!
+{{< details title="An example Itsi.rb file" >}}
+
 
 ```ruby {filename="Itsi.rb"}
 workers 2
@@ -30,3 +33,4 @@ location "/app" do
 end
 
 ```
+{{< /details >}}

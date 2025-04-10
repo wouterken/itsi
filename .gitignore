@@ -20,3 +20,4 @@ terraform.tfstate*
 sandbox
 gems/scheduler/ext
 gems/server/ext
+.env*

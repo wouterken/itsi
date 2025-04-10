@@ -1,5 +1,0 @@
-source "https://rubygems.org"
-
-gem "roda"
-gem "itsi-server", path: "../../gems/server"
-gem "itsi-scheduler", path: "../../gems/scheduler"

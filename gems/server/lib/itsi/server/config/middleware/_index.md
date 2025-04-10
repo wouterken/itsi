@@ -13,7 +13,7 @@ Itsi Middleware stacks are modular in nature.
 You can pick and choose **just** the features that make sense for you,
 and apply these on a *location-by-location* basis.
 
-{{% details title="What's a location?" closed="true" %}}
+{{% details title="What's a location?" closed="false" %}}
 
 > A location in Itsi is similar to a Location in NGINX. It's a logical container for all requests matching some combination of:
 * Routes/Route expressions

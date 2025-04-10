@@ -3,8 +3,11 @@ title: Threads
 url: /options/threads
 weight: 2
 ---
-Itsi supports running in threaded mode. Threaded mode is helpful for applications that require high concurrency and low latency.
-Note, that while threading allows for concurrent execution of tasks, it also introduces additional overhead due to context switching between threads. This overhead can be significant, especially when dealing with a large number of concurrent tasks. To minimize this overhead, it's recommended to keep the number of threads low, and tune this parameter based on your specific use case.
+Itsi supports running in threaded mode. Spawning more than one thread per worker is helpful for applications that require high concurrency and low latency.
+
+Note, that while threading allows for concurrent execution of tasks, it also introduces additional overhead due to context switching between threads.
+This overhead can be significant, especially when dealing with a large number of concurrent tasks.
+To minimize this overhead, it's recommended to keep the number of threads low, and tune this parameter based on your specific use case.
 
 When running Itsi in blocking mode, the total number of concurrent requests will be equal to `workers` x `threads`
 
