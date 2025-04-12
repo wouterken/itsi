@@ -1,5 +1,4 @@
 require_relative "../helpers/test_helper"
-require 'debug'
 class TestCompression < Minitest::Test
 
   def test_supports_compression

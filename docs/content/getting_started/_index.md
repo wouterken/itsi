@@ -2,6 +2,8 @@
 title: Getting Started
 type: docs
 weight: 2
+prev: features/
+next: getting_started/local_development/
 ---
 
 {{% steps %}}
@@ -60,11 +62,12 @@ Install Ruby
 
 Great! You now have Itsi installed. Go to one of the following pages to learn how to use it:
 
+
 {{< cards >}}
-  {{< card link="../features" title="Essential Features" icon="star" >}}
-  {{< card link="../configuration" title="Configuration" icon="adjustments" >}}
-  {{< card link="../reverse_proxy" title="Reverse Proxy & Gateway" icon="arrow-circle-right" >}}
-  {{< card link="../for_rubyists" title="For Ruby Apps" icon="library" >}}
+  {{< card link="../features" title="Features" icon="star" >}}
+  {{< card link="../options" title="Options" icon="adjustments" >}}
+  {{< card link="../middleware" title="Middleware" icon="cog" >}}
+  {{< card link="https://github.com/wouterken/itsi" title="Source Code" icon="github" >}}
 {{< /cards >}}
 
 {{% /steps %}}

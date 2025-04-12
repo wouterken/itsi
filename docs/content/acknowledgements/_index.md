@@ -5,7 +5,7 @@ sidebar:
   exclude: true
 ---
 
-Itsi is **heavily** is dependent on and/or heavily inspired by a long list of related projects and individuals.
+Itsi has a long list of **critical** dependencies and **strong** influences.
 
 
 ## Key Dependencies

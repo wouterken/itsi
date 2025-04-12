@@ -18,6 +18,8 @@ module Itsi
           end
         when "compression"
           "compress(#{mw.last['algorithms'].join(' ')}, #{mw.last['mime_types']})"
+        when "cors"
+          "cors(#{mw.last['allow_origins'].join(' ')}, #{mw.last['allow_methods'].join(' ')})"
         else
           mw.first
         end

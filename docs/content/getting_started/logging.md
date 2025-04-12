@@ -2,6 +2,8 @@
 title: Logging
 type: docs
 weight: 4
+next: /configuration
+
 ---
 
 ## Targeted Logging

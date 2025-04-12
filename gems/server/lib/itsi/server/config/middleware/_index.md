@@ -3,11 +3,11 @@ title: Middleware
 type: docs
 next: /features/server/lib/itsi/server/config/options/workers/
 url: /middleware
+prev: options/
 cascade:
   type: docs
 weight: 2
 ---
-
 
 Itsi Middleware stacks are modular in nature.
 You can pick and choose **just** the features that make sense for you,

@@ -3,6 +3,8 @@ title: Options
 type: docs
 next: /options/server/lib/itsi/server/config/options/workers/
 url: /options
+next: workers/
+prev: configuration/
 cascade:
   type: docs
 weight: 1

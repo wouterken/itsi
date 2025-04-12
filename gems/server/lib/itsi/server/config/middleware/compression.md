@@ -2,6 +2,7 @@
 title: Compression
 url: /middleware/compression
 weight: 1
+prev: middleware/
 ---
 
 The compression middleware allows you to configure compression settings for your application.
@@ -45,7 +46,7 @@ You can enable several different compression algorithms, and choose to selective
 
 <br/>
 
-# Precompressed static_assets
+# Pre-compressed `static_assets`
 Itsi also supports serving pre-compressed static assets directly from the file-system.
 This is configured inside the `static_assets` middleware.
 Go to the [static_assets](/middleware/static_assets.md) middleware for more information.

@@ -3,7 +3,6 @@ module Itsi
     module Config
       class FiberScheduler < Option
 
-
         insert_text "fiber_scheduler ${1|true,'Itsi::Scheduler'|}"
 
         detail "Enable Fiber Scheduler mode"

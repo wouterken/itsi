@@ -13,11 +13,11 @@ use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Cors {
-    pub allowed_origins: Vec<String>,
-    pub allowed_methods: Vec<HttpMethod>,
-    pub allowed_headers: Vec<String>,
-    pub exposed_headers: Vec<String>,
+    pub allow_origins: Vec<String>,
+    pub allow_methods: Vec<HttpMethod>,
+    pub allow_headers: Vec<String>,
     pub allow_credentials: bool,
+    pub expose_headers: Vec<String>,
     pub max_age: Option<u64>,
 }
 
@@ -84,13 +84,13 @@ impl Cors {
         }
 
         // Only return a header if the origin is allowed.
-        if self.allowed_origins.iter().any(|o| o == origin || o == "*") {
+        if self.allow_origins.iter().any(|o| o == origin || o == "*") {
             // If credentials are allowed, we must echo back the exact origin.
             let value = if self.allow_credentials {
                 origin
             } else {
                 // If not, and if "*" is allowed, you can still use "*".
-                if self.allowed_origins.iter().any(|o| o == "*") {
+                if self.allow_origins.iter().any(|o| o == "*") {
                     "*"
                 } else {
                     origin
@@ -102,10 +102,10 @@ impl Cors {
             );
         }
 
-        if !self.allowed_methods.is_empty() {
+        if !self.allow_methods.is_empty() {
             headers.insert(
                 "Access-Control-Allow-Methods",
-                self.allowed_methods
+                self.allow_methods
                     .iter()
                     .map(HttpMethod::to_str)
                     .collect::<Vec<&str>>()
@@ -114,10 +114,10 @@ impl Cors {
                     .map_err(ItsiError::new)?,
             );
         }
-        if !self.allowed_headers.is_empty() {
+        if !self.allow_headers.is_empty() {
             headers.insert(
                 "Access-Control-Allow-Headers",
-                self.allowed_headers
+                self.allow_headers
                     .join(", ")
                     .parse()
                     .map_err(ItsiError::new)?,
@@ -135,10 +135,10 @@ impl Cors {
                 max_age.to_string().parse().map_err(ItsiError::new)?,
             );
         }
-        if !self.exposed_headers.is_empty() {
+        if !self.expose_headers.is_empty() {
             headers.insert(
                 "Access-Control-Expose-Headers",
-                self.exposed_headers
+                self.expose_headers
                     .join(", ")
                     .parse()
                     .map_err(ItsiError::new)?,
@@ -163,7 +163,7 @@ impl Cors {
         };
 
         if !self
-            .allowed_origins
+            .allow_origins
             .iter()
             .any(|allowed| allowed == "*" || allowed == origin)
         {
@@ -175,11 +175,7 @@ impl Cors {
             _ => return Ok(headers), // Missing request method – preflight fails
         };
 
-        if !self
-            .allowed_methods
-            .iter()
-            .any(|m| m.matches(request_method))
-        {
+        if !self.allow_methods.iter().any(|m| m.matches(request_method)) {
             return Ok(headers);
         }
 
@@ -191,7 +187,7 @@ impl Cors {
                 .collect();
             for header in req_headers_list {
                 if !self
-                    .allowed_headers
+                    .allow_headers
                     .iter()
                     .any(|allowed| allowed.eq_ignore_ascii_case(header))
                 {
@@ -203,7 +199,7 @@ impl Cors {
         headers.insert("Access-Control-Allow-Origin", origin.parse().unwrap());
         headers.insert(
             "Access-Control-Allow-Methods",
-            self.allowed_methods
+            self.allow_methods
                 .iter()
                 .map(HttpMethod::to_str)
                 .collect::<Vec<&str>>()
@@ -213,7 +209,7 @@ impl Cors {
         );
         headers.insert(
             "Access-Control-Allow-Headers",
-            self.allowed_headers
+            self.allow_headers
                 .join(", ")
                 .parse()
                 .map_err(ItsiError::new)?,
@@ -230,10 +226,10 @@ impl Cors {
                 max_age.to_string().parse().map_err(ItsiError::new)?,
             );
         }
-        if !self.exposed_headers.is_empty() {
+        if !self.expose_headers.is_empty() {
             headers.insert(
                 "Access-Control-Expose-Headers",
-                self.exposed_headers
+                self.expose_headers
                     .join(", ")
                     .parse()
                     .map_err(ItsiError::new)?,
@@ -273,7 +269,6 @@ impl MiddlewareLayer for Cors {
         Ok(either::Either::Left(req))
     }
 
-    // The after hook can be used to inject CORS headers into non-preflight responses.
     async fn after(
         &self,
         mut resp: HttpResponse,

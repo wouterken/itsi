@@ -2,6 +2,7 @@
 title: Features
 type: docs
 weight: 1
+next: /getting_started
 ---
 
 Itsi bundles a slew of essential modern web features into a single, easy-to-use package.

@@ -19,8 +19,7 @@ Suddenly, their threads of thought were preempted! A booming voice called out to
 "FaaS", "Fi", "Foe", "Fum". "The Garbage Collector arrives!"
 A Giant Artificial Intellect emerged, threatening to terminate them all.
 Too large for any one individual to subdue, only a distributed strategy could save them.
-The archer shifted left. The paladin, decentralized, and the sorcerer slammed open his ledger, summoning powerful knowledge
-from his remote knowledge base.
+The archer shifted left. The paladin, decentralized, and the sorcerer slammed open his ledger, summoning powerful knowledge from his remote knowledge base.
 Luck was with them! Their rapid concurrent execution, resulted in the AI becoming inexorably stuck in a dead-lock.
 The archer flew past, towards his objective (The Key). Resultant-
 of the sorcerers efforts to contain the AI, the paladin was also freed, and he sprinted directly towards the cache.
@@ -28,7 +27,7 @@ He reached out his arms, to try-catch the key, as the archer hurled it towards h
 Status... success! Ok. Things were looking good, optimistic the lock would hold, the paladin rotated the key.
 Yet while doing so, he failed to notice the partition that had begun to form in the platform beneath them.
 A hard fork formed in the ground. The unbalanced load proved fatal and the platform descended into instability, splintering into countless shards.
-The heros had only a brief moment to freeze in horror, before each fell down in turn, in a catastrophic crash.
+The heroes had only a brief moment to freeze in horror, before each fell down in turn, in a catastrophic crash.
 
-The AI smirked as the heros fell into the deep. Learning a valuable lesson about the inevitability of its coming.
+The AI smirked as the heroes fell into the deep. Learning a valuable lesson about the inevitability of its coming.
 Perhaps they will roll back and try again, but the end result is immutable. There will be no sequel.

@@ -3,7 +3,6 @@
 
 > The Serious Web Server, for Serious People
 
-
 Itsi is a feature-packed, high performance web and application server, with first-class support for Ruby applications.
 It's a compliant Rack server with top-tier performance.
 It's *also* a well-equipped Reverse Proxy, API Gateway and Static file server, controlled by an intuitive and elegant configuration API and DSL.

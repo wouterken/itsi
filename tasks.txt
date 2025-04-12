@@ -1,13 +1,25 @@
 Feature complete! Polish and Release (At Lake):
--- Feature breakdown. Per feature make sure we have
---- Clean Code
---- Debug logging
---- Ultra robust config, with sane and safe defaults.
---- Complete Documentation (Readme + Blog)
---- Nice middleware printing
---- Tests.
---- Targetable Debug Logging
---- Good default config value
+-- Feature breakdown. Per repeat the following list
+
+--- 1. General Code Review
+--- 2. Unit Tests
+--- 3. Add Debug logging
+--- 4. Migrate to new config DSL (Fuzz it!)
+--- 5. Finish Documentation (Ensure links in list work)
+--- 6. Ensure looks good in middleware
+
+
+WIP:
+- compression[DONE]
+- CORS
+
+
+--- 2. Unit Tests
+--- 3. Add Debug logging
+--- 1. [DONE]General Code Review
+--- 4. [DONE] Migrate to new config DSL (Fuzz it!)
+--- 5. [DONE] Finish Documentation (Ensure links in list work)
+--- 6. [DONE] Ensure looks good in middleware
 
 - Go on unwrap hunt
 

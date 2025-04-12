@@ -166,7 +166,6 @@ module Itsi
           Itsi.log_error("Config file is invalid")
           puts errors
         else
-        binding.b
           Itsi.log_info("Config file is valid")
         end
       end

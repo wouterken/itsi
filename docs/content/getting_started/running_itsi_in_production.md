@@ -2,7 +2,7 @@
 title: Running Itsi in Production
 type: docs
 weight: 3
-next: /configuration
+next: /getting_started/logging
 ---
 
 ## Docker
@@ -12,7 +12,7 @@ You can try Itsi in a Docker container using the official Itsi Docker image
 docker run -it --rm wouterken/itsi:latest
 ```
 
-See the source of this Dockerfile inside the [Github repository](https://github.com/wouterken/itsi/blob/main/Dockerfile).
+See the source of this Dockerfile inside the [Github repository](https://github.com/wouterken/itsi/blob/main/docker/Dockerfile).
 
 ## Signal Handling
 Itsi supports common signals such as SIGINT and SIGTERM for graceful termination by deployment scripts or container orchestration systems like
