@@ -38,8 +38,15 @@ module Itsi
         server = new(cli_params, itsi_file, blk)
         previous_handler = Signal.trap(:INT, :DEFAULT)
         run = lambda do
-          write_pid
           @running = server
+
+          if cli_params[:daemonize]
+            Itsi.log_info("Itsi is running in the background. Writing pid to #{Itsi::Server::Config.pid_file_path}")
+            Itsi.log_info("To stop Itsi, run 'itsi stop' from this directory.")
+            Process.daemon(true, false)
+          end
+          write_pid
+
           server.start
           @running = nil
           Signal.trap(:INT, previous_handler)
@@ -56,6 +63,15 @@ module Itsi
       def stop
         return unless pid = get_pid
         Process.kill(:INT, pid)
+        i = 0
+        while i < 10
+          sleep 0.25
+          unless get_pid(false)
+            puts "Itsi stopped"
+            break
+          end
+          i += 1
+        end
       end
 
       def stop_background_thread
@@ -67,17 +83,21 @@ module Itsi
         File.write(Itsi::Server::Config.pid_file_path, Process.pid)
       end
 
-      def get_pid
+      def get_pid(warn=true)
         pid = File.read(Itsi::Server::Config.pid_file_path).to_i
         if Process.kill(0, pid)
           pid
         else
-          puts "No server running"
+          warn ? puts("No server running") : nil
           nil
         end
       rescue StandardError
-        puts "No server running"
+        warn ? puts("No server running") : nil
         nil
+      end
+
+      def test
+        Itsi::Server::Config.test!(cli_params = {})
       end
 
       def init
@@ -135,7 +155,7 @@ module Itsi
 
       def status
         return unless pid = get_pid
-
+        Itsi.log_info("Itsi running on #{pid}")
         Process.kill(:USR2, pid)
       end
 

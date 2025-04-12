@@ -3,6 +3,7 @@ use std::{
     env,
     sync::{Mutex, OnceLock},
 };
+use tracing::Level;
 pub use tracing::{debug, error, info, trace, warn};
 use tracing_appender::rolling;
 use tracing_subscriber::fmt::writer::BoxMakeWriter;
@@ -110,7 +111,7 @@ fn build_fmt_layer(
                 .compact()
                 .with_file(false)
                 .with_line_number(false)
-                .with_target(false)
+                .with_target(true)
                 .with_thread_ids(false)
                 .with_writer(BoxMakeWriter::new(std::io::stdout))
                 .with_ansi(config.use_ansi)
@@ -119,7 +120,7 @@ fn build_fmt_layer(
                 .compact()
                 .with_file(false)
                 .with_line_number(false)
-                .with_target(false)
+                .with_target(true)
                 .with_thread_ids(false)
                 .with_writer(BoxMakeWriter::new(std::io::stdout))
                 .with_ansi(config.use_ansi)
@@ -133,7 +134,7 @@ fn build_fmt_layer(
                     .compact()
                     .with_file(false)
                     .with_line_number(false)
-                    .with_target(false)
+                    .with_target(true)
                     .with_thread_ids(false)
                     .with_writer(BoxMakeWriter::new(move || {
                         rolling::daily(".", file_clone.clone())
@@ -146,7 +147,7 @@ fn build_fmt_layer(
                         .compact()
                         .with_file(false)
                         .with_line_number(false)
-                        .with_target(false)
+                        .with_target(true)
                         .with_thread_ids(false)
                         .with_writer(BoxMakeWriter::new(move || {
                             rolling::daily(".", file_clone.clone())
@@ -165,7 +166,7 @@ fn build_fmt_layer(
                         .compact()
                         .with_file(false)
                         .with_line_number(false)
-                        .with_target(false)
+                        .with_target(true)
                         .with_thread_ids(false)
                         .with_writer(BoxMakeWriter::new(std::io::stdout))
                         .with_ansi(config.use_ansi);
@@ -173,7 +174,7 @@ fn build_fmt_layer(
                         .compact()
                         .with_file(false)
                         .with_line_number(false)
-                        .with_target(false)
+                        .with_target(true)
                         .with_thread_ids(false)
                         .with_writer(BoxMakeWriter::new(move || {
                             rolling::daily(".", file_clone.clone())
@@ -186,7 +187,7 @@ fn build_fmt_layer(
                         .compact()
                         .with_file(false)
                         .with_line_number(false)
-                        .with_target(false)
+                        .with_target(true)
                         .with_thread_ids(false)
                         .with_writer(BoxMakeWriter::new(std::io::stdout))
                         .with_ansi(config.use_ansi)
@@ -195,7 +196,7 @@ fn build_fmt_layer(
                         .compact()
                         .with_file(false)
                         .with_line_number(false)
-                        .with_target(false)
+                        .with_target(true)
                         .with_thread_ids(false)
                         .with_writer(BoxMakeWriter::new(move || {
                             rolling::daily(".", file_clone.clone())
@@ -302,6 +303,36 @@ pub fn set_format(new_format: &str) {
         update_fmt_layer(&config);
     } else {
         eprintln!("Current configuration not initialized; call init() first.");
+    }
+}
+pub fn set_target_filters(targets: Vec<(&str, Level)>) {
+    if let Some(reload_handle_mutex) = RELOAD_HANDLE.get() {
+        if let Ok(handle_guard) = reload_handle_mutex.lock() {
+            if let Some(handle) = handle_guard.as_ref() {
+                let mut new_filter = EnvFilter::new("");
+
+                if let Some(config_mutex) = CURRENT_CONFIG.get() {
+                    if let Ok(config) = config_mutex.lock() {
+                        if let Ok(directive) = config.level.parse() {
+                            new_filter = new_filter.add_directive(directive);
+                        }
+                    }
+                }
+
+                for (target, level) in targets {
+                    let directive_str = format!("{}={}", target, level);
+                    if let Ok(directive) = directive_str.parse() {
+                        new_filter = new_filter.add_directive(directive);
+                    }
+                }
+
+                if let Err(e) = handle.modify(|filter| *filter = new_filter) {
+                    eprintln!("Failed to update filter with target directives: {}", e);
+                }
+            }
+        }
+    } else {
+        eprintln!("Reload handle for filter not initialized; call init() first.");
     }
 }
 

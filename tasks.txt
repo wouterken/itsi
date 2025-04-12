@@ -1,28 +1,20 @@
-Missing Features:
--- Config file testing
--- Targetable Debug Logging
--- Nicer route print in middleware
--- CSP Reporting
--- Fix default config (make sane choices)
--- Retest with async::scheduler
--- Bundle a bunch of default intrusion protection rules.
--- Parameterize header timeout
--- Add additional socket params (and look for others)
--- Go on unwrap hunt
-
 Feature complete! Polish and Release (At Lake):
 -- Feature breakdown. Per feature make sure we have
 --- Clean Code
+--- Debug logging
 --- Ultra robust config, with sane and safe defaults.
 --- Complete Documentation (Readme + Blog)
+--- Nice middleware printing
 --- Tests.
 --- Targetable Debug Logging
+--- Good default config value
+
+- Go on unwrap hunt
 
 
-Fill in initial version in Changelog.md
-Fully remove sandbox, add examples
-Publish sample Dockerfile
+Fill in Changelog.md date
 Retest in live environment
+- Add examples
 *maybe* leave service running on live server to verify let's encrypt renewals.
 
 - Feature List:
@@ -42,6 +34,7 @@ Retest in live environment
 -- Cache control
 -- compression
 -- CORS
+-- CSP Reporting
 -- etag
 -- Intrusion Protection
 -- Proxy
@@ -75,6 +68,7 @@ Later:
 - gRPC proxying
 
 -- Stretch goals:
+  - HTTP-01 Autocert
   - H3
   - OpenAPI gen
   - Finish Single acceptor mode (Optional)

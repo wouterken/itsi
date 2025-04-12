@@ -7,8 +7,9 @@ use crate::{
     },
 };
 use derive_more::Debug;
+use futures::executor::block_on;
 use itsi_rb_helpers::{call_with_gvl, print_rb_backtrace, HeapValue};
-use itsi_tracing::{set_format, set_level, set_target};
+use itsi_tracing::{set_format, set_level, set_target, set_target_filters};
 use magnus::{
     block::Proc,
     error::Result,
@@ -27,7 +28,7 @@ use std::{
     sync::{Arc, OnceLock},
     time::Duration,
 };
-use tracing::error;
+use tracing::{debug, error};
 static DEFAULT_BIND: &str = "http://localhost:3000";
 static ID_BUILD_CONFIG: LazyId = LazyId::new("build_config");
 static ID_RELOAD_EXEC: LazyId = LazyId::new("reload_exec");
@@ -53,7 +54,9 @@ pub struct ServerParams {
     pub preload: bool,
 
     pub request_timeout: Option<Duration>,
+    pub header_read_timeout: Duration,
     pub notify_watchers: Option<Vec<(String, Vec<Vec<String>>)>>,
+
     /// Worker params
     pub threads: u8,
     pub scheduler_threads: Option<u8>,
@@ -70,26 +73,39 @@ pub struct ServerParams {
     listener_info: Mutex<HashMap<String, i32>>,
 }
 
+pub struct SocketOpts {
+    pub reuse_address: bool,
+    pub reuse_port: bool,
+    pub listen_backlog: usize,
+    pub nodelay: bool,
+    pub recv_buffer_size: usize,
+}
+
 impl ServerParams {
     pub fn preload_ruby(self: &Arc<Self>) -> Result<()> {
         call_with_gvl(|ruby| -> Result<()> {
+            debug!("Preloading Ruby");
             if self
                 .scheduler_class
                 .as_ref()
                 .is_some_and(|t| t == "Itsi::Scheduler")
             {
+                debug!("Loading Itsi Scheduler");
                 ruby.require("itsi/scheduler")?;
             }
-            let middleware = MiddlewareSet::new(
-                self.middleware_loader
-                    .call::<_, Option<Value>>(())
-                    .inspect_err(|e| {
-                        if let Some(err_value) = e.value() {
-                            print_rb_backtrace(err_value);
-                        }
-                    })?
-                    .map(|mw| mw.into()),
-            )?;
+            let routes_raw = self
+                .middleware_loader
+                .call::<_, Option<Value>>(())
+                .inspect_err(|e| {
+                    eprintln!("Error loading middleware: {:?}", e);
+                    if let Some(err_value) = e.value() {
+                        print_rb_backtrace(err_value);
+                    }
+                })?
+                .map(|mw| mw.into());
+            debug!("Middleware routes returned");
+            let middleware = MiddlewareSet::new(routes_raw)?;
+            debug!("Middleware loaded");
             self.middleware.set(middleware).map_err(|_| {
                 magnus::Error::new(
                     magnus::exception::runtime_error(),
@@ -140,6 +156,10 @@ impl ServerParams {
         let preload: bool = rb_param_hash.fetch("preload")?;
         let request_timeout: Option<u64> = rb_param_hash.fetch("request_timeout")?;
         let request_timeout = request_timeout.map(Duration::from_secs);
+        let header_read_timeout: Duration = rb_param_hash
+            .fetch::<_, Option<u64>>("header_read_timeout")?
+            .map(Duration::from_secs)
+            .unwrap_or(Duration::from_secs(1));
 
         let notify_watchers: Option<Vec<(String, Vec<Vec<String>>)>> =
             rb_param_hash.fetch("notify_watchers")?;
@@ -153,6 +173,23 @@ impl ServerParams {
         let log_level: Option<String> = rb_param_hash.fetch("log_level")?;
         let log_target: Option<String> = rb_param_hash.fetch("log_target")?;
         let log_format: Option<String> = rb_param_hash.fetch("log_format")?;
+        let log_target_filters: Option<Vec<String>> = rb_param_hash.fetch("log_target_filters")?;
+
+        let reuse_address: bool = rb_param_hash
+            .fetch::<_, Option<bool>>("reuse_address")?
+            .unwrap_or(true);
+        let reuse_port: bool = rb_param_hash
+            .fetch::<_, Option<bool>>("reuse_port")?
+            .unwrap_or(true);
+        let listen_backlog: usize = rb_param_hash
+            .fetch::<_, Option<usize>>("listen_backlog")?
+            .unwrap_or(1024);
+        let nodelay: bool = rb_param_hash
+            .fetch::<_, Option<bool>>("nodelay")?
+            .unwrap_or(true);
+        let recv_buffer_size: usize = rb_param_hash
+            .fetch::<_, Option<usize>>("recv_buffer_size")?
+            .unwrap_or(262_144);
 
         if let Some(level) = log_level {
             set_level(&level);
@@ -166,6 +203,22 @@ impl ServerParams {
             set_format(&format);
         }
 
+        if let Some(target_filters) = log_target_filters {
+            let target_filters = target_filters
+                .iter()
+                .filter_map(|filter| {
+                    let mut parts = filter.splitn(2, '=');
+                    if let (Some(target), Some(level_str)) = (parts.next(), parts.next()) {
+                        if let Ok(level) = level_str.parse::<tracing::Level>() {
+                            return Some((target, level));
+                        }
+                    }
+                    None
+                })
+                .collect::<Vec<(&str, tracing::Level)>>();
+            set_target_filters(target_filters);
+        }
+
         let binds: Option<Vec<String>> = rb_param_hash.fetch("binds")?;
         let binds = binds
             .unwrap_or_else(|| vec![DEFAULT_BIND.to_string()])
@@ -173,6 +226,13 @@ impl ServerParams {
             .map(|s| s.parse())
             .collect::<itsi_error::Result<Vec<Bind>>>()?;
 
+        let socket_opts = SocketOpts {
+            reuse_address,
+            reuse_port,
+            listen_backlog,
+            nodelay,
+            recv_buffer_size,
+        };
         let listeners = if let Some(preexisting_listeners) =
             rb_param_hash.delete::<_, Option<String>>("listeners")?
         {
@@ -189,9 +249,9 @@ impl ServerParams {
                 .cloned()
                 .map(|bind| {
                     if let Some(fd) = bind_to_fd_map.get(&bind.listener_address_string()) {
-                        Listener::inherit_fd(bind, *fd)
+                        Listener::inherit_fd(bind, *fd, &socket_opts)
                     } else {
-                        Listener::try_from(bind)
+                        Listener::build(bind, &socket_opts)
                     }
                 })
                 .collect::<std::result::Result<Vec<Listener>, _>>()?
@@ -201,7 +261,7 @@ impl ServerParams {
             binds
                 .iter()
                 .cloned()
-                .map(Listener::try_from)
+                .map(|b| Listener::build(b, &socket_opts))
                 .collect::<std::result::Result<Vec<Listener>, _>>()?
                 .into_iter()
                 .collect::<Vec<_>>()
@@ -226,6 +286,7 @@ impl ServerParams {
             hooks,
             preload,
             request_timeout,
+            header_read_timeout,
             notify_watchers,
             threads,
             scheduler_threads,
@@ -311,13 +372,11 @@ impl ItsiServerConfig {
             .as_ref()
             .clone()
             .map(|hv| hv.clone().inner());
-        let (rb_param_hash, errors): (RHash, Vec<String>) = ruby
-            .get_inner_ref(&ITSI_SERVER_CONFIG)
-            .funcall(
+        let (rb_param_hash, errors): (RHash, Vec<String>) =
+            ruby.get_inner_ref(&ITSI_SERVER_CONFIG).funcall(
                 *ID_BUILD_CONFIG,
                 (cli_params, itsifile_path.cloned(), inner),
-            )
-            .unwrap();
+            )?;
         if !errors.is_empty() {
             Self::print_config_errors(errors);
             return Err(magnus::Error::new(
@@ -360,7 +419,14 @@ impl ItsiServerConfig {
         match rb_param_hash {
             Ok(rb_param_hash) => match ServerParams::from_rb_hash(rb_param_hash) {
                 Ok(test_params) => {
-                    if let Err(err) = Arc::new(test_params).preload_ruby() {
+                    let params_arc = Arc::new(test_params);
+                    if let Err(err) = params_arc.clone().preload_ruby() {
+                        let err_val = call_with_gvl(|_| format!("{}", err));
+                        return Some(vec![err_val]);
+                    }
+                    if let Err(err) =
+                        block_on(params_arc.middleware.get().unwrap().initialize_layers())
+                    {
                         let err_val = call_with_gvl(|_| format!("{}", err));
                         return Some(vec![err_val]);
                     }

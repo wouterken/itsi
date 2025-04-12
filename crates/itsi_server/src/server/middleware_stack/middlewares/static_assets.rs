@@ -59,6 +59,7 @@ impl MiddlewareLayer for StaticAssets {
         self.base_path_regex
             .set(Regex::new(&self.base_path).map_err(ItsiError::new)?)
             .map_err(ItsiError::new)?;
+
         self.file_server
             .set(StaticFileServer::new(StaticFileServerConfig {
                 root_dir: self.root_dir.clone(),
@@ -70,7 +71,7 @@ impl MiddlewareLayer for StaticAssets {
                 recheck_interval: Duration::from_secs(self.file_check_interval),
                 serve_hidden_files: self.serve_hidden_files,
                 allowed_extensions: self.allowed_extensions.clone(),
-            }))
+            })?)
             .map_err(ItsiError::new)?;
         Ok(())
     }

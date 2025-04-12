@@ -1,6 +1,6 @@
 [package]
 name = "itsi-server"
-version = "0.1.19"
+version = "0.1.20"
 edition = "2021"
 authors = ["Wouter Coppieters <wc@pico.net.nz>"]
 license = "MIT"
@@ -40,6 +40,7 @@ hyper-util = { version = "0.1.10", features = ["full"] }
 itsi_error = { path = "../itsi_error" }
 itsi_rb_helpers = { path = "../itsi_rb_helpers" }
 itsi_tracing = { path = "../itsi_tracing" }
+itsi_acme = { path = "../itsi_acme" }
 jsonwebtoken = "9.3.1"
 magnus = { version = "0.7.1", features = ["bytes", "rb-sys"] }
 moka = { version = "0.12.10", features = ["sync"] }
@@ -78,9 +79,8 @@ sysinfo = "0.33.1"
 tempfile = "3.18.0"
 tokio = { version = "1.44.1", features = ["full"] }
 tokio-rustls = "0.26.2"
-tokio-rustls-acme = "0.6.0"
 tokio-stream = "0.1.17"
-tokio-util = "0.7.13"
+tokio-util = { version = "0.7.14", features = ["compat"] }
 tracing = "0.1.41"
 url = "2.5.4"
 md5 = "0.7.0"

@@ -8,30 +8,31 @@ use super::middlewares::*;
 use async_trait::async_trait;
 use either::Either;
 use magnus::error::Result;
-use std::cmp::Ordering;
+use std::{cmp::Ordering, sync::Arc};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Middleware {
-    AllowList(AllowList),
-    AuthAPIKey(AuthAPIKey),
-    AuthBasic(AuthBasic),
-    AuthJwt(Box<AuthJwt>),
-    CacheControl(CacheControl),
-    Compression(Compression),
-    Cors(Box<Cors>),
-    DenyList(DenyList),
-    ETag(ETag),
-    IntrusionProtection(IntrusionProtection),
-    LogRequests(LogRequests),
-    MaxBody(MaxBody),
-    Proxy(Proxy),
-    RateLimit(RateLimit),
-    Redirect(Redirect),
-    RequestHeaders(RequestHeaders),
-    ResponseHeaders(ResponseHeaders),
-    RubyApp(RubyApp),
-    StaticAssets(StaticAssets),
-    StaticResponse(StaticResponse),
+    AllowList(Arc<AllowList>),
+    AuthAPIKey(Arc<AuthAPIKey>),
+    AuthBasic(Arc<AuthBasic>),
+    AuthJwt(Arc<AuthJwt>),
+    CacheControl(Arc<CacheControl>),
+    Compression(Arc<Compression>),
+    Cors(Arc<Cors>),
+    Csp(Arc<Csp>),
+    DenyList(Arc<DenyList>),
+    ETag(Arc<ETag>),
+    IntrusionProtection(Arc<IntrusionProtection>),
+    LogRequests(Arc<LogRequests>),
+    MaxBody(Arc<MaxBody>),
+    Proxy(Arc<Proxy>),
+    RateLimit(Arc<RateLimit>),
+    Redirect(Arc<Redirect>),
+    RequestHeaders(Arc<RequestHeaders>),
+    ResponseHeaders(Arc<ResponseHeaders>),
+    RubyApp(Arc<RubyApp>),
+    StaticAssets(Arc<StaticAssets>),
+    StaticResponse(Arc<StaticResponse>),
 }
 
 #[async_trait]
@@ -51,6 +52,7 @@ impl MiddlewareLayer for Middleware {
             Middleware::ResponseHeaders(filter) => filter.initialize().await,
             Middleware::CacheControl(filter) => filter.initialize().await,
             Middleware::Cors(filter) => filter.initialize().await,
+            Middleware::Csp(filter) => filter.initialize().await,
             Middleware::ETag(filter) => filter.initialize().await,
             Middleware::StaticAssets(filter) => filter.initialize().await,
             Middleware::StaticResponse(filter) => filter.initialize().await,
@@ -80,6 +82,7 @@ impl MiddlewareLayer for Middleware {
             Middleware::RateLimit(filter) => filter.before(req, context).await,
             Middleware::CacheControl(filter) => filter.before(req, context).await,
             Middleware::Cors(filter) => filter.before(req, context).await,
+            Middleware::Csp(filter) => filter.before(req, context).await,
             Middleware::ETag(filter) => filter.before(req, context).await,
             Middleware::StaticAssets(filter) => filter.before(req, context).await,
             Middleware::StaticResponse(filter) => filter.before(req, context).await,
@@ -104,6 +107,7 @@ impl MiddlewareLayer for Middleware {
             Middleware::RequestHeaders(filter) => filter.after(res, context).await,
             Middleware::ResponseHeaders(filter) => filter.after(res, context).await,
             Middleware::CacheControl(filter) => filter.after(res, context).await,
+            Middleware::Csp(filter) => filter.after(res, context).await,
             Middleware::Cors(filter) => filter.after(res, context).await,
             Middleware::ETag(filter) => filter.after(res, context).await,
             Middleware::StaticAssets(filter) => filter.after(res, context).await,
@@ -134,12 +138,13 @@ impl Middleware {
             Middleware::AuthAPIKey(_) => 11,
             Middleware::RateLimit(_) => 12,
             Middleware::ETag(_) => 13,
-            Middleware::Compression(_) => 14,
-            Middleware::Proxy(_) => 15,
-            Middleware::Cors(_) => 16,
-            Middleware::StaticResponse(_) => 17,
-            Middleware::StaticAssets(_) => 18,
-            Middleware::RubyApp(_) => 19,
+            Middleware::Csp(_) => 14,
+            Middleware::Compression(_) => 15,
+            Middleware::Proxy(_) => 16,
+            Middleware::Cors(_) => 17,
+            Middleware::StaticResponse(_) => 18,
+            Middleware::StaticAssets(_) => 19,
+            Middleware::RubyApp(_) => 20,
         }
     }
 }

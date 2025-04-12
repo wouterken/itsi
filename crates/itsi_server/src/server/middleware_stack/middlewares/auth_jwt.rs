@@ -18,7 +18,7 @@ use std::{
     collections::{HashMap, HashSet},
     sync::OnceLock,
 };
-use tracing::error;
+use tracing::{debug, error};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct AuthJwt {
@@ -137,6 +137,11 @@ struct Claims {
 #[async_trait]
 impl MiddlewareLayer for AuthJwt {
     async fn initialize(&self) -> Result<()> {
+        debug!(
+            target: "middleware::auth_jwt",
+            "Instantiating auth_jwt with {} verifiers", self.verifiers.len()
+        );
+
         let keys: HashMap<JwtAlgorithm, Vec<DecodingKey>> = self
             .verifiers
             .iter()
@@ -145,10 +150,24 @@ impl MiddlewareLayer for AuthJwt {
                 let keys: itsi_error::Result<Vec<DecodingKey>> = key_strings
                     .iter()
                     .map(|key_string| algorithm.key_from(key_string))
+                    .inspect(|key_result| {
+                        if key_result.is_err() {
+                            debug!(
+                                target: "middleware::auth_jwt",
+                                "Failed to load key for algorithm {:?}", algorithm
+                            )
+                        } else {
+                            debug!(
+                                target: "middleware::auth_jwt",
+                                "Loaded key for algorithm {:?}", algorithm
+                            )
+                        }
+                    })
                     .collect();
                 keys.map(|keys| (algo, keys))
             })
             .collect::<itsi_error::Result<HashMap<JwtAlgorithm, Vec<DecodingKey>>>>()?;
+
         self.keys
             .set(keys)
             .map_err(|_| ItsiError::new("Failed to set keys"))?;
@@ -158,11 +177,16 @@ impl MiddlewareLayer for AuthJwt {
     async fn before(
         &self,
         req: HttpRequest,
-        _context: &mut HttpRequestContext,
+        _: &mut HttpRequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
         // Retrieve the JWT token from either a header or a query parameter.
         let token_str = match &self.token_source {
             TokenSource::Header { name, prefix } => {
+                debug!(
+                    target: "middleware::auth_jwt",
+                    "Extracting JWT from header: {}, prefix: {:?}",
+                    name, prefix
+                );
                 if let Some(header) = req.header(name) {
                     if let Some(prefix) = prefix {
                         Some(header.strip_prefix(prefix).unwrap_or("").trim_ascii())
@@ -173,10 +197,21 @@ impl MiddlewareLayer for AuthJwt {
                     None
                 }
             }
-            TokenSource::Query(query_name) => req.query_param(query_name),
+            TokenSource::Query(query_name) => {
+                debug!(
+                  target: "middleware::auth_jwt",
+                    "Extracting JWT from query parameter: {}",
+                    query_name
+                );
+                req.query_param(query_name)
+            }
         };
 
         if token_str.is_none() {
+            debug!(
+              target: "middleware::auth_jwt",
+                "No JWT found in headers or query parameters"
+            );
             return Ok(Either::Right(
                 self.error_response
                     .to_http_response(req.accept().into())
@@ -186,8 +221,13 @@ impl MiddlewareLayer for AuthJwt {
         let token_str = token_str.unwrap();
         let header =
             decode_header(token_str).map_err(|_| ItsiError::new("Invalid token header"))?;
+
         let alg: JwtAlgorithm = header.alg.into();
 
+        debug!(
+          target: "middleware::auth_jwt",
+            "Matched algorithm {:?}", alg
+        );
         if !self.verifiers.contains_key(&alg) {
             return Ok(Either::Right(
                 self.error_response
@@ -225,6 +265,7 @@ impl MiddlewareLayer for AuthJwt {
                         None
                     }
                 });
+
         let token_data = if let Some(data) = token_data {
             data
         } else {
@@ -244,6 +285,10 @@ impl MiddlewareLayer for AuthJwt {
                     Audience::Multiple(v) => v.iter().cloned().collect(),
                 };
                 if expected_audiences.is_disjoint(&token_auds) {
+                    debug!(
+                        "AUD check failed, token_auds: {:?}, expected_audiences: {:?}",
+                        token_auds, expected_audiences
+                    );
                     return Ok(Either::Right(
                         self.error_response
                             .to_http_response(req.accept().into())
@@ -256,6 +301,10 @@ impl MiddlewareLayer for AuthJwt {
         if let Some(expected_subjects) = &self.subjects {
             if let Some(sub) = &claims.sub {
                 if !expected_subjects.contains(sub) {
+                    debug!(
+                        "SUB check failed, token_sub: {:?}, expected_subjects: {:?}",
+                        sub, expected_subjects
+                    );
                     return Ok(Either::Right(
                         self.error_response
                             .to_http_response(req.accept().into())
@@ -269,6 +318,10 @@ impl MiddlewareLayer for AuthJwt {
         if let Some(expected_issuers) = &self.issuers {
             if let Some(iss) = &claims.iss {
                 if !expected_issuers.contains(iss) {
+                    debug!(
+                        "ISS check failed, token_iss: {:?}, expected_issuers: {:?}",
+                        iss, expected_issuers
+                    );
                     return Ok(Either::Right(
                         self.error_response
                             .to_http_response(req.accept().into())

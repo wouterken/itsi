@@ -42,7 +42,7 @@ impl FromStr for RequestType {
 }
 
 impl RubyApp {
-    pub fn from_value(params: HeapVal) -> magnus::error::Result<Self> {
+    pub fn from_value(params: HeapVal) -> magnus::error::Result<Arc<Self>> {
         let app = params.funcall::<_, _, Proc>(Symbol::new("[]"), ("app_proc",))?;
         let sendfile = params
             .funcall::<_, _, bool>(Symbol::new("[]"), ("sendfile",))
@@ -61,13 +61,13 @@ impl RubyApp {
             .parse()
             .unwrap_or(RequestType::Http);
 
-        Ok(RubyApp {
+        Ok(Arc::new(RubyApp {
             app: Arc::new(app.into()),
             sendfile,
             nonblocking,
             request_type,
             base_path,
-        })
+        }))
     }
 }
 

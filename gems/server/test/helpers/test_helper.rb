@@ -1,5 +1,5 @@
 # frozen_string_literal: true
-# ENV["ITSI_LOG"] = "off"
+ENV["ITSI_LOG"] = "off"
 
 require "minitest/reporters"
 require "itsi/server"

@@ -5,6 +5,7 @@ module Itsi
     module Config
       require_relative "config/typed_struct"
       require_relative "config/dsl"
+      require_relative "config/known_paths"
       require_relative "default_app/default_app"
 
       ITSI_DEFAULT_CONFIG_FILE = "Itsi.rb"
@@ -97,6 +98,7 @@ module Itsi
             hooks: itsifile_config.fetch(:hooks, nil),
             preload: !!preload,
             request_timeout: itsifile_config.fetch(:request_timeout, nil),
+            header_read_timeout: args.fetch(:header_read_timeout) { itsifile_config.fetch(:header_read_timeout, nil) },
             notify_watchers: itsifile_config.fetch(:notify_watchers, nil),
             threads: args.fetch(:threads) { itsifile_config.fetch(:threads, 1) },
             scheduler_threads: args.fetch(:scheduler_threads) { itsifile_config.fetch(:scheduler_threads, nil) },
@@ -112,10 +114,17 @@ module Itsi
             log_level: args.fetch(:log_level) { itsifile_config.fetch(:log_level, nil) },
             log_format: args.fetch(:log_format) { itsifile_config.fetch(:log_format, nil) },
             log_target: args.fetch(:log_target) { itsifile_config.fetch(:log_target, nil) },
+            log_target_filters: args.fetch(:log_target_filters) { itsifile_config.fetch(:log_target_filters, nil) },
             binds: args.fetch(:binds) { itsifile_config.fetch(:binds, ["http://0.0.0.0:3000"]) },
             middleware_loader: middleware_loader,
-            listeners: args.fetch(:listeners) { nil }
+            listeners: args.fetch(:listeners) { nil },
+            reuse_address: itsifile_config.fetch(:reuse_address, true),
+            reuse_port: itsifile_config.fetch(:reuse_port, true),
+            listen_backlog: itsifile_config.fetch(:listen_backlog, 1024 ),
+            nodelay: itsifile_config.fetch(:nodelay, true),
+            recv_buffer_size: itsifile_config.fetch(:recv_buffer_size, 262_144)
           }.transform_keys(&:to_s),
+
           errors.flat_map do |(error, message)|
             location =  message[/(.*?)\:in/,1]
             file, lineno = location.split(":")
@@ -141,6 +150,16 @@ module Itsi
             ]
           end
         ]
+      end
+
+      def self.test!(cli_params)
+        _, errors = build_config(cli_params, Itsi::Server::Config.config_file_path(cli_params[:config_file]))
+        if errors.any?
+          Itsi.log_error("Config file is invalid")
+          puts errors
+        else
+          Itsi.log_info("Config file is valid")
+        end
       end
 
       # Reloads the entire process
@@ -183,10 +202,58 @@ module Itsi
           return
         end
 
-        puts "Writing default configuration..."
-        File.open(ITSI_DEFAULT_CONFIG_FILE, "w") do |file|
-          file.write(IO.read("#{__dir__}/default_config/Itsi.rb"))
+        default_config = IO.read("#{__dir__}/default_config/Itsi.rb")
+
+        if File.exist?("./config.ru")
+          default_config << <<~RUBY
+          # You can mount several Ruby apps as either
+          # 1. rackup files
+          # 2. inline rack apps
+          # 3. inline Ruby endpoints
+          #
+          # 1. rackup_file
+          rackup_file "./config.ru"
+          #
+          # 2. inline rack app
+          # require 'rack'
+          # run(Rack::Builder.app do
+          #   use Rack::CommonLogger
+          #   run ->(env) { [200, { 'content-type' => 'text/plain' }, ['OK']] }
+          # end)
+          #
+          # 3. Endpoints
+          # endpoint "/" do |req|
+          #   req.ok "Hello from Itsi"
+          # end
+          RUBY
+        else
+          default_config << <<~RUBY
+            # You can mount several Ruby apps as either
+            # 1. rackup files
+            # 2. inline rack apps
+            # 3. inline Ruby endpoints
+            #
+            # 1. rackup_file
+            # Use `rackup_file` to specify the Rack app file name.
+            #
+            # 2. inline rack app
+            # require 'rack'
+            # run(Rack::Builder.app do
+            #   use Rack::CommonLogger
+            #   run ->(env) { [200, { 'content-type' => 'text/plain' }, ['OK']] }
+            # end)
+            #
+            # 3. Endpoint
+            endpoint "/" do |req|
+              req.ok "Hello from Itsi"
+            end
+          RUBY
         end
+
+        File.open(ITSI_DEFAULT_CONFIG_FILE, "w") do |file|
+          file.write(default_config)
+        end
+
       end
     end
   end

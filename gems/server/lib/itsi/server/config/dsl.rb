@@ -105,6 +105,18 @@ module Itsi
           @options[:log_target] = target.to_s
         end
 
+        def log_target_filters(target_filters)
+          raise "Log target filters must be set at the root" unless @parent.nil?
+
+          @options[:log_target_filters] = target_filters
+        end
+
+        def log_format(target)
+          raise "Log format must be set at the root" unless @parent.nil?
+
+          @options[:log_format] = target.to_s
+        end
+
         def get(route, app_proc = nil, nonblocking: false, &blk)
           endpoint(route, [:get], app_proc, nonblocking: nonblocking,  &blk)
         end
@@ -149,7 +161,6 @@ module Itsi
           if accepts_params
             app_proc = Itsi::Server::TypedHandlers.handler_for(app_proc, params_schema)
           end
-
 
           if route || http_methods.any?
             # For endpoints, it's usually assumed trailing slash and non-trailing slash behaviour is the same
@@ -214,6 +225,31 @@ module Itsi
         def include(path)
           code = IO.read("#{path}.rb")
           instance_eval(code, "#{path}.rb", 1)
+        end
+
+        def reuse_address(reuse_address)
+          raise "reuse_address must be set at the root" unless @parent.nil?
+          @options[:reuse_address] = reuse_address
+        end
+
+        def reuse_port(reuse_port)
+          raise "reuse_port must be set at the root" unless @parent.nil?
+          @options[:reuse_port] = reuse_port
+        end
+
+        def listen_backlog(listen_backlog)
+          raise "listen_backlog must be set at the root" unless @parent.nil?
+          @options[:listen_backlog] = listen_backlog
+        end
+
+        def nodelay(nodelay)
+          raise "nodelay must be set at the root" unless @parent.nil?
+          @options[:nodelay] = nodelay
+        end
+
+        def recv_buffer_size(recv_buffer_size)
+          raise "recv_buffer_size must be set at the root" unless @parent.nil?
+          @options[:recv_buffer_size] = recv_buffer_size
         end
 
         def bind(bind_str)
@@ -308,6 +344,11 @@ module Itsi
           @options[:shutdown_timeout] = shutdown_timeout.to_f
         end
 
+        def header_read_timeout(header_read_timeout)
+          raise "Header read timeout must be set at the root" unless @parent.nil?
+
+          @options[:header_read_timeout] = header_read_timeout.to_f
+        end
 
         def stream_body(stream_body)
           raise "Stream body must be set at the root" unless @parent.nil?
@@ -367,7 +408,6 @@ module Itsi
         end
 
         def auth_basic(**args)
-
           if File.exist?(".itsi-credentials") && !args[:credential_file]
             args[:credential_file] = ".itsi-credentials"
           end
@@ -441,8 +481,12 @@ module Itsi
           @middleware[:etag] = args
         end
 
+        def csp(**args)
+          @middleware[:csp] = args
+        end
+
         def intrusion_protection(**args)
-          args[:banned_url_patterns] = Array(args[:banned_url_patterns]).map do |pattern|
+          args[:banned_url_patterns] = Array(args[:banned_url_patterns]).flatten.map do |pattern|
             if pattern.is_a?(Regexp)
               pattern.source
             else
@@ -544,11 +588,6 @@ module Itsi
         end
 
         def effective_middleware
-          merged = merge_ancestor_middleware
-          merged.map { |k, v| { type: k.to_s, parameters: v } }
-        end
-
-        def merge_ancestor_middleware
           chain = []
           node = self
           while node
@@ -567,7 +606,7 @@ module Itsi
               merged[k] = v
             end
           end
-          merged
+          deep_stringify_keys(merged)
         end
 
         def deep_stringify_keys(obj)

@@ -267,6 +267,7 @@ PLATFORMS
 
 DEPENDENCIES
   activerecord
+  async
   bundler
   debug
   falcon

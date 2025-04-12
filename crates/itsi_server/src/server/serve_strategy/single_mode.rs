@@ -90,6 +90,7 @@ impl SingleMode {
     }
 
     pub fn stop(&self) -> Result<()> {
+        SHUTDOWN_REQUESTED.store(true, std::sync::atomic::Ordering::SeqCst);
         self.lifecycle_channel.send(LifecycleEvent::Shutdown).ok();
         Ok(())
     }
@@ -231,14 +232,17 @@ impl SingleMode {
         );
 
         let (shutdown_sender, _) = watch::channel(RunningPhase::Running);
-        let thread = self.clone().start_monitors(thread_workers.clone());
+        let monitor_thread = self.clone().start_monitors(thread_workers.clone());
         if SHUTDOWN_REQUESTED.load(Ordering::SeqCst) {
             return Ok(());
         }
-        runtime.block_on(
+        let result = runtime.block_on(
           async  {
               let server_params = self.server_config.server_params.read().clone();
-              server_params.initialize_middleware().await?;
+              if let Err(err) = server_params.initialize_middleware().await {
+                  error!("Failed to initialize middleware: {}", err);
+                  return Err(ItsiError::new("Failed to initialize middleware"))
+              }
               let tokio_listeners = server_params.listeners.lock()
                   .drain(..)
                   .map(|list| {
@@ -310,7 +314,19 @@ impl SingleMode {
               drop(tokio_listeners);
 
               Ok::<(), ItsiError>(())
-          })?;
+          });
+
+        debug!("Single mode runtime exited.");
+
+        if result.is_err() {
+            for _i in 0..thread_workers.len() {
+                job_sender.send_blocking(RequestJob::Shutdown).unwrap();
+                nonblocking_sender
+                    .send_blocking(RequestJob::Shutdown)
+                    .unwrap();
+            }
+            self.lifecycle_channel.send(LifecycleEvent::Shutdown).ok();
+        }
 
         shutdown_sender.send(RunningPhase::Shutdown).ok();
         let deadline = Instant::now()
@@ -318,12 +334,13 @@ impl SingleMode {
 
         runtime.shutdown_timeout(Duration::from_millis(100));
 
+        debug!("Shutdown timeout finished.");
         loop {
             if thread_workers
                 .iter()
                 .all(|worker| call_with_gvl(move |_| !worker.poll_shutdown(deadline)))
             {
-                funcall_no_ret(thread, "join", ()).ok();
+                funcall_no_ret(monitor_thread, "join", ()).ok();
                 break;
             }
             sleep(Duration::from_millis(50));
@@ -335,7 +352,7 @@ impl SingleMode {
             self.run()?;
         }
         debug!("Runtime has shut down");
-        Ok(())
+        result
     }
 
     pub(crate) async fn serve_connection(
@@ -367,7 +384,7 @@ impl SingleMode {
         let mut serve = Box::pin(
             binding
                 .timer(TokioTimer::new())
-                .header_read_timeout(Duration::from_secs(1))
+                .header_read_timeout(self.server_config.server_params.read().header_read_timeout)
                 .serve_connection_with_upgrades(io, service),
         );
 

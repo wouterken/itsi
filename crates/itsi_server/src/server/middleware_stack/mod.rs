@@ -2,12 +2,14 @@ mod middleware;
 mod middlewares;
 use http::header::{ACCEPT, CONTENT_TYPE, HOST};
 use itsi_rb_helpers::HeapVal;
-use magnus::{error::Result, value::ReprValue, RArray, RHash, Ruby, TryConvert, Value};
+use magnus::{
+    error::Result, rb_sys::AsRawValue, value::ReprValue, RArray, RHash, Ruby, TryConvert, Value,
+};
 pub use middleware::Middleware;
 pub use middlewares::*;
 use regex::{Regex, RegexSet};
 use std::{collections::HashMap, sync::Arc};
-use tracing::debug;
+use tracing::{debug, info};
 
 use super::http_message_types::HttpRequest;
 
@@ -16,6 +18,7 @@ pub struct MiddlewareSet {
     pub route_set: RegexSet,
     pub patterns: Vec<Arc<Regex>>,
     pub stacks: HashMap<usize, MiddlewareStack>,
+    unique_middlewares: HashMap<u64, Middleware>,
 }
 
 #[derive(Debug)]
@@ -128,6 +131,7 @@ impl MiddlewareStack {
 
 impl MiddlewareSet {
     pub fn new(routes_raw: Option<HeapVal>) -> Result<Self> {
+        let mut unique_middlewares = HashMap::new();
         if let Some(routes_raw) = routes_raw {
             let mut stacks = HashMap::new();
             let mut routes = vec![];
@@ -147,19 +151,30 @@ impl MiddlewareSet {
                         "Route is missing :route key",
                     ))?
                     .funcall::<_, _, String>("source", ())?;
+
                 let middleware =
-                    RArray::from_value(route_hash.get("middleware").ok_or(magnus::Error::new(
+                    RHash::from_value(route_hash.get("middleware").ok_or(magnus::Error::new(
                         magnus::exception::standard_error(),
                         "Route is missing middleware key",
                     ))?)
                     .ok_or(magnus::Error::new(
                         magnus::exception::standard_error(),
-                        format!("middleware must be an array. Got {:?}", routes_raw),
+                        format!("middleware must be a hash. Got {:?}", routes_raw),
                     ))?;
 
                 let mut layers = middleware
-                    .into_iter()
-                    .map(MiddlewareSet::parse_middleware)
+                    .enumeratorize("each", ())
+                    .map(|pair| {
+                        let pair = RArray::from_value(pair.unwrap()).unwrap();
+                        let middleware_type: String = pair.entry(0).unwrap();
+                        let value: Value = pair.entry(1).unwrap();
+                        info!("Parsing middleware from value {}", value);
+                        let middleware = MiddlewareSet::parse_middleware(middleware_type, value);
+                        if let Ok(middleware) = middleware.as_ref() {
+                            unique_middlewares.insert(value.as_raw(), middleware.clone());
+                        };
+                        middleware
+                    })
                     .collect::<Result<Vec<_>>>()?;
                 routes.push(route_raw);
                 layers.sort();
@@ -184,6 +199,7 @@ impl MiddlewareSet {
                         format!("Failed to create route set: {}", e),
                     )
                 })?,
+                unique_middlewares,
                 patterns: routes
                     .into_iter()
                     .map(|r| Regex::new(&r))
@@ -241,47 +257,27 @@ impl MiddlewareSet {
         ))
     }
 
-    pub fn parse_middleware(middleware: Value) -> Result<Middleware> {
-        let middleware_hash = RHash::from_value(middleware).ok_or(magnus::Error::new(
-            magnus::exception::standard_error(),
-            format!("Filter must be a hash. Got {:?}", middleware),
-        ))?;
-        let middleware_type: String = middleware_hash
-            .get("type")
-            .ok_or(magnus::Error::new(
-                magnus::exception::standard_error(),
-                format!("Filter must have a :type key. Got {:?}", middleware_hash),
-            ))?
-            .to_string();
+    pub fn parse_middleware(middleware_type: String, parameters: Value) -> Result<Middleware> {
         let mw_type = middleware_type.clone();
-
-        let parameters: Value = middleware_hash.get("parameters").ok_or(magnus::Error::new(
-            magnus::exception::standard_error(),
-            format!(
-                "Filter must have a :parameters key. Got {:?}",
-                middleware_hash
-            ),
-        ))?;
 
         let result = (move || -> Result<Middleware> {
             match mw_type.as_str() {
                 "allow_list" => Ok(Middleware::AllowList(AllowList::from_value(parameters)?)),
                 "auth_basic" => Ok(Middleware::AuthBasic(AuthBasic::from_value(parameters)?)),
-                "auth_jwt" => Ok(Middleware::AuthJwt(Box::new(AuthJwt::from_value(
-                    parameters,
-                )?))),
+                "auth_jwt" => Ok(Middleware::AuthJwt(AuthJwt::from_value(parameters)?)),
                 "auth_api_key" => Ok(Middleware::AuthAPIKey(AuthAPIKey::from_value(parameters)?)),
                 "cache_control" => Ok(Middleware::CacheControl(CacheControl::from_value(
                     parameters,
                 )?)),
                 "deny_list" => Ok(Middleware::DenyList(DenyList::from_value(parameters)?)),
                 "etag" => Ok(Middleware::ETag(ETag::from_value(parameters)?)),
+                "csp" => Ok(Middleware::Csp(Csp::from_value(parameters)?)),
                 "intrusion_protection" => Ok({
                     Middleware::IntrusionProtection(IntrusionProtection::from_value(parameters)?)
                 }),
                 "max_body" => Ok(Middleware::MaxBody(MaxBody::from_value(parameters)?)),
                 "rate_limit" => Ok(Middleware::RateLimit(RateLimit::from_value(parameters)?)),
-                "cors" => Ok(Middleware::Cors(Box::new(Cors::from_value(parameters)?))),
+                "cors" => Ok(Middleware::Cors(Cors::from_value(parameters)?)),
                 "request_headers" => Ok(Middleware::RequestHeaders(RequestHeaders::from_value(
                     parameters,
                 )?)),
@@ -323,10 +319,12 @@ impl MiddlewareSet {
     }
 
     pub async fn initialize_layers(&self) -> Result<()> {
-        for stack in self.stacks.values() {
-            for middleware in &stack.layers {
-                middleware.initialize().await?;
-            }
+        info!(
+            "Unique middleware keys: {:?}",
+            self.unique_middlewares.keys()
+        );
+        for middleware in self.unique_middlewares.values() {
+            middleware.initialize().await?;
         }
         Ok(())
     }

@@ -72,6 +72,7 @@ impl ItsiServer {
             let strategy = self.build_strategy()?;
             if let Err(e) = strategy.clone().run() {
                 error!("Error running server: {}", e);
+                send_lifecycle_event(LifecycleEvent::Shutdown);
                 strategy.stop()?;
             }
             Ok(())

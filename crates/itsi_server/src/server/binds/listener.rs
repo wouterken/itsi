@@ -1,4 +1,5 @@
 use crate::prelude::*;
+use crate::ruby_types::itsi_server::itsi_server_config::SocketOpts;
 use crate::server::io_stream::IoStream;
 use crate::server::serve_strategy::single_mode::RunningPhase;
 
@@ -326,12 +327,12 @@ impl Listener {
         }
     }
 
-    pub fn inherit_fd(bind: Bind, fd: RawFd) -> Result<Self> {
+    pub fn inherit_fd(bind: Bind, fd: RawFd, socket_opts: &SocketOpts) -> Result<Self> {
         let bound = match bind.address {
             BindAddress::Ip(_) => match bind.protocol {
-                BindProtocol::Http => Listener::Tcp(revive_tcp_socket(fd)?),
+                BindProtocol::Http => Listener::Tcp(revive_tcp_socket(fd, socket_opts)?),
                 BindProtocol::Https => {
-                    let tcp_listener = revive_tcp_socket(fd)?;
+                    let tcp_listener = revive_tcp_socket(fd, socket_opts)?;
                     Listener::TcpTls((
                         tcp_listener,
                         bind.tls_config.unwrap().build_acceptor().unwrap(),
@@ -341,25 +342,25 @@ impl Listener {
             },
             BindAddress::UnixSocket(_) => match bind.tls_config {
                 Some(tls_config) => Listener::UnixTls((
-                    revive_unix_socket(fd)?,
+                    revive_unix_socket(fd, socket_opts)?,
                     tls_config.build_acceptor().unwrap(),
                 )),
-                None => Listener::Unix(revive_unix_socket(fd)?),
+                None => Listener::Unix(revive_unix_socket(fd, socket_opts)?),
             },
         };
         Ok(bound)
     }
 }
 
-impl TryFrom<Bind> for Listener {
-    type Error = itsi_error::ItsiError;
-
-    fn try_from(bind: Bind) -> std::result::Result<Self, Self::Error> {
+impl Listener {
+    pub fn build(bind: Bind, socket_opts: &SocketOpts) -> Result<Self> {
         let bound = match bind.address {
             BindAddress::Ip(addr) => match bind.protocol {
-                BindProtocol::Http => Listener::Tcp(connect_tcp_socket(addr, bind.port.unwrap())?),
+                BindProtocol::Http => {
+                    Listener::Tcp(connect_tcp_socket(addr, bind.port.unwrap(), socket_opts)?)
+                }
                 BindProtocol::Https => {
-                    let tcp_listener = connect_tcp_socket(addr, bind.port.unwrap())?;
+                    let tcp_listener = connect_tcp_socket(addr, bind.port.unwrap(), socket_opts)?;
                     Listener::TcpTls((
                         tcp_listener,
                         bind.tls_config.unwrap().build_acceptor().unwrap(),
@@ -369,56 +370,60 @@ impl TryFrom<Bind> for Listener {
             },
             BindAddress::UnixSocket(path) => match bind.tls_config {
                 Some(tls_config) => Listener::UnixTls((
-                    connect_unix_socket(&path)?,
+                    connect_unix_socket(&path, socket_opts)?,
                     tls_config.build_acceptor().unwrap(),
                 )),
-                None => Listener::Unix(connect_unix_socket(&path)?),
+                None => Listener::Unix(connect_unix_socket(&path, socket_opts)?),
             },
         };
         Ok(bound)
     }
 }
 
-fn revive_tcp_socket(fd: RawFd) -> Result<TcpListener> {
+fn revive_tcp_socket(fd: RawFd, socket_opts: &SocketOpts) -> Result<TcpListener> {
     let socket = unsafe { Socket::from_raw_fd(fd) };
-    socket.set_reuse_port(true).ok();
-    socket.set_reuse_address(true).ok();
+    socket.set_reuse_port(socket_opts.reuse_port).ok();
+    socket.set_reuse_address(socket_opts.reuse_address).ok();
     socket.set_nonblocking(true).ok();
-    socket.set_nodelay(true).ok();
-    socket.set_recv_buffer_size(262_144).ok();
+    socket.set_nodelay(socket_opts.nodelay).ok();
+    socket
+        .set_recv_buffer_size(socket_opts.recv_buffer_size)
+        .ok();
     socket.set_cloexec(true)?;
-    socket.listen(1024)?;
+    socket.listen(socket_opts.listen_backlog as i32)?;
     Ok(socket.into())
 }
 
-fn revive_unix_socket(fd: RawFd) -> Result<UnixListener> {
+fn revive_unix_socket(fd: RawFd, socket_opts: &SocketOpts) -> Result<UnixListener> {
     let socket = unsafe { Socket::from_raw_fd(fd) };
     socket.set_nonblocking(true).ok();
-    socket.listen(1024)?;
+    socket.listen(socket_opts.listen_backlog as i32)?;
     socket.set_cloexec(true)?;
 
     Ok(socket.into())
 }
 
-fn connect_tcp_socket(addr: IpAddr, port: u16) -> Result<TcpListener> {
+fn connect_tcp_socket(addr: IpAddr, port: u16, socket_opts: &SocketOpts) -> Result<TcpListener> {
     let domain = match addr {
         IpAddr::V4(_) => Domain::IPV4,
         IpAddr::V6(_) => Domain::IPV6,
     };
     let socket = Socket::new(domain, Type::STREAM, Some(Protocol::TCP))?;
     let socket_address: SocketAddr = SocketAddr::new(addr, port);
-    socket.set_reuse_address(true).ok();
-    socket.set_reuse_port(true).ok();
+    socket.set_reuse_address(socket_opts.reuse_address).ok();
+    socket.set_reuse_port(socket_opts.reuse_port).ok();
     socket.set_nonblocking(true).ok();
-    socket.set_nodelay(true).ok();
-    socket.set_recv_buffer_size(262_144).ok();
+    socket.set_nodelay(socket_opts.nodelay).ok();
+    socket
+        .set_recv_buffer_size(socket_opts.recv_buffer_size)
+        .ok();
     socket.set_only_v6(false).ok();
     socket.bind(&socket_address.into())?;
-    socket.listen(1024)?;
+    socket.listen(socket_opts.listen_backlog as i32)?;
     Ok(socket.into())
 }
 
-fn connect_unix_socket(path: &PathBuf) -> Result<UnixListener> {
+fn connect_unix_socket(path: &PathBuf, socket_opts: &SocketOpts) -> Result<UnixListener> {
     let _ = std::fs::remove_file(path);
     let socket = Socket::new(Domain::UNIX, Type::STREAM, None)?;
     socket.set_nonblocking(true).ok();
@@ -426,7 +431,7 @@ fn connect_unix_socket(path: &PathBuf) -> Result<UnixListener> {
     let socket_address = socket2::SockAddr::unix(path)?;
 
     socket.bind(&socket_address)?;
-    socket.listen(1024)?;
+    socket.listen(socket_opts.listen_backlog as i32)?;
 
     Ok(socket.into())
 }

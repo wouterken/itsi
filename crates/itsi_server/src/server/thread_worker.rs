@@ -159,11 +159,10 @@ impl ThreadWorker {
     pub fn poll_shutdown(&self, deadline: Instant) -> bool {
         if let Some(thread) = self.thread.read().deref() {
             if Instant::now() > deadline {
-                warn!("Worker shutdown timed out. Killing thread");
+                warn!("Worker shutdown timed out. Killing thread {:?}", thread);
                 self.terminated.store(true, Ordering::SeqCst);
                 kill_threads(vec![thread.as_value()]);
             }
-            debug!("Checking thread status");
             if thread.funcall::<_, _, bool>(*ID_ALIVE, ()).unwrap_or(false) {
                 return true;
             }
@@ -184,6 +183,7 @@ impl ThreadWorker {
         call_with_gvl(|_| {
             *self.thread.write() = Some(
                 create_ruby_thread(move || {
+                    debug!("Ruby thread worker started");
                     if let Some(scheduler_class) = scheduler_class {
                         if let Err(err) = self_ref.fiber_accept_loop(
                             params,

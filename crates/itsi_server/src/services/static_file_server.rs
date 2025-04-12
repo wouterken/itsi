@@ -50,6 +50,7 @@ pub static ROOT_STATIC_FILE_SERVER: LazyLock<StaticFileServer> = LazyLock::new(|
         serve_hidden_files: false,
         allowed_extensions: vec!["html".to_string(), "css".to_string(), "js".to_string()],
     })
+    .unwrap()
 });
 
 #[derive(Debug, Clone, Deserialize)]
@@ -209,14 +210,27 @@ struct ServeCacheArgs<'a>(
 );
 
 impl StaticFileServer {
-    pub fn new(config: StaticFileServerConfig) -> Self {
+    pub fn new(config: StaticFileServerConfig) -> Result<Self> {
         let cache = Cache::builder().max_capacity(config.max_entries).build();
+        if !config.root_dir.exists() {
+            return Err(ItsiError::InternalError(format!(
+                "Root directory {} for static file server doesn't exist",
+                config.root_dir.display()
+            )));
+        }
 
-        StaticFileServer {
+        if std::fs::read_dir(&config.root_dir).is_err() {
+            return Err(ItsiError::InternalError(format!(
+                "Root directory {} for static file server is not readable",
+                config.root_dir.display()
+            )));
+        }
+
+        Ok(StaticFileServer {
             config: Arc::new(config),
             cache,
             key_to_path: Arc::new(Mutex::new(HashMap::new())),
-        }
+        })
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -483,14 +497,19 @@ impl StaticFileServer {
 
                         tokio::pin!(entries);
                         while let Some(entry) = entries.next_entry().await.unwrap_or(None) {
-                            if entry
-                                .file_name()
-                                .to_str()
-                                .is_some_and(|name| name.eq_ignore_ascii_case("index.html"))
-                                && entry.metadata().await.unwrap().is_file()
-                            {
-                                index_file = Some(entry.path());
-                                break;
+                            if let Ok(metadata) = entry.metadata().await {
+                                if entry
+                                    .file_name()
+                                    .to_str()
+                                    .is_some_and(|name| name.eq_ignore_ascii_case("index.html"))
+                                    && metadata.is_file()
+                                {
+                                    index_file = Some(entry.path());
+                                    break;
+                                }
+                            } else {
+                                error!("Failed to retrieve metadata for entry: {:?}", entry.path());
+                                return Err(self.config.not_found_behavior.clone());
                             }
                         }
                     }
@@ -996,23 +1015,6 @@ struct ResolvedAsset {
 impl std::fmt::Display for StaticFileServer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "StaticFileServer(root_dir: {:?})", self.config.root_dir)
-    }
-}
-
-impl Default for StaticFileServer {
-    fn default() -> Self {
-        let config = StaticFileServerConfig {
-            root_dir: "public".into(),
-            max_file_size: 10 * 1024 * 1024,
-            max_entries: 100,
-            recheck_interval: Duration::from_secs(60),
-            try_html_extension: true,
-            auto_index: true,
-            not_found_behavior: NotFoundBehavior::Error(ErrorResponse::not_found()),
-            serve_hidden_files: false,
-            allowed_extensions: vec!["html".to_string(), "css".to_string(), "js".to_string()],
-        };
-        Self::new(config)
     }
 }
 
