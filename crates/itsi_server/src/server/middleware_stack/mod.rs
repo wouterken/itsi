@@ -168,7 +168,6 @@ impl MiddlewareSet {
                         let pair = RArray::from_value(pair.unwrap()).unwrap();
                         let middleware_type: String = pair.entry(0).unwrap();
                         let value: Value = pair.entry(1).unwrap();
-                        info!("Parsing middleware from value {}", value);
                         let middleware = MiddlewareSet::parse_middleware(middleware_type, value);
                         if let Ok(middleware) = middleware.as_ref() {
                             unique_middlewares.insert(value.as_raw(), middleware.clone());
@@ -260,6 +259,7 @@ impl MiddlewareSet {
     pub fn parse_middleware(middleware_type: String, parameters: Value) -> Result<Middleware> {
         let mw_type = middleware_type.clone();
 
+        debug!(target: "itsi_server::middleware_stack", "Parsing middleware: {} from {}", mw_type, parameters);
         let result = (move || -> Result<Middleware> {
             match mw_type.as_str() {
                 "allow_list" => Ok(Middleware::AllowList(AllowList::from_value(parameters)?)),
@@ -290,7 +290,7 @@ impl MiddlewareSet {
                 "static_response" => Ok(Middleware::StaticResponse(StaticResponse::from_value(
                     parameters,
                 )?)),
-                "compression" => Ok(Middleware::Compression(Compression::from_value(
+                "compress" => Ok(Middleware::Compression(Compression::from_value(
                     parameters,
                 )?)),
                 "log_requests" => Ok(Middleware::LogRequests(LogRequests::from_value(
@@ -305,6 +305,8 @@ impl MiddlewareSet {
                 )),
             }
         })();
+
+        debug!(target: "itsi_server::middleware_stack", "Stack layer init result {:?}", result);
 
         match result {
             Ok(result) => Ok(result),

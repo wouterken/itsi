@@ -17,11 +17,11 @@ module Itsi
           Struct.new(*defaults.keys, keyword_init: true) do
             define_method(:initialize) do |*input, validate: true, **raw_input|
               raw_input.transform_keys!{|k| k.to_s.downcase.to_sym }
-              raw_input.merge!(input.pop) if input.last.is_a?(Hash)
+              raw_input.merge!(input.pop.transform_keys!{|k| k.to_s.downcase.to_sym}) if input.last.is_a?(Hash)
 
               excess_keys = raw_input.keys - defaults.keys
 
-              raise "Unsupported keys #{excess_keys}" if excess_keys.any?
+              raise "─ Unsupported keys #{excess_keys}" if excess_keys.any?
 
               initial_values = defaults.each_with_object({}) do |(k, default_config), inputs|
                 value = raw_input.key?(k) ? raw_input[k] : default_config[VALUE].dup
@@ -117,22 +117,22 @@ module Itsi
               when Proc
                 unless validation.call(value)
                   raise ArgumentError,
-                        "─  `#{@name}` validation failed. Invalid value: #{value.inspect}"
+                        "─ `#{@name}` validation failed. Invalid value: #{value.inspect}"
                 end
               when Array
                 unless !value || validation.include?(value)
                   raise ArgumentError,
-                        "─  `#{@name}` validation failed. Invalid #{validation} value: #{value.inspect}"
+                        "─ `#{@name}` validation failed. Invalid #{validation} value: #{value.inspect}"
                 end
               when Range
                 unless !value || validation.include?(value)
                   raise ArgumentError,
-                        "─  `#{@name}` validation failed. Invalid #{validation} value: #{value.inspect}"
+                        "─ `#{@name}` validation failed. Invalid #{validation} value: #{value.inspect}"
                 end
               when Regexp
                 unless !value || validation.match?(value)
                   raise ArgumentError,
-                        "─  `#{@name}` validation failed. Invalid #{validation} value: #{value.inspect}"
+                        "─ `#{@name}` validation failed. Invalid #{validation} value: #{value.inspect}"
                 end
               when Class
 
@@ -148,7 +148,7 @@ module Itsi
                       end
                   rescue StandardError => e
                     raise ArgumentError,
-                          "─ `#{@name}` Validation Failed. Invalid #{validation.to_s.split("::").last} value: #{value.inspect}. Failure reason: \n └#{e.message}"
+                          "─ `#{@name}` Validation Failed. Invalid #{validation.to_s.split("::").last} value: #{value.inspect}. Failure reason: \n  └#{e.message}"
                   end
                 end
               end
@@ -166,7 +166,18 @@ module Itsi
           Required: Validation.new(:Required, ->(value) { !value.nil? }),
           Or: ->(validation_a, validation_b){
             Validation.new(:Or, ->(v){
-              validation_a.validate!(v) || validation_b.validate!(v)
+              errs = []
+              begin
+                return validation_a.validate!(v)
+              rescue StandardError => e
+                errs << e.message
+              end
+              begin
+                return validation_b.validate!(v)
+              rescue StandardError => e
+                errs << e.message
+              end
+              raise StandardError.new("─ Validation failed (None match:) \n  └#{errs.join("\n  └")}")
             })
           },
           Range: ->(input_range) {
@@ -193,8 +204,8 @@ module Itsi
             define_singleton_method(name.to_s.downcase, &factory)
           else
             const_set(name, factory)
-            define_singleton_method(name, -> { factory })
-            define_singleton_method(name.to_s.downcase, -> { factory })
+            define_singleton_method(name, -> { factory.dup })
+            define_singleton_method(name.to_s.downcase, -> { factory.dup })
           end
         end
       end

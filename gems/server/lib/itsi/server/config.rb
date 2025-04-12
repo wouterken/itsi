@@ -154,10 +154,19 @@ module Itsi
 
       def self.test!(cli_params)
         _, errors = build_config(cli_params, Itsi::Server::Config.config_file_path(cli_params[:config_file]))
+        unless errors.any?
+          begin
+            _["middleware_loader"][]
+          rescue Exception => e
+            errors = [e]
+          end
+        end
+
         if errors.any?
           Itsi.log_error("Config file is invalid")
           puts errors
         else
+        binding.b
           Itsi.log_info("Config file is valid")
         end
       end

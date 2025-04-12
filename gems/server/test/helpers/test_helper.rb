@@ -56,8 +56,8 @@ class RequestContext
     Net::HTTP.post(@uri+path, data)
   end
 
-  def get(path)
-    Net::HTTP.get(@uri+path)
+  def get(path, headers={})
+    Net::HTTP.get(@uri+path, headers)
   end
 
   def get_resp(path)

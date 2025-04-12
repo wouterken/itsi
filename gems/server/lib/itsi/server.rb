@@ -160,7 +160,7 @@ module Itsi
       end
 
       def load_route_middleware_stack(cli_params)
-        Config.build_config(cli_params, Itsi::Server::Config.config_file_path(cli_params[:config_file_path]))[
+        Config.build_config(cli_params, Itsi::Server::Config.config_file_path(cli_params[:config_file_path])).first[
           "middleware_loader"
           ][]
       end

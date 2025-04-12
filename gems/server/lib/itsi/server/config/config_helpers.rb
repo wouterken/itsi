@@ -74,7 +74,7 @@ module Itsi
           end
         end
 
-        def initialize(location, params)
+        def initialize(location, params={})
           @location = location
           @params = case self.schema
           when TypedStruct::Validation

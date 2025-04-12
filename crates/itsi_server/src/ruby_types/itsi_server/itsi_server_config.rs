@@ -84,7 +84,6 @@ pub struct SocketOpts {
 impl ServerParams {
     pub fn preload_ruby(self: &Arc<Self>) -> Result<()> {
         call_with_gvl(|ruby| -> Result<()> {
-            debug!("Preloading Ruby");
             if self
                 .scheduler_class
                 .as_ref()
@@ -103,9 +102,7 @@ impl ServerParams {
                     }
                 })?
                 .map(|mw| mw.into());
-            debug!("Middleware routes returned");
             let middleware = MiddlewareSet::new(routes_raw)?;
-            debug!("Middleware loaded");
             self.middleware.set(middleware).map_err(|_| {
                 magnus::Error::new(
                     magnus::exception::runtime_error(),

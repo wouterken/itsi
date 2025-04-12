@@ -4,13 +4,22 @@ module Itsi
 
       require "set"
       require "strscan"
-
       def format_mw(mw)
-        case mw["type"]
+        case mw.first
         when "app"
-          "app #{mw["parameters"]["app_proc"].inspect.split(" ")[1]}"
+          "app #{mw.last['app_proc'].inspect.split(' ')[1]}"
+        when "log_requests"
+          if mw.last['before'] && mw.last['after']
+            "log_requests(before: #{mw.last['before']['format'][0..6]}..., after: #{mw.last['after']['format'][0..6]}...)"
+          elsif mw.last['before']
+            "log_requests(before: #{mw.last['before']['format'][0..6]}...)"
+          elsif mw.last['after']
+            "log_requests(before: nil, after: #{mw.last['after']['format'][0..6]}...)"
+          end
+        when "compression"
+          "compress(#{mw.last['algorithms'].join(' ')}, #{mw.last['mime_types']})"
         else
-          mw["type"]
+          mw.first
         end
       end
 
@@ -21,12 +30,12 @@ module Itsi
         end.compact
         filter_str = filters.any? ? filters.join(", ") : "(none)"
 
-        middlewares = stack["middleware"]
+        middlewares = stack["middleware"].to_a
 
         puts "─" * 76
-        puts "Route:      #{route_str}"
-        puts "Conditions: #{filter_str}"
-        puts "Middleware: • #{format_mw(middlewares.first)}"
+        puts "\e[32mRoute:\e[0m      \e[33m#{route_str}\e[0m"
+        puts "\e[32mConditions:\e[0m \e[34m#{filter_str}\e[0m"
+        puts "\e[32mMiddleware:\e[0m • #{format_mw(middlewares.first)}"
         middlewares[1..].each do |mw|
           puts "            • #{format_mw(mw)}"
         end

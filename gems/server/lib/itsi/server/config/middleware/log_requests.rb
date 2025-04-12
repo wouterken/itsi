@@ -3,8 +3,6 @@ module Itsi
     module Config
       class LogRequests < Middleware
 
-        attr_accessor :log_requests
-
         insert_text <<~SNIPPET
         log_requests \\
           before: { level: ${1|"INFO","WARN","ERROR","DEBUG"|} format: ${2|"[{request_id}] {method} {path_and_query} - {addr} "|} },

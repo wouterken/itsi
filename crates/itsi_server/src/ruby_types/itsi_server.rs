@@ -49,6 +49,7 @@ impl ItsiServer {
             self.build_and_run_strategy()
         };
         if let Err(e) = result {
+            error!("Error starting server: {:?}", e);
             if let Some(err_value) = e.value() {
                 print_rb_backtrace(err_value);
             }

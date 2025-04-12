@@ -25,6 +25,7 @@ use std::convert::Infallible;
 use tokio::io::{AsyncRead, AsyncReadExt, BufReader};
 use tokio_stream::StreamExt;
 use tokio_util::io::{ReaderStream, StreamReader};
+use tracing::debug;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Compression {
     min_size: usize,
@@ -40,8 +41,8 @@ enum CompressionLevel {
     Fastest,
     #[serde(rename(deserialize = "best"))]
     Best,
-    #[serde(rename(deserialize = "default"))]
-    Default,
+    #[serde(rename(deserialize = "balanced"))]
+    Balanced,
     #[serde(rename(deserialize = "precise"))]
     Precise(i32),
 }
@@ -51,7 +52,7 @@ impl CompressionLevel {
         match self {
             CompressionLevel::Fastest => Level::Fastest,
             CompressionLevel::Best => Level::Best,
-            CompressionLevel::Default => Level::Default,
+            CompressionLevel::Balanced => Level::Default,
             CompressionLevel::Precise(level) => Level::Precise(*level),
         }
     }
@@ -61,14 +62,14 @@ impl CompressionLevel {
 pub enum CompressionAlgorithm {
     #[serde(rename(deserialize = "gzip"))]
     Gzip,
-    #[serde(rename(deserialize = "brotli"))]
+    #[serde(rename(deserialize = "br"))]
     Brotli,
     #[serde(rename(deserialize = "deflate"))]
     Deflate,
     #[serde(rename(deserialize = "zstd"))]
     Zstd,
-    #[serde(rename(deserialize = "none"))]
-    None,
+    #[serde(rename(deserialize = "identity"))]
+    Identity,
 }
 
 impl CompressionAlgorithm {
@@ -78,7 +79,7 @@ impl CompressionAlgorithm {
             CompressionAlgorithm::Brotli => "br",
             CompressionAlgorithm::Deflate => "deflate",
             CompressionAlgorithm::Zstd => "zstd",
-            CompressionAlgorithm::None => "none",
+            CompressionAlgorithm::Identity => "identity",
         }
     }
 
@@ -99,6 +100,8 @@ enum MimeType {
     Audio,
     #[serde(rename(deserialize = "video"))]
     Video,
+    #[serde(rename(deserialize = "font"))]
+    Font,
     #[serde(rename(deserialize = "other"))]
     Other(String),
     #[serde(rename(deserialize = "all"))]
@@ -113,6 +116,7 @@ impl MimeType {
             MimeType::Application => header_contains(content_encodings, "application/*"),
             MimeType::Audio => header_contains(content_encodings, "audio/*"),
             MimeType::Video => header_contains(content_encodings, "video/*"),
+            MimeType::Font => header_contains(content_encodings, "font/*"),
             MimeType::Other(v) => header_contains(content_encodings, v),
             MimeType::All => header_contains(content_encodings, "*"),
         }
@@ -162,16 +166,28 @@ impl MiddlewareLayer for Compression {
             .iter()
             .any(|mt| mt.matches(&resp.headers().get_all(CONTENT_TYPE)))
         {
+            debug!(
+                target: "middleware::compress",
+                "Mime type not supported for compression"
+            );
             return resp;
         }
 
         // Don't compress streams unless compress streams is enabled.
         if body_size.is_none() && !self.compress_streams {
+            debug!(
+                target: "middleware::compress",
+                "Stream compression disabled"
+            );
             return resp;
         }
 
         // Don't compress too small bodies
         if body_size.is_some_and(|s| s < self.min_size as u64) {
+            debug!(
+                target: "middleware::compress",
+                "Body size too small for compression"
+            );
             return resp;
         }
 
@@ -181,6 +197,10 @@ impl MiddlewareLayer for Compression {
                 for encoding in encodings.split(',').map(str::trim) {
                     let encoding = encoding.split(';').next().unwrap_or(encoding).trim();
                     if self.algorithms.iter().any(|algo| algo.as_str() == encoding) {
+                        debug!(
+                            target: "middleware::compress",
+                            "Body already compressed with supported algorithm"
+                        );
                         return resp;
                     }
                 }
@@ -195,10 +215,14 @@ impl MiddlewareLayer for Compression {
             Some("br") => CompressionAlgorithm::Brotli,
             Some("deflate") => CompressionAlgorithm::Deflate,
             Some("zstd") => CompressionAlgorithm::Zstd,
-            _ => CompressionAlgorithm::None,
+            _ => CompressionAlgorithm::Identity,
         };
 
-        if matches!(compression_method, CompressionAlgorithm::None) {
+        debug!(
+            target: "middleware::compress",
+            "Selected compression method: {:?}", compression_method
+        );
+        if matches!(compression_method, CompressionAlgorithm::Identity) {
             return resp;
         }
 
@@ -250,7 +274,7 @@ impl MiddlewareLayer for Compression {
                     encoder.read_to_end(&mut buf).await.unwrap();
                     buf
                 }
-                CompressionAlgorithm::None => unreachable!(),
+                CompressionAlgorithm::Identity => unreachable!(),
             };
             BoxBody::new(Full::new(Bytes::from(compressed_bytes)))
         } else {
@@ -276,13 +300,16 @@ impl MiddlewareLayer for Compression {
                     reader,
                     self.level.to_async_compression_level(),
                 )),
-                CompressionAlgorithm::None => unreachable!(),
+                CompressionAlgorithm::Identity => unreachable!(),
             }
         };
 
         update_content_encoding(&mut parts, compression_method.header_value());
         parts.headers.remove(CONTENT_LENGTH);
-
+        debug!(
+            target: "middleware::compress",
+            "Response compressed"
+        );
         Response::from_parts(parts, new_body)
     }
 }

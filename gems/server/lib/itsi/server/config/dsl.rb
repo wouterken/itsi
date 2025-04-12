@@ -453,10 +453,6 @@ module Itsi
           @middleware[:auth_api_key] = args
         end
 
-        def compress(**args)
-          @middleware[:compression] = args
-        end
-
         def request_headers(**args)
           @middleware[:request_headers] = args
         end
