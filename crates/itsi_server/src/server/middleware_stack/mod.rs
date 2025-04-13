@@ -8,8 +8,11 @@ use magnus::{
 pub use middleware::Middleware;
 pub use middlewares::*;
 use regex::{Regex, RegexSet};
-use std::{collections::HashMap, sync::Arc};
-use tracing::{debug, info};
+use std::{
+    collections::{hash_map::Entry::Vacant, HashMap},
+    sync::Arc,
+};
+use tracing::debug;
 
 use super::http_message_types::HttpRequest;
 
@@ -168,9 +171,16 @@ impl MiddlewareSet {
                         let pair = RArray::from_value(pair.unwrap()).unwrap();
                         let middleware_type: String = pair.entry(0).unwrap();
                         let value: Value = pair.entry(1).unwrap();
-                        let middleware = MiddlewareSet::parse_middleware(middleware_type, value);
-                        if let Ok(middleware) = middleware.as_ref() {
-                            unique_middlewares.insert(value.as_raw(), middleware.clone());
+                        let middleware = if let Vacant(e) = unique_middlewares.entry(value.as_raw())
+                        {
+                            let middleware =
+                                MiddlewareSet::parse_middleware(middleware_type.clone(), value);
+                            if let Ok(middleware) = middleware.as_ref() {
+                                e.insert(middleware.clone());
+                            };
+                            middleware
+                        } else {
+                            Ok(unique_middlewares.get(&value.as_raw()).unwrap().clone())
                         };
                         middleware
                     })
@@ -321,10 +331,6 @@ impl MiddlewareSet {
     }
 
     pub async fn initialize_layers(&self) -> Result<()> {
-        info!(
-            "Unique middleware keys: {:?}",
-            self.unique_middlewares.keys()
-        );
         for middleware in self.unique_middlewares.values() {
             middleware.initialize().await?;
         }

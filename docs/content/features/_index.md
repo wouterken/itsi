@@ -38,7 +38,7 @@ Pick and choose **just** the features that make sense for you.
 * Weak and Strong eTag support.
 * `If-None-Match` and `If-Modified-Since` support.
 * Automated etag generation for dynamic content (or forwarding of existing `etags` if present)
-* See [etag](/middleware/etag)
+* See [etag](/middleware/etag) and [cache_control](/middleware/cache_control)
 {{% /details %}}
 
 {{% details title="Conditional Middleware" closed="true" %}}

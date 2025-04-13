@@ -186,6 +186,16 @@ module Itsi
           Length: lambda { |input_length|
             Validation.new(:Length, ->(value) { input_length === value.length })
           },
+          Hash: ->(key_type, value_type) {
+            Validation.new(:Hash, ->(v){
+              v.map do |k, v|
+                [
+                  key_type.validate!(k),
+                  value_type.validate!(v)
+                ]
+              end.to_h
+            })
+          },
           Type: ->(input_type) { Validation.new(:Type, input_type) },
           Enum: ->(allowed_values) { Validation.new(:Enum, [allowed_values.map{|v| v.kind_of?(Symbol) ? v.to_s : v}]) },
           Array: lambda { |*value_validations|

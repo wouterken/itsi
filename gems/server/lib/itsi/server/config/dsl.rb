@@ -473,14 +473,6 @@ module Itsi
           @middleware[:rate_limit] = args
         end
 
-        def cache_control(**args)
-          @middleware[:cache_control] = args
-        end
-
-        def etag(**args)
-          @middleware[:etag] = args
-        end
-
         def csp(**args)
           @middleware[:csp] = args
         end
@@ -494,10 +486,6 @@ module Itsi
             end
           end
           @middleware[:intrusion_protection] = args
-        end
-
-        def cors(**args)
-          @middleware[:cors] = args
         end
 
         def static_assets(**args)

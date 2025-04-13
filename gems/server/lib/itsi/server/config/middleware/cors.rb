@@ -17,11 +17,11 @@ module Itsi
 
         schema do
           {
-            allow_origins: Array(String).default(["*"]),
-            allow_methods: Array(String).default(["GET", "POST", "PUT", "DELETE"]),
-            allow_headers: Array(String).default(["Content-Type", "Authorization"]),
+            allow_origins: Array(Type(String)).default(["*"]),
+            allow_methods: Array(Type(String)).default(["GET", "POST", "PUT", "DELETE"]),
+            allow_headers: Array(Type(String)).default(["Content-Type", "Authorization"]),
             allow_credentials: Bool().default(false),
-            expose_headers: Array(String).default([]),
+            expose_headers: Array(Type(String)).default([]),
             max_age: Type(Integer).default(3600)
           }
         end

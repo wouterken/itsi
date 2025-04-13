@@ -8,8 +8,9 @@ use http::{HeaderName, HeaderValue};
 use magnus::error::Result;
 use serde::Deserialize;
 use std::{collections::HashMap, sync::OnceLock};
+use tracing::{debug, info};
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct CacheControl {
     #[serde(default)]
     pub max_age: Option<u64>,
@@ -87,6 +88,7 @@ impl MiddlewareLayer for CacheControl {
         // Set the Cache-Control header if we have directives
         if !directives.is_empty() {
             let cache_control_value = directives.join(", ");
+            debug!(target: "middleware::cache_control", "Built cache-control directive {}", cache_control_value);
             self.cache_control_str.set(cache_control_value).unwrap();
         }
 
@@ -97,20 +99,27 @@ impl MiddlewareLayer for CacheControl {
         // Skip for statuses where caching doesn't make sense
         let status = resp.status().as_u16();
         if matches!(status, 401 | 403 | 500..=599) {
+            debug!(target: "middleware::cache_control", "Skipping cache-control for status {}", status);
             return resp;
         }
 
         // Set the Cache-Control header if we have directives
         if let Some(cache_control_value) = self.cache_control_str.get() {
             if let Ok(value) = HeaderValue::from_str(cache_control_value) {
+                debug!(target: "middleware::cache_control", "Setting cache-control header to {}", cache_control_value);
                 resp.headers_mut().insert("Cache-Control", value);
+            } else {
+                debug!(target: "middleware::cache_control", "Failed to parse cache-control value {}", cache_control_value);
             }
+        } else {
+            debug!(target: "middleware::cache_control", "No cache-control value provided");
         }
 
         // Set Expires header based on max-age if present
         if let Some(max_age) = self.max_age {
             // Set the Expires header based on max-age
             // Use a helper to format the HTTP date correctly
+            debug!(target: "middleware::cache_control", "Setting expires header to {}", max_age);
             let expires = chrono::Utc::now() + chrono::Duration::seconds(max_age as i64);
             let expires_str = expires.format("%a, %d %b %Y %H:%M:%S GMT").to_string();
             if let Ok(value) = HeaderValue::from_str(&expires_str) {
@@ -118,7 +127,6 @@ impl MiddlewareLayer for CacheControl {
             }
         }
 
-        // Set Vary header
         if !self.vary.is_empty() {
             let vary_value = self.vary.join(", ");
             if let Ok(value) = HeaderValue::from_str(&vary_value) {
@@ -130,6 +138,7 @@ impl MiddlewareLayer for CacheControl {
         for (name, value) in &self.additional_headers {
             if let Ok(header_value) = HeaderValue::from_str(value) {
                 if let Ok(header_name) = name.parse::<HeaderName>() {
+                    debug!(target: "middleware::cache_control", "Setting custom header {} to {:?}", header_name, header_value);
                     resp.headers_mut().insert(header_name, header_value);
                 }
             }

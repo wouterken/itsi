@@ -15,6 +15,7 @@ use hyper::body::Body;
 use magnus::error::Result;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
+use tracing::debug;
 
 #[derive(Debug, Clone, Copy, Deserialize, Default)]
 pub enum ETagType {
@@ -60,6 +61,7 @@ impl MiddlewareLayer for ETag {
         // Store if-none-match header in context if present for later use in after hook
         if self.handle_if_none_match {
             if let Some(if_none_match) = req.headers().get(header::IF_NONE_MATCH) {
+                debug!(target: "middleware::etag", "Received If-None-Match header: {:?}", if_none_match);
                 if let Ok(etag_value) = if_none_match.to_str() {
                     context.set_if_none_match(Some(etag_value.to_string()));
                 }
@@ -77,33 +79,35 @@ impl MiddlewareLayer for ETag {
             | StatusCode::NON_AUTHORITATIVE_INFORMATION
             | StatusCode::NO_CONTENT
             | StatusCode::PARTIAL_CONTENT => {}
-            _ => return resp,
+            _ => {
+                debug!(target: "middleware::etag", "Skipping ETag middleware for ineligible response");
+                return resp;
+            }
         }
 
-        // Skip if already has an ETag
         if resp.headers().contains_key(header::ETAG) {
+            debug!(target: "middleware::etag", "Forwarding response with existing ETag");
             return resp;
         }
 
-        // Skip if Cache-Control: no-store is present
         if let Some(cache_control) = resp.headers().get(header::CACHE_CONTROL) {
             if let Ok(cache_control_str) = cache_control.to_str() {
                 if cache_control_str.contains("no-store") {
+                    debug!(target: "middleware::etag", "Skipping ETag for no-store response");
                     return resp;
                 }
             }
         }
 
-        // Check if body is a stream or fixed size using size_hint (similar to compression.rs)
         let body_size = resp.size_hint().exact();
 
-        // Skip streaming bodies
         if body_size.is_none() {
+            debug!(target: "middleware::etag", "Skipping ETag for streaming response");
             return resp;
         }
 
-        // Skip if body is too small
         if body_size.unwrap_or(0) < self.min_body_size as u64 {
+            debug!(target: "middleware::etag", "Skipping ETag for small response");
             return resp;
         }
 
@@ -142,6 +146,7 @@ impl MiddlewareLayer for ETag {
                 ETagType::Weak => format!("W/\"{}\"", computed_etag),
             };
 
+            debug!(target: "middleware::etag", "Computed ETag for response {}", formatted_etag);
             if let Ok(value) = HeaderValue::from_str(&formatted_etag) {
                 parts.headers.insert(header::ETAG, value);
             }
@@ -150,7 +155,6 @@ impl MiddlewareLayer for ETag {
             formatted_etag
         };
 
-        // Handle 304 Not Modified if we have an If-None-Match header and it matches
         if self.handle_if_none_match {
             if let Some(if_none_match) = context.get_if_none_match() {
                 if if_none_match == etag_value || if_none_match == "*" {
@@ -176,7 +180,6 @@ impl MiddlewareLayer for ETag {
             }
         }
 
-        // Recreate response with the original body and the ETag header
         Response::from_parts(parts, body)
     }
 }
