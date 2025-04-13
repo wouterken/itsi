@@ -10,6 +10,7 @@ use http_body_util::{combinators::BoxBody, Empty};
 use itsi_error::ItsiError;
 use magnus::error::Result;
 use serde::Deserialize;
+use tracing::debug;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Cors {
@@ -74,6 +75,7 @@ impl Cors {
 
         if origin.is_empty() {
             // When credentials are allowed, you cannot return "*".
+            debug!(target: "middleware::cors", "Origin empty {}", origin);
             if !self.allow_credentials {
                 headers.insert(
                     "Access-Control-Allow-Origin",
@@ -159,7 +161,10 @@ impl Cors {
 
         let origin = match origin {
             Some(o) if !o.is_empty() => o,
-            _ => return Ok(headers), // Missing Origin – preflight fails
+            _ => {
+                debug!(target: "middleware::cors", "Missing Origin – preflight fails");
+                return Ok(headers);
+            }
         };
 
         if !self
@@ -167,15 +172,20 @@ impl Cors {
             .iter()
             .any(|allowed| allowed == "*" || allowed == origin)
         {
+            debug!(target: "middleware::cors", "Origin not allowed");
             return Ok(headers);
         }
 
         let request_method = match req_method {
             Some(m) if !m.is_empty() => m,
-            _ => return Ok(headers), // Missing request method – preflight fails
+            _ => {
+                debug!(target: "middleware::cors", "Missing request method – preflight fails");
+                return Ok(headers);
+            }
         };
 
         if !self.allow_methods.iter().any(|m| m.matches(request_method)) {
+            debug!(target: "middleware::cors", "Method not allowed");
             return Ok(headers);
         }
 
@@ -191,6 +201,7 @@ impl Cors {
                     .iter()
                     .any(|allowed| allowed.eq_ignore_ascii_case(header))
                 {
+                    debug!(target: "middleware::cors", "Header not allowed {}", header);
                     return Ok(headers);
                 }
             }
@@ -253,11 +264,12 @@ impl MiddlewareLayer for Cors {
         context: &mut HttpRequestContext,
     ) -> Result<either::Either<HttpRequest, HttpResponse>> {
         let origin = req.header("Origin");
+        debug!(target: "middleware::cors", "Origin: {:?}", origin);
         if req.method() == Method::OPTIONS {
             let ac_request_method = req.header("Access-Control-Request-Method");
             let ac_request_headers = req.header("Access-Control-Request-Headers");
             let headers = self.preflight_headers(origin, ac_request_method, ac_request_headers)?;
-
+            debug!(target: "middleware::cors", "Preflight Headers: {:?}", headers);
             let mut response_builder = Response::builder().status(204);
             *response_builder.headers_mut().unwrap() = headers;
             let response = response_builder
@@ -275,7 +287,9 @@ impl MiddlewareLayer for Cors {
         context: &mut HttpRequestContext,
     ) -> HttpResponse {
         if let Some(Some(origin)) = context.origin.get() {
+            debug!(target: "middleware::cors", "fetching cors headers for origin {}", origin);
             if let Ok(cors_headers) = self.cors_headers(origin) {
+                debug!(target: "middleware::cors", "Cors Headers: {:?}", cors_headers);
                 for (key, value) in cors_headers.iter() {
                     resp.headers_mut().insert(key.clone(), value.clone());
                 }

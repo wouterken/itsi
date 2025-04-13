@@ -1,5 +1,5 @@
 ---
-title: Request Logging Middleware
+title: Request Logs
 url: /middleware/log_requests
 weight: 1
 ---

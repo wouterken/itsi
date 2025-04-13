@@ -299,6 +299,10 @@ module Itsi
         end
 
         def auto_reload_config!
+          return if @auto_reloading
+
+          @auto_reloading = true
+
           if ENV["BUNDLE_BIN_PATH"]
             watch "Itsi.rb", [%w[bundle exec itsi restart]]
           else

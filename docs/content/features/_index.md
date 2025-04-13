@@ -108,7 +108,7 @@ Efficiently serves static assets with proper content types and caching headers.
 * Support `STDOUT`, file-system and combined log sinks.
 * Apply selective log levels for specific log targets only.
 * Configurable request logging middleware, with custom log templates.
-* See [log_responses](/middleware/log_responses) & [logging](/getting_started/logging).
+* See [log_requests](/middleware/log_requests) & [logging](/getting_started/logging).
 {{% /details %}}
 
 {{% details title="Hot Config Reloads & Config File Validation" closed="true" %}}

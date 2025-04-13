@@ -60,8 +60,8 @@ class RequestContext
     Net::HTTP.get(@uri+path, headers)
   end
 
-  def get_resp(path)
-    Net::HTTP.get_response(@uri+path)
+  def get_resp(path, headers={})
+    Net::HTTP.get_response(@uri+path, headers)
   end
 
   def head(path)
@@ -70,9 +70,9 @@ class RequestContext
     }
   end
 
-  def options(path)
+  def options(path, headers={})
     Net::HTTP.start(@uri.host, @uri.port) {|http|
-      http.options(path)
+      http.options(path, headers)
     }
   end
 
