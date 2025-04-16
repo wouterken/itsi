@@ -26,11 +26,14 @@ module Itsi
     class << self
 
       def running?
-        !!@running
+        !@running || @running.empty?
       end
 
       def start_in_background_thread(cli_params = {}, &blk)
-        @background_thread = start(cli_params, background: true, &blk)
+        @background_thread ||= []
+        server, background_thread = start(cli_params, background: true, &blk)
+        @background_thread << background_thread
+        server
       end
 
       def start(cli_params, background: false, &blk)
@@ -38,7 +41,8 @@ module Itsi
         server = new(cli_params, itsi_file, blk)
         previous_handler = Signal.trap(:INT, :DEFAULT)
         run = lambda do
-          @running = server
+          @running ||= []
+          @running << server
 
           if cli_params[:daemonize]
             Itsi.log_info("Itsi is running in the background. Writing pid to #{Itsi::Server::Config.pid_file_path}")
@@ -48,11 +52,11 @@ module Itsi
           write_pid
 
           server.start
-          @running = nil
+          @running.delete(server)
           Signal.trap(:INT, previous_handler)
           server
         end
-        background ? Thread.new(&run) : run[]
+        background ? [server, Thread.new(&run)] : run[]
       rescue
       end
 
@@ -74,9 +78,11 @@ module Itsi
         end
       end
 
-      def stop_background_thread
-        @running&.stop
-        @background_thread&.join
+      def stop_background_threads
+        @running && @running.each(&:stop)
+        @background_threads&.each(&:join)
+        @background_threads = []
+        @running = []
       end
 
       def write_pid
@@ -165,7 +171,7 @@ module Itsi
           ][]
       end
 
-      def test_route(cli_params = {}, route_str)
+      def test_route(cli_params, route_str)
         matched_route = load_route_middleware_stack(cli_params).find do |route|
           route["route"] =~ route_str
         end

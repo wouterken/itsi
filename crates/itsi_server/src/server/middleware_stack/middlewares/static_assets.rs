@@ -19,6 +19,7 @@ use magnus::error::Result;
 use regex::Regex;
 use serde::Deserialize;
 use std::{collections::HashMap, path::PathBuf, sync::OnceLock, time::Duration};
+use tracing::debug;
 
 #[derive(Debug, Deserialize)]
 pub struct StaticAssets {
@@ -60,6 +61,8 @@ impl MiddlewareLayer for StaticAssets {
             .set(Regex::new(&self.base_path).map_err(ItsiError::new)?)
             .map_err(ItsiError::new)?;
 
+        debug!(target: "middleware::static_assets", "Base path regexp: {}", self.base_path);
+
         self.file_server
             .set(StaticFileServer::new(StaticFileServerConfig {
                 root_dir: self.root_dir.clone(),
@@ -68,6 +71,7 @@ impl MiddlewareLayer for StaticAssets {
                 max_entries: self.max_files_in_memory,
                 try_html_extension: self.try_html_extension,
                 max_file_size: self.max_file_size_in_memory,
+                headers: self.headers.clone(),
                 recheck_interval: Duration::from_secs(self.file_check_interval),
                 serve_hidden_files: self.serve_hidden_files,
                 allowed_extensions: self.allowed_extensions.clone(),
@@ -83,11 +87,12 @@ impl MiddlewareLayer for StaticAssets {
     ) -> Result<Either<HttpRequest, HttpResponse>> {
         // Only handle GET and HEAD requests
         if req.method() != Method::GET && req.method() != Method::HEAD {
+            debug!(target: "middleware::static_assets", "Refusing to handle non-GET/HEAD request");
             return Ok(Either::Left(req));
         }
         let abs_path = req.uri().path();
         let rel_path = if !self.relative_path {
-            abs_path
+            abs_path.trim_start_matches("/")
         } else {
             let base_path = self
                 .base_path_regex
@@ -104,6 +109,7 @@ impl MiddlewareLayer for StaticAssets {
             }
         };
 
+        debug!(target: "middleware::static_assets", "Asset path is {}", rel_path);
         // Determine if this is a HEAD request
         let is_head_request = req.method() == Method::HEAD;
 

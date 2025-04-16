@@ -8,7 +8,7 @@ module Itsi
         detail "Enable Fiber Scheduler mode"
 
         schema do
-          Or(Bool(), (Type(String) + Required()))
+          Or(Bool(), (Type(String) & Required()))
         end
 
       end

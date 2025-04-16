@@ -10,6 +10,7 @@ use std::{
     path::PathBuf,
     str::FromStr,
 };
+use tracing::instrument;
 
 #[derive(Debug, Clone)]
 pub enum BindAddress {
@@ -86,6 +87,7 @@ impl std::fmt::Debug for Bind {
 impl FromStr for Bind {
     type Err = ItsiError;
 
+    #[instrument(ret)]
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         let (protocol, remainder) = if let Some((proto, rest)) = s.split_once("://") {
             (proto.parse::<BindProtocol>()?, rest)
@@ -180,6 +182,7 @@ fn parse_bind_options(query: &str) -> HashMap<String, String> {
 }
 
 /// Attempts to resolve a hostname into an IP address.
+#[instrument(ret)]
 fn resolve_hostname(hostname: &str) -> Option<IpAddr> {
     (hostname, 0)
         .to_socket_addrs()

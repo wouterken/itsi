@@ -137,6 +137,7 @@ GEM
       builder
       minitest (>= 5.0)
       ruby-progressbar
+    net_http_unix (0.2.2)
     nokogiri (1.18.4-aarch64-linux-gnu)
       racc (~> 1.4)
     nokogiri (1.18.4-aarch64-linux-musl)
@@ -277,6 +278,7 @@ DEPENDENCIES
   itsi-server!
   minitest (~> 5.16)
   minitest-reporters
+  net_http_unix
   pg
   rake (~> 13.0)
   rake-compiler

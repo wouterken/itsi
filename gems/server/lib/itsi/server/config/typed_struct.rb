@@ -16,12 +16,19 @@ module Itsi
           defaults.transform_values! { _1.is_a?(Validation) ? _1.default(nil) : _1 }
           Struct.new(*defaults.keys, keyword_init: true) do
             define_method(:initialize) do |*input, validate: true, **raw_input|
+
+              if input.last && !input.last.is_a?(Hash)
+                raise "─ Invalid input to #{self}: #{input.last}"
+              end
               raw_input.transform_keys!{|k| k.to_s.downcase.to_sym }
               raw_input.merge!(input.pop.transform_keys!{|k| k.to_s.downcase.to_sym}) if input.last.is_a?(Hash)
 
               excess_keys = raw_input.keys - defaults.keys
 
-              raise "─ Unsupported keys #{excess_keys}" if excess_keys.any?
+              if excess_keys.any?
+                raise "─ Unsupported keys #{excess_keys}"
+
+              end
 
               initial_values = defaults.each_with_object({}) do |(k, default_config), inputs|
                 value = raw_input.key?(k) ? raw_input[k] : default_config[VALUE].dup
@@ -97,7 +104,7 @@ module Itsi
             "#{@name}"
           end
 
-          def +(other)
+          def &(other)
             tail = self
             while tail.next
               tail = tail.next
@@ -134,17 +141,24 @@ module Itsi
                   raise ArgumentError,
                         "─ `#{@name}` validation failed. Invalid #{validation} value: #{value.inspect}"
                 end
+              when Validation
+                validation.validate!(value)
               when Class
-
                 if value && !value.is_a?(validation)
                   begin
                     value = \
                       if validation.eql?(Time) then Time.parse(value.to_s)
                       elsif validation.eql?(::Date) then Date.parse(value.to_s)
                       elsif validation.eql?(Float) then Float(value)
-                      elsif validation.eql?(String) then value.to_s
-                      elsif validation.eql?(Symbol) then value.is_a?(Symbol) ? value : value.to_s.to_sym
-                      else validation.new(value)
+                      elsif validation.eql?(String) || validation.eql?(Symbol)
+                        raise ArgumentError, "Invalid #{validation} value: #{value.inspect}" unless value.is_a?(String) || value.is_a?(Symbol)
+                        if validation.eql?(String)
+                          value.to_s
+                        elsif validation.eql?(Symbol)
+                          value.to_s.to_sym
+                        end
+                      else
+                        validation.new(value)
                       end
                   rescue StandardError => e
                     raise ArgumentError,
@@ -164,18 +178,17 @@ module Itsi
         {
           Bool: Validation.new(:Bool, [[true, false]]),
           Required: Validation.new(:Required, ->(value) { !value.nil? }),
-          Or: ->(validation_a, validation_b){
+          Or: ->(*validations){
             Validation.new(:Or, ->(v){
+              return true if v.nil?
               errs = []
-              begin
-                return validation_a.validate!(v)
-              rescue StandardError => e
-                errs << e.message
-              end
-              begin
-                return validation_b.validate!(v)
-              rescue StandardError => e
-                errs << e.message
+              validations.each do |validation|
+                begin
+                  v = validation.validate!(v)
+                  return v
+                rescue StandardError => e
+                  errs << e.message
+                end
               end
               raise StandardError.new("─ Validation failed (None match:) \n  └#{errs.join("\n  └")}")
             })

@@ -1,9 +1,10 @@
 use crate::{
-    default_responses::{INTERNAL_SERVER_ERROR_RESPONSE, NOT_FOUND_RESPONSE},
+    default_responses::NOT_FOUND_RESPONSE,
     prelude::*,
     server::{
         http_message_types::{HttpRequest, HttpResponse, RequestExt, ResponseFormat},
         middleware_stack::ErrorResponse,
+        redirect_type::RedirectType,
     },
 };
 use base64::{engine::general_purpose, Engine};
@@ -46,6 +47,7 @@ pub static ROOT_STATIC_FILE_SERVER: LazyLock<StaticFileServer> = LazyLock::new(|
         recheck_interval: Duration::from_secs(1),
         try_html_extension: true,
         auto_index: true,
+        headers: None,
         not_found_behavior: NotFoundBehavior::Error(ErrorResponse::not_found()),
         serve_hidden_files: false,
         allowed_extensions: vec!["html".to_string(), "css".to_string(), "js".to_string()],
@@ -56,6 +58,7 @@ pub static ROOT_STATIC_FILE_SERVER: LazyLock<StaticFileServer> = LazyLock::new(|
 #[derive(Debug, Clone, Deserialize)]
 pub struct Redirect {
     pub to: String,
+    pub r#type: RedirectType,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -68,8 +71,6 @@ pub enum NotFoundBehavior {
     IndexFile(PathBuf),
     #[serde(rename = "redirect")]
     Redirect(Redirect),
-    #[serde(rename = "internal_server_error")]
-    InternalServerError,
 }
 
 #[derive(Debug, Clone)]
@@ -81,6 +82,7 @@ pub struct StaticFileServerConfig {
     pub try_html_extension: bool,
     pub auto_index: bool,
     pub not_found_behavior: NotFoundBehavior,
+    pub headers: Option<HashMap<String, String>>,
     pub serve_hidden_files: bool,
     pub allowed_extensions: Vec<String>,
 }
@@ -304,15 +306,10 @@ impl StaticFileServer {
                         .await
                 }
                 NotFoundBehavior::Redirect(redirect) => Response::builder()
-                    .status(StatusCode::MOVED_PERMANENTLY)
+                    .status(redirect.r#type.status_code())
                     .header(header::LOCATION, redirect.to)
                     .body(BoxBody::new(Full::new(Bytes::new())))
                     .unwrap(),
-                NotFoundBehavior::InternalServerError => {
-                    INTERNAL_SERVER_ERROR_RESPONSE
-                        .to_http_response(request.accept().into())
-                        .await
-                }
             },
         })
     }
@@ -434,8 +431,8 @@ impl StaticFileServer {
 
         // No valid cached entry, resolve the key to a file path
         let decoded_key = percent_decode_str(key).decode_utf8_lossy();
-        let normalized_path =
-            normalize_path(decoded_key).ok_or(NotFoundBehavior::InternalServerError)?;
+        let normalized_path = normalize_path(decoded_key)
+            .ok_or(NotFoundBehavior::Error(NOT_FOUND_RESPONSE.clone()))?;
 
         if !self.config.serve_hidden_files
             && normalized_path
@@ -449,6 +446,7 @@ impl StaticFileServer {
 
         let mut full_path = self.config.root_dir.clone();
         full_path.push(normalized_path);
+        debug!("Resolving path {:?}", full_path);
         // Check if path exists and is a file
         match tokio::fs::metadata(&full_path).await {
             Ok(metadata) => {
@@ -492,7 +490,9 @@ impl StaticFileServer {
                         // Check for case insensitive index.html
                         let entries = match tokio::fs::read_dir(&full_path).await {
                             Ok(entries) => entries,
-                            Err(_) => return Err(NotFoundBehavior::InternalServerError),
+                            Err(_) => {
+                                return Err(NotFoundBehavior::Error(NOT_FOUND_RESPONSE.clone()))
+                            }
                         };
 
                         tokio::pin!(entries);
@@ -558,6 +558,7 @@ impl StaticFileServer {
             }
             Err(_) => {
                 // Path doesn't exist, try with .html extension if configured
+                debug!("Path doesn't exist");
                 if self.config.try_html_extension {
                     let mut html_path = full_path.clone();
                     html_path.set_extension("html");
@@ -754,6 +755,7 @@ impl StaticFileServer {
                 (end_idx - start) as usize,
                 last_modified,
                 content_range,
+                &self.headers,
                 self.stream_file_range(file, start, end_idx).await.unwrap(),
             )
         } else {
@@ -765,6 +767,7 @@ impl StaticFileServer {
                 content_length as usize,
                 last_modified,
                 content_range,
+                &self.headers,
                 self.stream_file(file).await.unwrap(),
             )
         }
@@ -863,6 +866,7 @@ impl StaticFileServer {
                 range_bytes.len(),
                 cache_entry.last_modified,
                 content_range,
+                &self.headers,
                 BoxBody::new(Full::new(range_bytes)),
             )
         } else {
@@ -877,6 +881,7 @@ impl StaticFileServer {
                 content_length as usize,
                 cache_entry.last_modified,
                 content_range,
+                &self.headers,
                 body,
             )
         }
@@ -947,6 +952,7 @@ fn build_file_response(
     content_length: usize,
     last_modified: SystemTime,
     range_header: Option<String>,
+    headers: &Option<HashMap<String, String>>,
     body: BoxBody<Bytes, Infallible>,
 ) -> http::Response<BoxBody<Bytes, Infallible>> {
     let mut builder = Response::builder()
@@ -965,6 +971,11 @@ fn build_file_response(
 
     if let Some(range) = range_header {
         builder = builder.header(CONTENT_RANGE, range);
+    }
+    if let Some(headers) = headers {
+        for (key, value) in headers {
+            builder = builder.header(key, value);
+        }
     }
 
     builder.body(body).unwrap()

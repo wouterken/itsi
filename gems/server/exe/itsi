@@ -7,13 +7,13 @@ require "optparse"
 
 COMMANDS = {
   "init" => "Initialize a new Itsi.rb server configuration file",
-  "test" => "Test config file validity",
   "status" => "Show the status of the server",
   "start" => "Start the Itsi server",
   "serve" => "Start the Itsi server",
   "stop" => "Stop the server",
   "reload" => "Reload the server",
   "restart" => "Restart the server",
+  "test" => "Test config file validity",
   "add_worker" => "Add a new worker to the server cluster",
   "remove_worker" => "Remove a worker from the server cluster",
   "routes" => "Print the routes of the server",
@@ -155,6 +155,7 @@ if ENV['COMP_LINE'] || ARGV.include?('--completion')
 end
 
 parser.parse!
+
 case (command = ARGV.shift)
 when *COMMANDS.keys
   required_arity = Itsi::Server.method(command).parameters&.select{|c| c.first == :req }&.length&.succ || 2

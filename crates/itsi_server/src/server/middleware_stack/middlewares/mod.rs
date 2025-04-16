@@ -57,6 +57,7 @@ use serde::Deserialize;
 use serde_magnus::deserialize;
 pub use static_assets::StaticAssets;
 pub use static_response::StaticResponse;
+pub use string_rewrite::StringRewrite;
 
 use crate::server::http_message_types::HttpRequest;
 use crate::server::http_message_types::HttpResponse;

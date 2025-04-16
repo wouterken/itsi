@@ -155,10 +155,19 @@ module Itsi
       end
 
       params.merge!(query_params).merge!(url_params)
-
-      yield schema ? apply_schema!(params, schema) : params
+      validated = schema ? apply_schema!(params, schema) : params
+      unless block_given?
+        if multipart?
+          raise "#params must take a block for multipart requests"
+        else
+          return validated
+        end
+      else
+        yield validated
+      end
 
     rescue StandardError => e
+      puts e.backtrace
       if response.json?
         respond(json: {error: e.message}, status: 400)
       else

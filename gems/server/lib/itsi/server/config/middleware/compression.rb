@@ -22,7 +22,7 @@ module Itsi
 
         schema do
           {
-            min_size: (Range(0..1024 ** 4) + Required()).default(1024),
+            min_size: (Range(0..1024 ** 4) & Required()).default(1024),
             algorithms: (Array(Enum(%w[zstd gzip deflate br])).default(%w[zstd gzip deflate br])),
             compress_streams: (Bool().default(true)),
             mime_types: Array(Or(Enum(%w[text image application audio video font all]), Type(OtherMimeType))).default(%w[all]),

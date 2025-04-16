@@ -1,5 +1,5 @@
 use crate::default_responses::{NOT_FOUND_RESPONSE, TIMEOUT_RESPONSE};
-use crate::ruby_types::itsi_server::itsi_server_config::ServerParams;
+use crate::ruby_types::itsi_server::itsi_server_config::{ItsiServerTokenPreference, ServerParams};
 use crate::server::binds::listener::ListenerInfo;
 use crate::server::http_message_types::{ConversionExt, HttpResponse, RequestExt, ResponseFormat};
 use crate::server::lifecycle_event::LifecycleEvent;
@@ -153,6 +153,10 @@ impl HttpRequestContext {
     }
 }
 
+const SERVER_TOKEN_VERSION: HeaderValue =
+    HeaderValue::from_static(concat!("Itsi/", env!("CARGO_PKG_VERSION")));
+const SERVER_TOKEN_NAME: HeaderValue = HeaderValue::from_static("Itsi");
+
 impl Service<Request<Incoming>> for ItsiHttpService {
     type Response = HttpResponse;
     type Error = ItsiError;
@@ -206,6 +210,16 @@ impl Service<Request<Incoming>> for ItsiHttpService {
 
             for elm in stack.iter().rev().skip(stack.len() - depth - 1) {
                 resp = elm.after(resp, &mut context).await;
+            }
+
+            match params.itsi_server_token_preference {
+                ItsiServerTokenPreference::Version => {
+                    resp.headers_mut().insert("Server", SERVER_TOKEN_VERSION);
+                }
+                ItsiServerTokenPreference::Name => {
+                    resp.headers_mut().insert("Server", SERVER_TOKEN_NAME);
+                }
+                ItsiServerTokenPreference::None => {}
             }
 
             Ok(resp)

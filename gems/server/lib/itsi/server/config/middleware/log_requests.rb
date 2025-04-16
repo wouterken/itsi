@@ -13,7 +13,7 @@ module Itsi
 
         LogRequestConfig = TypedStruct.new do
           {
-            level: (Required() + Enum(%w[INFO WARN ERROR DEBUG])).default("INFO"),
+            level: (Required() & Enum(%w[INFO WARN ERROR DEBUG])).default("INFO"),
             format: Type(String)
           }
         end

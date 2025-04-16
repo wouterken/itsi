@@ -41,7 +41,7 @@ Pick and choose **just** the features that make sense for you.
 * See [etag](/middleware/etag) and [cache_control](/middleware/cache_control)
 {{% /details %}}
 
-{{% details title="Conditional Middleware" closed="true" %}}
+{{% details title="Configurable Middleware" closed="true" %}}
 * Expressive controls to apply middleware selectively on a request-by-request basis.
 * Expressive matching based on route, content-type and body size, hostnames etc.
 * A single Itsi process can support simultaneous running of several apps, each with specialized configuration.
@@ -89,7 +89,7 @@ Efficiently serves static assets with proper content types and caching headers.
 {{% details title="File Watcher & Live Reloading" closed="true" %}}
 * Monitors file changes and to automatically reloads configuration or content.
 * Use custom watchers to e.g. trigger frontend builds on file changes.
-* See [local_development](/getting_started/local_development).
+* See [local_development](/getting_started/local_development) and [auto_reload_config!](/options/auto_reload_config).
 {{% /details %}}
 
 {{% details title="LSP and shell completion support" closed="true" %}}

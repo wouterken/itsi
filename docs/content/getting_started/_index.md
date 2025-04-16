@@ -64,7 +64,7 @@ Great! You now have Itsi installed. Go to one of the following pages to learn ho
 
 
 {{< cards >}}
-  {{< card link="../features" title="Features" icon="star" >}}
+  {{< card link="./local_development" title="Local Development" icon="star" >}}
   {{< card link="../options" title="Options" icon="adjustments" >}}
   {{< card link="../middleware" title="Middleware" icon="cog" >}}
   {{< card link="https://github.com/wouterken/itsi" title="Source Code" icon="github" >}}

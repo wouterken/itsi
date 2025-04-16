@@ -1,10 +1,8 @@
+use super::{ErrorResponse, FromValue, MiddlewareLayer};
 use crate::{
     server::http_message_types::{HttpRequest, HttpResponse, RequestExt},
     services::itsi_http_service::HttpRequestContext,
 };
-
-use super::{ErrorResponse, FromValue, MiddlewareLayer};
-
 use async_trait::async_trait;
 use either::Either;
 use itsi_error::ItsiError;

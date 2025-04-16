@@ -418,8 +418,12 @@ fn connect_tcp_socket(addr: IpAddr, port: u16, socket_opts: &SocketOpts) -> Resu
         .set_recv_buffer_size(socket_opts.recv_buffer_size)
         .ok();
     socket.set_only_v6(false).ok();
-    socket.bind(&socket_address.into())?;
-    socket.listen(socket_opts.listen_backlog as i32)?;
+    if let Err(e) = socket.bind(&socket_address.into()) {
+        error!("Failed to bind socket: {}", e);
+    };
+    if let Err(e) = socket.listen(socket_opts.listen_backlog as i32) {
+        error!("Failed to listen on socket: {}", e);
+    };
     Ok(socket.into())
 }
 
@@ -430,8 +434,11 @@ fn connect_unix_socket(path: &PathBuf, socket_opts: &SocketOpts) -> Result<UnixL
 
     let socket_address = socket2::SockAddr::unix(path)?;
 
-    socket.bind(&socket_address)?;
-    socket.listen(socket_opts.listen_backlog as i32)?;
-
+    if let Err(e) = socket.bind(&socket_address) {
+        error!("Failed to bind socket: {}", e);
+    };
+    if let Err(e) = socket.listen(socket_opts.listen_backlog as i32) {
+        error!("Failed to listen on socket: {}", e);
+    };
     Ok(socket.into())
 }

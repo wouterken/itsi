@@ -5,7 +5,7 @@
 
 Itsi is a feature-packed, high performance web and application server, with first-class support for Ruby applications.
 It's a compliant Rack server with top-tier performance.
-It's *also* a well-equipped Reverse Proxy, API Gateway and Static file server, controlled by an intuitive and elegant configuration API and DSL.
+It’s also a well-equipped reverse proxy, API gateway, and static file server, controlled by an intuitive and elegant configuration API and DSL.
 
 Itsi is motivated by the belief that:
 >*It should be **easy** to share your application on the internet with confidence, without a need for complex configuration or multiple layers of tools.*

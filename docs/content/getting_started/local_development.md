@@ -21,7 +21,7 @@ discover and load the addon.
 
 ## Live Config Reloading
 Just add `auto_reload_config!` to your `Itsi.rb` configuration file and Itsi will automatically hot reload its config with every change you make.
-Concerned about errors? Itsi will validate your config first before it tries to apply it. If there are errors, Itsi will provide details logs and safely continue with the existing config.
+Concerned about errors? Itsi will validate your config first before it tries to apply it. If there are errors, Itsi will provide detailed logs and safely continue with the existing config.
 
 ### File Watcher
 You can have Itsi watch other files on the file-system and trigger automatic actions in response.
@@ -33,7 +33,7 @@ watch "**.md", [%w[rake docs:build]]
 ```
 
 ## Print Routes
-Itsi comes with a built-in command to see all the routes that are defined in your application. To use it, simply run the following command:
+Itsi comes with a built-in command to see all the routes that are configured in your application. To use it, simply run the following command:
 ```bash
 itsi routes
 ```

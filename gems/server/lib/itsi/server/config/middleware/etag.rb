@@ -15,8 +15,8 @@ module Itsi
 
         schema do
           {
-            type: (Enum(["strong", "weak"]) + Required()).default("strong"),
-            algorithm: (Enum(["sha256", "md5"]) + Required()).default("sha256"),
+            type: (Enum(["strong", "weak"]) & Required()).default("strong"),
+            algorithm: (Enum(["sha256", "md5"]) & Required()).default("sha256"),
             min_body_size: Range(0...1024 ** 3).default(0),
             handle_if_none_match: Bool().default(true)
           }

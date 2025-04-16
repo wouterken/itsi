@@ -14,13 +14,13 @@ If you're ready to get stuck in and learn all about what Itsi has to offer, use
 
 
 ## Out-of-the-box
-If you prefer a more gradual introduction, Itsi provides several "out-of-the box" capabilities that you can take immediate advantage of *without*, needing to start a dedicated configuration file.
+If you prefer a more gradual introduction, Itsi provides several "out-of-the box" capabilities that you can take immediate advantage of immediately, *without* needing to create a dedicated configuration file.
 
 
 
 ## Run Rack Applications
 Itsi will automatically host your Rack application if you launch it in a directory with a `config.ru` file.
-This means, it's a drop in server replacement for your favourite `Rails`, `Hanami`, or `Sinatra` applications.
+This means, it's a drop in server replacement (and potentially a free performance boost) for your favourite `Rails`, `Hanami`, or `Sinatra` applications.
 
 To get started just run
 ```ruby
@@ -91,6 +91,7 @@ COMMAND:
     restart - Restart the server
     add_worker - Add a new worker to the server cluster
     remove_worker - Remove a worker from the server cluster
+    test - Test config file validity
     routes - Print the routes of the server
     passfile - Manage hashed users and passwords in a passfile (like .htpasswd). [add, remove, list]
     test_route - Test which route a request will be routed to

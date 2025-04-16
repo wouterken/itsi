@@ -1,86 +1,85 @@
-use std::convert::Infallible;
-
+use super::{ContentSource, DefaultFormat, ErrorResponse};
+use crate::server::http_message_types::ResponseFormat;
 use bytes::Bytes;
 use http_body_util::{combinators::BoxBody, Full};
-
-use crate::server::http_message_types::ResponseFormat;
-
-use super::{ContentSource, DefaultFormat, ErrorResponse};
+use std::{convert::Infallible, sync::Arc};
 
 impl DefaultFormat {
     pub fn response_for_code(&self, code: u16) -> ContentSource {
         match self {
             DefaultFormat::Plaintext => match code {
-                500 => ContentSource::Inline("500 Internal Error".to_owned()),
-                404 => ContentSource::Inline("404 Not Found".to_owned()),
-                401 => ContentSource::Inline("401 Unauthorized".to_owned()),
-                403 => ContentSource::Inline("403 Forbidden".to_owned()),
-                413 => ContentSource::Inline("413 Payload Too Large".to_owned()),
-                429 => ContentSource::Inline("429 Too Many Requests".to_owned()),
-                502 => ContentSource::Inline("502 Bad Gateway".to_owned()),
-                503 => ContentSource::Inline("503 Service Unavailable".to_owned()),
-                504 => ContentSource::Inline("504 Gateway Timeout".to_owned()),
-                _ => ContentSource::Inline("Unexpected Error".to_owned()),
+                500 => ContentSource::Static(Arc::new("500 Internal Error".into())),
+                404 => ContentSource::Static(Arc::new("404 Not Found".into())),
+                401 => ContentSource::Static(Arc::new("401 Unauthorized".into())),
+                403 => ContentSource::Static(Arc::new("403 Forbidden".into())),
+                413 => ContentSource::Static(Arc::new("413 Payload Too Large".into())),
+                429 => ContentSource::Static(Arc::new("429 Too Many Requests".into())),
+                502 => ContentSource::Static(Arc::new("502 Bad Gateway".into())),
+                503 => ContentSource::Static(Arc::new("503 Service Unavailable".into())),
+                504 => ContentSource::Static(Arc::new("504 Gateway Timeout".into())),
+                _ => ContentSource::Static(Arc::new("Unexpected Error".into())),
             },
             DefaultFormat::Html => match code {
-                500 => ContentSource::Inline(
-                    include_str!("../../../../default_responses/html/500.html").to_owned(),
-                ),
-                404 => ContentSource::Inline(
-                    include_str!("../../../../default_responses/html/404.html").to_owned(),
-                ),
-                401 => ContentSource::Inline(
-                    include_str!("../../../../default_responses/html/401.html").to_owned(),
-                ),
-                403 => ContentSource::Inline(
-                    include_str!("../../../../default_responses/html/403.html").to_owned(),
-                ),
-                413 => ContentSource::Inline(
-                    include_str!("../../../../default_responses/html/413.html").to_owned(),
-                ),
-                429 => ContentSource::Inline(
-                    include_str!("../../../../default_responses/html/429.html").to_owned(),
-                ),
-                502 => ContentSource::Inline(
-                    include_str!("../../../../default_responses/html/502.html").to_owned(),
-                ),
-                503 => ContentSource::Inline(
-                    include_str!("../../../../default_responses/html/503.html").to_owned(),
-                ),
-                504 => ContentSource::Inline(
-                    include_str!("../../../../default_responses/html/504.html").to_owned(),
-                ),
-                _ => ContentSource::Inline("Unexpected Error".to_owned()),
+                500 => ContentSource::Static(Arc::new(
+                    include_str!("../../../../default_responses/html/500.html").into(),
+                )),
+                404 => ContentSource::Static(Arc::new(
+                    include_str!("../../../../default_responses/html/404.html").into(),
+                )),
+                401 => ContentSource::Static(Arc::new(
+                    include_str!("../../../../default_responses/html/401.html").into(),
+                )),
+                403 => ContentSource::Static(Arc::new(
+                    include_str!("../../../../default_responses/html/403.html").into(),
+                )),
+                413 => ContentSource::Static(Arc::new(
+                    include_str!("../../../../default_responses/html/413.html").into(),
+                )),
+                429 => ContentSource::Static(Arc::new(
+                    include_str!("../../../../default_responses/html/429.html").into(),
+                )),
+                502 => ContentSource::Static(Arc::new(
+                    include_str!("../../../../default_responses/html/502.html").into(),
+                )),
+                503 => ContentSource::Static(Arc::new(
+                    include_str!("../../../../default_responses/html/503.html").into(),
+                )),
+                504 => ContentSource::Static(Arc::new(
+                    include_str!("../../../../default_responses/html/504.html").into(),
+                )),
+                _ => ContentSource::Static(Arc::new(
+                    include_str!("../../../../default_responses/html/500.html").into(),
+                )),
             },
             DefaultFormat::Json => match code {
-                500 => ContentSource::Inline(
-                    include_str!("../../../../default_responses/json/500.json").to_owned(),
-                ),
-                404 => ContentSource::Inline(
-                    include_str!("../../../../default_responses/json/404.json").to_owned(),
-                ),
-                401 => ContentSource::Inline(
-                    include_str!("../../../../default_responses/json/401.json").to_owned(),
-                ),
-                403 => ContentSource::Inline(
-                    include_str!("../../../../default_responses/json/403.json").to_owned(),
-                ),
-                413 => ContentSource::Inline(
-                    include_str!("../../../../default_responses/json/413.json").to_owned(),
-                ),
-                429 => ContentSource::Inline(
-                    include_str!("../../../../default_responses/json/429.json").to_owned(),
-                ),
-                502 => ContentSource::Inline(
-                    include_str!("../../../../default_responses/json/502.json").to_owned(),
-                ),
-                503 => ContentSource::Inline(
-                    include_str!("../../../../default_responses/json/503.json").to_owned(),
-                ),
-                504 => ContentSource::Inline(
-                    include_str!("../../../../default_responses/json/504.json").to_owned(),
-                ),
-                _ => ContentSource::Inline("Unexpected Error".to_owned()),
+                500 => ContentSource::Static(Arc::new(
+                    include_str!("../../../../default_responses/json/500.json").into(),
+                )),
+                404 => ContentSource::Static(Arc::new(
+                    include_str!("../../../../default_responses/json/404.json").into(),
+                )),
+                401 => ContentSource::Static(Arc::new(
+                    include_str!("../../../../default_responses/json/401.json").into(),
+                )),
+                403 => ContentSource::Static(Arc::new(
+                    include_str!("../../../../default_responses/json/403.json").into(),
+                )),
+                413 => ContentSource::Static(Arc::new(
+                    include_str!("../../../../default_responses/json/413.json").into(),
+                )),
+                429 => ContentSource::Static(Arc::new(
+                    include_str!("../../../../default_responses/json/429.json").into(),
+                )),
+                502 => ContentSource::Static(Arc::new(
+                    include_str!("../../../../default_responses/json/502.json").into(),
+                )),
+                503 => ContentSource::Static(Arc::new(
+                    include_str!("../../../../default_responses/json/503.json").into(),
+                )),
+                504 => ContentSource::Static(Arc::new(
+                    include_str!("../../../../default_responses/json/504.json").into(),
+                )),
+                _ => ContentSource::Static(Arc::new("Unexpected Error".into())),
             },
         }
     }
@@ -95,6 +94,9 @@ impl ErrorResponse {
         };
         match source {
             ContentSource::Inline(bytes) => BoxBody::new(Full::new(Bytes::from(bytes))),
+            ContentSource::Static(text) => {
+                BoxBody::new(Full::new(Bytes::from(String::from(text.as_str()))))
+            }
             ContentSource::File(_) => BoxBody::new(Full::new(Bytes::from("Unexpected error"))),
         }
     }

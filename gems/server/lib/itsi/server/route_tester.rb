@@ -4,24 +4,33 @@ module Itsi
 
       require "set"
       require "strscan"
+      require "debug"
       def format_mw(mw)
         case mw.first
         when "app"
-          "app #{mw.last['app_proc'].inspect.split(' ')[1]}"
+          "\e[33mapp\e[0m(#{mw.last['app_proc'].inspect.split(' ')[1]})"
         when "log_requests"
           if mw.last['before'] && mw.last['after']
-            "log_requests(before: #{mw.last['before']['format'][0..6]}..., after: #{mw.last['after']['format'][0..6]}...)"
+            "\e[33mlog_requests\e[0m(before: #{mw.last['before']['format'][0..6]}..., after: #{mw.last['after']['format'][0..6]}...)"
           elsif mw.last['before']
-            "log_requests(before: #{mw.last['before']['format'][0..6]}...)"
+            "\e[33mlog_requests\e[0m(before: #{mw.last['before']['format'][0..6]}...)"
           elsif mw.last['after']
-            "log_requests(before: nil, after: #{mw.last['after']['format'][0..6]}...)"
+            "\e[33mlog_requests\e[0m(before: nil, after: #{mw.last['after']['format'][0..6]}...)"
           end
-        when "compression"
-          "compress(#{mw.last['algorithms'].join(' ')}, #{mw.last['mime_types']})"
+        when "compress"
+          "\e[33mcompress\e[0m(#{mw.last['algorithms'].join(' ')}, #{mw.last['mime_types']})"
         when "cors"
-          "cors(#{mw.last['allow_origins'].join(' ')}, #{mw.last['allow_methods'].join(' ')})"
+          "\e[33mcors\e[0m(#{mw.last['allow_origins'].join(' ')}, #{mw.last['allow_methods'].join(' ')})"
+        when "etag"
+          "\e[33metag\e[0m(#{mw.last['type']}/#{mw.last['algorithm']}, #{mw.last['handle_if_none_match'] ? 'if_none_match' : ''})"
+        when "cache_control"
+          "\e[33mcache_control\e[0m(max_age: #{mw.last['max_age']}, #{mw.last.select{|_,v| v == true }.keys.join(", ")})"
+        when "redirect"
+          "\e[33mredirect\e[0m(to: #{mw.last['to']}, type: #{mw.last['type']})"
+        when "static_assets"
+          "\e[33mstatic_assets\e[0m(path: #{mw.last['root_dir']})"
         else
-          mw.first
+          "\e[33m#{mw.first}\e[0m"
         end
       end
 

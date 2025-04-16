@@ -5,6 +5,8 @@ use http_body_util::{combinators::BoxBody, Full};
 use serde::{Deserialize, Deserializer};
 use std::convert::Infallible;
 use std::path::PathBuf;
+use std::sync::Arc;
+use tracing::warn;
 
 use crate::server::http_message_types::{HttpResponse, ResponseFormat};
 use crate::services::static_file_server::ROOT_STATIC_FILE_SERVER;
@@ -16,6 +18,9 @@ pub enum ContentSource {
     Inline(String),
     #[serde(rename(deserialize = "file"))]
     File(PathBuf),
+    #[serde(rename(deserialize = "static"))]
+    #[serde(skip_deserializing)]
+    Static(Arc<String>),
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -90,7 +95,13 @@ impl From<ErrorResponseDef> for ErrorResponse {
                 "bad_gateway" => ErrorResponse::bad_gateway(),
                 "service_unavailable" => ErrorResponse::service_unavailable(),
                 "gateway_timeout" => ErrorResponse::gateway_timeout(),
-                _ => panic!("Unknown error response name: {}", name),
+                _ => {
+                    warn!(
+                        "Unknown error response name: {}. Using internal server error.",
+                        name
+                    );
+                    ErrorResponse::internal_server_error()
+                }
             },
         }
     }
@@ -138,6 +149,9 @@ impl ErrorResponse {
         match source {
             Some(ContentSource::Inline(text)) => {
                 return BoxBody::new(Full::new(Bytes::from(text.clone())));
+            }
+            Some(ContentSource::Static(text)) => {
+                return BoxBody::new(Full::new(Bytes::from(String::from(text.as_str()))));
             }
             Some(ContentSource::File(path)) => {
                 // Convert the PathBuf to a &str (assumes valid UTF-8).

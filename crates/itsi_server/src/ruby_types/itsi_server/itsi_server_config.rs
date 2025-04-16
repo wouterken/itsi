@@ -8,6 +8,7 @@ use crate::{
 };
 use derive_more::Debug;
 use futures::executor::block_on;
+use itsi_error::ItsiError;
 use itsi_rb_helpers::{call_with_gvl, print_rb_backtrace, HeapValue};
 use itsi_tracing::{set_format, set_level, set_target, set_target_filters};
 use magnus::{
@@ -25,6 +26,7 @@ use std::{
     collections::HashMap,
     os::fd::{AsRawFd, OwnedFd, RawFd},
     path::PathBuf,
+    str::FromStr,
     sync::{Arc, OnceLock},
     time::Duration,
 };
@@ -71,6 +73,27 @@ pub struct ServerParams {
     #[debug(skip)]
     pub(crate) listeners: Mutex<Vec<Listener>>,
     listener_info: Mutex<HashMap<String, i32>>,
+    pub itsi_server_token_preference: ItsiServerTokenPreference,
+}
+
+#[derive(Debug, Clone)]
+pub enum ItsiServerTokenPreference {
+    Version,
+    Name,
+    None,
+}
+
+impl FromStr for ItsiServerTokenPreference {
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Ok(match s {
+            "version" => ItsiServerTokenPreference::Version,
+            "name" => ItsiServerTokenPreference::Name,
+            "none" => ItsiServerTokenPreference::None,
+            _ => ItsiServerTokenPreference::Version,
+        })
+    }
+
+    type Err = ItsiError;
 }
 
 pub struct SocketOpts {
@@ -223,6 +246,12 @@ impl ServerParams {
             .map(|s| s.parse())
             .collect::<itsi_error::Result<Vec<Bind>>>()?;
 
+        let itsi_server_token_preference: String = rb_param_hash
+            .fetch("itsi_server_token_preference")
+            .unwrap_or_default();
+        let itsi_server_token_preference: ItsiServerTokenPreference =
+            itsi_server_token_preference.parse()?;
+
         let socket_opts = SocketOpts {
             reuse_address,
             reuse_port,
@@ -291,6 +320,7 @@ impl ServerParams {
             scheduler_class,
             oob_gc_responses_threshold,
             binds,
+            itsi_server_token_preference,
             listener_info: Mutex::new(listener_info),
             listeners: Mutex::new(listeners),
             middleware_loader: middleware_loader.into(),

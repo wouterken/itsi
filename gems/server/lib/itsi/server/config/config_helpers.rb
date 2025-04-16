@@ -4,7 +4,8 @@ module Itsi
       module ConfigHelpers
 
         def self.load_and_register(klass)
-          config_type = klass.name.split("::").last.downcase
+          config_type = klass.name.split("::").last.downcase.gsub(/([a-z]()[A-Z])/, '\1_\2')
+
           listing = [
             Dir[File.expand_path(File.dirname(__FILE__) + "/#{config_type}/**.rb")],
             Dir[File.expand_path(File.dirname(__FILE__) + "/#{config_type}s/**.rb")]
@@ -59,6 +60,8 @@ module Itsi
               @middleware_class_attrs ||= {}
               if blk
                 @middleware_class_attrs[:schema] = TypedStruct.new(&blk)
+              elsif value
+                @middleware_class_attrs[:schema] = value
               else
                 @middleware_class_attrs[:schema]
               end
@@ -72,20 +75,23 @@ module Itsi
           cls.define_singleton_method("#{config_type}_name") do |name=self.name|
             @config_name ||= name.split("::").last.gsub(/([a-z])([A-Z])/, '\1_\2').downcase.to_sym
           end
+          cls.define_method(:opt_name){ self.class.send("#{config_type}_name") }
+          cls.define_method(:location){ @location }
         end
 
         def initialize(location, params={})
+          if !self.class.ancestors.include?(Middleware) && !location.parent.nil?
+            raise "#{opt_name} must be set at the top level"
+          end
           @location = location
           @params = case self.schema
           when TypedStruct::Validation
             self.schema.validate!(params)
+          when nil
+            nil
           else
             self.schema.new(params).to_h
           end
-        end
-
-        def build!
-          @params
         end
       end
     end

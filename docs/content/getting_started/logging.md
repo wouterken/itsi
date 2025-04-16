@@ -12,7 +12,7 @@ while leaving all other layers at the current global level.
 E.g.
 
 ```bash
-# auth_api_key middleware will log debug messages
-# everything else will stick to the INFO level.
-ITSI_LOG=info,auth_api_key=debug itsi
+# In this example, the auth_api_key middleware will log debug messages
+# while everything else will stick to the INFO level.
+ITSI_LOG=info,middleware::auth_api_key=debug itsi
 ```

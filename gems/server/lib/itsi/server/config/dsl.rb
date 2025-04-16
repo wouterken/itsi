@@ -17,6 +17,7 @@ module Itsi
               code = IO.read(config)
               instance_eval(code, config.to_s, 1)
             end
+            location("*"){}
           end
           [config.options, config.errors]
         rescue Exception => e
@@ -57,6 +58,9 @@ module Itsi
               @options[:middleware_loaders].each(&:call)
               @middleware[:app] ||= {}
               @middleware[:app][:app_proc] = @middleware[:app]&.[](:preloader)&.call || DEFAULT_APP[]
+              if errors.any?
+                raise errors.join("\n")
+              end
               flatten_routes
             end
           }
@@ -72,7 +76,7 @@ module Itsi
         Option.subclasses.each do |option|
           option_name = option.option_name
           define_method(option_name) do |*args, **kwargs, &blk|
-            @options[option_name] = option.new(self, *args, **kwargs, &blk).build!
+            option.new(self, *args, **kwargs, &blk).build!
           rescue => e
             @errors << [e, caller[1]]
           end
@@ -81,7 +85,7 @@ module Itsi
         Middleware.subclasses.each do |middleware|
           middleware_name = middleware.middleware_name
           define_method(middleware_name) do |*args, **kwargs, &blk|
-            @middleware[middleware_name] = middleware.new(@parent, *args, **kwargs, &blk).build!
+            middleware.new(self, *args, **kwargs, &blk).build!
           rescue => e
             @errors << [e, caller[1]]
           end
@@ -117,23 +121,23 @@ module Itsi
           @options[:log_format] = target.to_s
         end
 
-        def get(route, app_proc = nil, nonblocking: false, &blk)
+        def get(route=nil, app_proc = nil, nonblocking: false, &blk)
           endpoint(route, [:get], app_proc, nonblocking: nonblocking,  &blk)
         end
 
-        def post(route, app_proc = nil, nonblocking: false, &blk)
+        def post(route=nil, app_proc = nil, nonblocking: false, &blk)
           endpoint(route, [:post], app_proc, nonblocking: nonblocking,  &blk)
         end
 
-        def put(route, app_proc = nil, nonblocking: false, &blk)
+        def put(route=nil, app_proc = nil, nonblocking: false, &blk)
           endpoint(route, [:put], app_proc, nonblocking: nonblocking,  &blk)
         end
 
-        def delete(route, app_proc = nil, nonblocking: false, &blk)
+        def delete(route=nil, app_proc = nil, nonblocking: false, &blk)
           endpoint(route, [:delete], app_proc, nonblocking: nonblocking,  &blk)
         end
 
-        def patch(route, app_proc = nil, nonblocking: false, &blk)
+        def patch(route=nil, app_proc = nil, nonblocking: false, &blk)
           endpoint(route, [:patch], app_proc, nonblocking: nonblocking,  &blk)
         end
 
@@ -143,6 +147,7 @@ module Itsi
           app_proc = @controller.method(app_proc).to_proc if app_proc.is_a?(Symbol)
 
           app_proc ||= blk
+
           num_required, keywords = Itsi::Server::TypedHandlers::SourceParser.extract_expr_from_source_location(app_proc)
           params_schema = keywords[:params]
 
@@ -164,6 +169,7 @@ module Itsi
 
           if route || http_methods.any?
             # For endpoints, it's usually assumed trailing slash and non-trailing slash behaviour is the same
+            route ||= ""
             routes = route == "/" ? ["", "/"] : [route]
             location(*routes, methods: http_methods) do
               @middleware[:app] = { preloader: -> { app_proc }, nonblocking: nonblocking }
@@ -250,13 +256,6 @@ module Itsi
         def recv_buffer_size(recv_buffer_size)
           raise "recv_buffer_size must be set at the root" unless @parent.nil?
           @options[:recv_buffer_size] = recv_buffer_size
-        end
-
-        def bind(bind_str)
-          raise "Bind must be set at the root" unless @parent.nil?
-
-          @options[:binds] ||= []
-          @options[:binds] << bind_str.to_s
         end
 
         def after_fork(&block)
@@ -360,31 +359,6 @@ module Itsi
           @options[:stream_body] = !!stream_body
         end
 
-        def location(*routes, methods: [], protocols: [], hosts: [], ports: [], extensions: [], content_types: [],
-                     accepts: [], &block)
-          build_child = lambda {
-            @children << DSL.new(
-              self,
-              routes: routes,
-              methods: Array(methods) | self.http_methods,
-              protocols: Array(protocols) | self.protocols,
-              hosts: Array(hosts) | self.hosts,
-              ports: Array(ports) | self.ports,
-              extensions: Array(extensions) | self.extensions,
-              content_types: Array(content_types) | self.content_types,
-              accepts: Array(accepts) | self.accepts,
-              controller: @controller,
-              &block
-            )
-          }
-          if @parent.nil?
-            @options[:middleware_loaders] << build_child
-          else
-            build_child[]
-          end
-        end
-
-
         def allow_list(**args)
           args[:allowed_patterns] = Array(args[:allowed_patterns]).map do |pattern|
             if pattern.is_a?(Regexp)
@@ -407,8 +381,12 @@ module Itsi
           @middleware[:deny_list] = args
         end
 
-        def controller(controller)
-          @controller = controller
+        def controller(controller=nil)
+          if controller
+            @controller = controller
+          else
+            @controller
+          end
         end
 
         def auth_basic(**args)
@@ -421,14 +399,6 @@ module Itsi
           end
 
           @middleware[:auth_basic] = args
-        end
-
-        def redirect(**args)
-          @middleware[:redirect] = args
-        end
-
-        def proxy(**args)
-          @middleware[:proxy] = args
         end
 
         def static_response(**args)
@@ -488,33 +458,9 @@ module Itsi
           @middleware[:intrusion_protection] = args
         end
 
-        def static_assets(**args)
-          root_dir = args[:root_dir] || "."
-
-          if !File.exist?(root_dir)
-            warn "Warning: static_assets root_dir '#{root_dir}' does not exist!"
-          elsif !File.directory?(root_dir)
-            warn "Warning: static_assets root_dir '#{root_dir}' is not a directory!"
-          end
-
-          args[:relative_path] = true unless args.key?(:relative_path)
-
-          args[:allowed_extensions] ||= []
-
-          if (args[:allowed_extensions].include?("html") || args[:allowed_extensions].include?(:html)) && args[:try_html_extension]
-            args[:allowed_extensions] << ""
-          end
-
-          args[:base_path] = "^(?<base_path>#{paths_from_parent}).*$"
-
-          location("*", extensions: args[:allowed_extensions]) do
-            @middleware[:static_assets] = args
-          end
-        end
 
         def file_server(**args)
-          # Forward to static_assets for implementation
-          puts "Note: file_server is an alias for static_assets"
+          Itsi.log_info "Note: file_server is an alias for static_assets"
           static_assets(**args)
         end
 

@@ -89,8 +89,7 @@ module Itsi
           Bundler.require(preload)
         end
 
-        [
-          {
+        config = {
             workers: args.fetch(:workers) { itsifile_config.fetch(:workers, 1) },
             worker_memory_limit: args.fetch(:worker_memory_limit) { itsifile_config.fetch(:worker_memory_limit, nil) },
             silence: args.fetch(:silence) { itsifile_config.fetch(:silence, false) },
@@ -123,9 +122,9 @@ module Itsi
             listen_backlog: itsifile_config.fetch(:listen_backlog, 1024 ),
             nodelay: itsifile_config.fetch(:nodelay, true),
             recv_buffer_size: itsifile_config.fetch(:recv_buffer_size, 262_144)
-          }.transform_keys(&:to_s),
+          }.transform_keys(&:to_s)
 
-          errors.flat_map do |(error, message)|
+        error_lines = errors.flat_map do |(error, message)|
             location =  message[/(.*?)\:in/,1]
             file, lineno = location.split(":")
             lineno = lineno.to_i
@@ -149,7 +148,7 @@ module Itsi
               *info_lines
             ]
           end
-        ]
+        return config, error_lines
       end
 
       def self.test!(cli_params)

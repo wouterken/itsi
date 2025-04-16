@@ -33,13 +33,14 @@ use reqwest::{
     Body, Client, Url,
 };
 use serde::Deserialize;
+use tracing::{debug, info};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Proxy {
     pub to: StringRewrite,
     pub backends: Vec<String>,
     pub backend_priority: BackendPriority,
-    pub headers: HashMap<String, Option<ProxiedHeader>>,
+    pub headers: HashMap<String, Option<StringRewrite>>,
     pub verify_ssl: bool,
     pub timeout: u64,
     pub tls_sni: bool,
@@ -61,23 +62,6 @@ pub enum BackendPriority {
     Ordered,
     #[serde(rename(deserialize = "random"))]
     Random,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub enum ProxiedHeader {
-    #[serde(rename(deserialize = "value"))]
-    String(String),
-    #[serde(rename(deserialize = "rewrite"))]
-    StringRewrite(StringRewrite),
-}
-
-impl ProxiedHeader {
-    pub fn to_string(&self, req: &HttpRequest, context: &HttpRequestContext) -> String {
-        match self {
-            ProxiedHeader::String(value) => value.clone(),
-            ProxiedHeader::StringRewrite(rewrite) => rewrite.rewrite_request(req, context),
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -164,7 +148,7 @@ impl Proxy {
         for (name, header_opt) in self.headers.iter() {
             if let Some(header_value) = header_opt {
                 // Compute the header value using the full HttpRequest.
-                let value_str = header_value.to_string(req, context);
+                let value_str = header_value.rewrite_request(req, context);
                 if let Ok(header_val) = http::HeaderValue::from_str(&value_str) {
                     if let Ok(header_name) = name.parse::<http::header::HeaderName>() {
                         headers.insert(header_name, header_val);
@@ -201,6 +185,7 @@ impl Proxy {
 
         // Add a Host header if not overridden.
         if !overriding_headers.contains_key("host") && !host_str.is_empty() {
+            debug!("Adding Host header: {}", host_str);
             builder = builder.header("Host", host_str);
         }
 
@@ -231,6 +216,7 @@ impl Proxy {
                 Err(e) => {
                     // Retry for connectivity-related errors.
                     if e.is_connect() {
+                        debug!(target: "middleware::proxy", "Connection error, retrying");
                         last_err = Some(e);
                         if attempt + 1 < max_attempts {
                             continue;
@@ -278,6 +264,7 @@ impl MiddlewareLayer for Proxy {
                 }
             })
             .collect::<Vec<_>>();
+        debug!(target: "middleware::proxy", "backends: {:?}", backends);
 
         self.client
             .set(
@@ -314,13 +301,19 @@ impl MiddlewareLayer for Proxy {
         context: &mut HttpRequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
         let url = self.to.rewrite_request(&req, context);
+
         let accept: ResponseFormat = req.accept().into();
         let error_response = self.error_response.to_http_response(accept.clone()).await;
 
         let destination = match Url::parse(&url) {
             Ok(dest) => dest,
-            Err(_) => return Ok(Either::Right(error_response)),
+            Err(_) => {
+                debug!(target: "middleware::proxy", "Failed to parse URL: {}", url);
+                return Ok(Either::Right(error_response));
+            }
         };
+
+        debug!(target: "middleware::proxy", "Proxying to: {:?}", destination);
 
         // Clone the headers before consuming the request.
         let req_headers = req.headers().clone();
@@ -331,6 +324,7 @@ impl MiddlewareLayer for Proxy {
                 .unwrap_or("")
         });
 
+        info!("Extracted host str is {}", host_str);
         let req_info = RequestInfo {
             method: req.method().clone(),
             headers: req_headers.clone(),
@@ -373,6 +367,8 @@ impl MiddlewareLayer for Proxy {
 
         let response = match reqwest_response_result {
             Ok(response) => {
+                debug!(target: "middleware::proxy", "Response {} received", response.status());
+
                 let status = response.status();
                 let mut builder = Response::builder().status(status);
                 for (hn, hv) in response.headers() {
@@ -387,6 +383,7 @@ impl MiddlewareLayer for Proxy {
                 response.unwrap_or(error_response)
             }
             Err(e) => {
+                debug!(target: "middleware::proxy", "Error {:?} received", e);
                 if let Some(inner) = e.source() {
                     if inner.downcast_ref::<MaxBodySizeReached>().is_some() {
                         let mut max_body_response = Response::new(BoxBody::new(Empty::new()));

@@ -7,6 +7,7 @@ gemspec path: 'gems/scheduler'
 group :test do
   gem 'activerecord'
   gem 'pg'
+  gem 'net_http_unix'
 end
 
 group :development, :test do

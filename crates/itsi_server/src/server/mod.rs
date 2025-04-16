@@ -5,6 +5,7 @@ pub mod io_stream;
 pub mod lifecycle_event;
 pub mod middleware_stack;
 pub mod process_worker;
+pub mod redirect_type;
 pub mod request_job;
 pub mod serve_strategy;
 pub mod signal;

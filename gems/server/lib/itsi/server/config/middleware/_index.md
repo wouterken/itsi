@@ -52,3 +52,5 @@ When a route matches a location block, it recursively inherits *all* middleware 
 Where a child and an ancestor define the same middleware, the child's middleware takes precedence.
 
 {{% /details %}}
+
+See [location](/middleware/location) for a detailed description of the `location` function.

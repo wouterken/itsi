@@ -27,7 +27,7 @@ threads 4
 ```
 
 Threads increase concurrency at the expense of memory usage and CPU overhead.
-For IO heavy workloads, consider using non-blocking mode instead, which can achieve higher concurrency with fewer threads.
+For IO heavy workloads, consider using [non-blocking mode](/options/fiber_scheduler) instead, which can achieve higher concurrency with fewer threads.
 Non-blocking mode and threads can be used simultaneously in a hybrid configuration.
 
 ## Command Line

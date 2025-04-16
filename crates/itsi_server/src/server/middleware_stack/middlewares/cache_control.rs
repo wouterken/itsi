@@ -8,7 +8,7 @@ use http::{HeaderName, HeaderValue};
 use magnus::error::Result;
 use serde::Deserialize;
 use std::{collections::HashMap, sync::OnceLock};
-use tracing::{debug, info};
+use tracing::debug;
 
 #[derive(Debug, Deserialize)]
 pub struct CacheControl {

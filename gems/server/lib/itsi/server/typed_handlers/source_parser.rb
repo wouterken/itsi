@@ -6,17 +6,18 @@ module Itsi
 
 
         def self.extract_expr_from_source_location(proc)
-          source_lines = IO.readlines(proc.source_location.first)
+          source_location = proc.source_location
+          source_lines = IO.readlines(source_location.first)
 
           proc_line = source_location.last - 1
           first_line = source_lines[proc_line]
 
-          until first_line =~ /(?:lambda|proc|->|def|.*?do\s*\|)/ || proc_line.zero?
+          until first_line =~ /(?:lambda|proc|->|def|.*?do\s*\||.*?\{.*?\|)/ || proc_line.zero?
             proc_line -= 1
             first_line = source_lines[proc_line]
           end
           lines = source_lines[proc_line..]
-          lines[0] = lines[0][/(?:lambda|proc|->|def|.*?do\s*\|).*/]
+          lines[0] = lines[0][/(?:lambda|proc|->|def|.*?do\s*\||.*?\{.*?\|).*/]
           src_str = lines.first << "\n"
           intermediate = Prism.parse(src_str)
 
@@ -47,7 +48,7 @@ module Itsi
 
           [requireds.length, keywords]
         rescue
-          [ proc.parameters.first&.length || 0, {}]
+          [ proc.parameters.select{|p| p == :req }&.length || 0, {}]
         end
       end
     end
