@@ -59,7 +59,9 @@ module Itsi
               @middleware[:app] ||= {}
               @middleware[:app][:app_proc] = @middleware[:app]&.[](:preloader)&.call || DEFAULT_APP[]
               if errors.any?
-                raise errors.join("\n")
+                error = errors.first.first
+                error.set_backtrace(error.backtrace.drop_while{|r| r =~ /itsi\/server\/config/ })
+                raise error
               end
               flatten_routes
             end
@@ -70,7 +72,7 @@ module Itsi
         end
 
         def errors
-          @children.map(&:errors).flatten + @errors
+          @children.map(&:errors).flatten(1) + @errors
         end
 
         Option.subclasses.each do |option|
@@ -227,16 +229,6 @@ module Itsi
           instance_eval(code, "#{path}.rb", 1)
         end
 
-        def listen_backlog(listen_backlog)
-          raise "listen_backlog must be set at the root" unless @parent.nil?
-          @options[:listen_backlog] = listen_backlog
-        end
-
-        def recv_buffer_size(recv_buffer_size)
-          raise "recv_buffer_size must be set at the root" unless @parent.nil?
-          @options[:recv_buffer_size] = recv_buffer_size
-        end
-
         def after_fork(&block)
           raise "After fork must be set at the root" unless @parent.nil?
 
@@ -283,14 +275,6 @@ module Itsi
         def static_response(**args)
           args[:body] = args[:body].bytes
           @middleware[:static_response] = args
-        end
-
-        def request_headers(**args)
-          @middleware[:request_headers] = args
-        end
-
-        def response_headers(**args)
-          @middleware[:response_headers] = args
         end
 
         def file_server(**args)

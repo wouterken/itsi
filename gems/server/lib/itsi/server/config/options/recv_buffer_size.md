@@ -1,16 +1,15 @@
 ---
-title: Reuse Address
-url: /options/reuse_address
+title: Receive Buffer Size
+url: /options/recv_buffer_size
 ---
 
-Configures whether the server should bind to the underlying socket using the `SO_REUSEADDR` option.
-This optiondetermines whether the server allows the reuse of local addresses during binding. This can be useful in scenarios where a socket needs to be quickly rebound without waiting for the operating system to release the address.
+Configures the size of the receive buffer for the socket. Larger buffer sizes can improve performance for high-throughput applications but may increase memory usage. The default value is 262,144 bytes.
 
 ## Configuration
 ```ruby {filename=Itsi.rb}
-reuse_address true
+recv_buffer_size 262_144
 ```
 
 ```ruby {filename=Itsi.rb}
-reuse_address false
+recv_buffer_size 1_048_576
 ```

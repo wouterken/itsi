@@ -5,7 +5,7 @@ use crate::{
     services::itsi_http_service::HttpRequestContext,
 };
 
-use super::{FromValue, MiddlewareLayer};
+use super::{FromValue, MiddlewareLayer, StringRewrite};
 use async_trait::async_trait;
 use either::Either;
 use http::HeaderName;
@@ -14,30 +14,40 @@ use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct RequestHeaders {
-    pub additions: HashMap<String, Vec<String>>,
+    pub additions: HashMap<String, Vec<StringRewrite>>,
     pub removals: Vec<String>,
 }
-
 #[async_trait]
 impl MiddlewareLayer for RequestHeaders {
     async fn before(
         &self,
         mut req: HttpRequest,
-        _: &mut HttpRequestContext,
+        context: &mut HttpRequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
-        let headers = req.headers_mut();
-        for removal in &self.removals {
-            headers.remove(removal);
-        }
+        let mut headers_to_add = Vec::new();
+
         for (header_name, header_values) in &self.additions {
-            for header_value in header_values {
-                if let Ok(parsed_header_name) = header_name.parse::<HeaderName>() {
-                    if let Ok(parsed_header_value) = header_value.parse() {
-                        headers.append(parsed_header_name, parsed_header_value);
+            if let Ok(parsed_header_name) = header_name.parse::<HeaderName>() {
+                for header_value in header_values {
+                    if let Ok(parsed_header_value) =
+                        header_value.rewrite_request(&req, context).parse()
+                    {
+                        headers_to_add.push((parsed_header_name.clone(), parsed_header_value));
                     }
                 }
             }
         }
+
+        let headers = req.headers_mut();
+
+        for removal in &self.removals {
+            headers.remove(removal);
+        }
+
+        for (name, value) in headers_to_add {
+            headers.append(name, value);
+        }
+
         Ok(Either::Left(req))
     }
 }

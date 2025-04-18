@@ -1,16 +1,11 @@
 ---
-title: Reuse Port
-url: /options/reuse_port
+title: Listen Backlog
+url: /options/listen_backlog
 ---
 
-Configures whether the server should bind to the underlying socket using the `SO_REUSEPORT` option.
-This option determines whether multiple sockets can listen on the same IP and port combination, which can improve load balancing and fault tolerance in multi-threaded or multi-process server applications.
+Configures the size of the listen backlog for the socket. Larger backlog sizes can improve performance for high-throughput applications by allowing more pending connections to queue, but may increase memory usage. The default value is 1024.
 
 ## Configuration
 ```ruby {filename=Itsi.rb}
-reuse_port true
-```
-
-```ruby {filename=Itsi.rb}
-reuse_port false
+listen_backlog 1024
 ```

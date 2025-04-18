@@ -13,7 +13,7 @@ module Itsi
             max_files_in_memory: ${6|100,500,1000|},
             file_check_interval: ${7|1,60,120|},
             headers: { ${8|,"Cache-Control" => "max-age=3600",|} },
-            allowed_extensions: [${9|%w[html css js png jpg],|}],
+            allowed_extensions: ${9|%w[html css js png jpg],[]|},
             relative_path: ${10|true,false|},
             serve_hidden_files: ${11|true,false|}
         SNIPPET

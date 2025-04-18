@@ -98,8 +98,13 @@ impl StringRewrite {
                             }
                         }
                         other => {
-                            // Try using the context's matching regex if available.
-                            if let Some(caps) = &captures {
+                            if let Some(header_val) = req.headers().get(other) {
+                                if let Ok(s) = header_val.to_str() {
+                                    s.to_string()
+                                } else {
+                                    "".to_string()
+                                }
+                            } else if let Some(caps) = &captures {
                                 if let Some(m) = caps.name(other) {
                                     m.as_str().to_string()
                                 } else {
@@ -146,8 +151,13 @@ impl StringRewrite {
                             }
                         }
                         other => {
-                            if let Some(header_value) = resp.headers().get(other) {
-                                format!("{:?}", header_value)
+                            // Try pulling from response headers first
+                            if let Some(val) = resp.headers().get(other) {
+                                if let Ok(s) = val.to_str() {
+                                    s.to_string()
+                                } else {
+                                    "".to_string()
+                                }
                             } else {
                                 format!("{{{}}}", other)
                             }

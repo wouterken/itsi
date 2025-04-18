@@ -91,3 +91,14 @@ Docs:
 
 Source Code:
 > https://github.com/wouterken/itsi/blob/main/gems/scheduler
+
+### For Developers
+* Check out the top-level Rakefile for project wide commands.
+* `rake test` (Run the full Itsi test-suite)
+* `rake compile` (Compile Itsi - Scheduler **and** Server)
+* `rake build` (Build all itsi gems, `itsi`, `itsi-server`, `itsi-scheduler`)
+
+You can also run gem-specific variants of the above. E.g.
+* `rake server:test` or `rake scheduler:test`
+* `rake server:compile` or `rake scheduler:compile`
+* `rake server:build` or `rake scheduler:build`

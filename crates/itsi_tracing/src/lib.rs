@@ -62,6 +62,10 @@ pub struct LogConfig {
     pub use_ansi: bool,
 }
 
+fn default_log_file() -> String {
+    env::var("ITSI_LOG_FILE").unwrap_or_else(|_| "itsi-app.log".into())
+}
+
 impl Default for LogConfig {
     fn default() -> Self {
         let level = env::var("ITSI_LOG").unwrap_or_else(|_| "info".into());
@@ -70,14 +74,8 @@ impl Default for LogConfig {
             _ => LogFormat::Plain,
         };
         let target = match env::var("ITSI_LOG_TARGET").as_deref() {
-            Ok("file") => {
-                let file = env::var("ITSI_LOG_FILE").unwrap_or_else(|_| "app.log".into());
-                LogTarget::File(file)
-            }
-            Ok("both") => {
-                let file = env::var("ITSI_LOG_FILE").unwrap_or_else(|_| "app.log".into());
-                LogTarget::Both(file)
-            }
+            Ok("file") => LogTarget::File(default_log_file()),
+            Ok("both") => LogTarget::Both(default_log_file()),
             _ => LogTarget::Stdout,
         };
         // If ITSI_LOG_ANSI is set, use that; otherwise, use ANSI if stdout is a TTY.
@@ -279,6 +277,7 @@ pub fn set_level(new_level: &str) {
 pub fn set_target(new_target: &str) {
     let target: LogTarget = match new_target {
         "stdout" => LogTarget::Stdout,
+        "both" => LogTarget::Both(default_log_file()),
         path => LogTarget::File(path.to_string()),
     };
     if let Some(config_mutex) = CURRENT_CONFIG.get() {

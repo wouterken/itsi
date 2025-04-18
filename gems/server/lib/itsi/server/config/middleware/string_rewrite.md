@@ -7,6 +7,8 @@ The String Rewrite mechanism is used when configuring Itsi for
 * [Reverse Proxying](/middleware/proxy)
 * [Redirects](/middleware/redirect)
 * [Logging](/middleware/log_requests)
+* [Request Headers](/middleware/request_headers)
+* [Response Headers](/middleware/response_headers)
 
 It allows you to create dynamic strings from a template by combining literal text with placeholders. Placeholders (denoted using curly braces: `{}`) are replaced at runtime with data derived from the HTTP request, response, or context.
 
@@ -24,10 +26,20 @@ The following placeholders are supported:
 - **`query`**: The query string (prepended with a `?` if non-empty).
 - **`port`**: The port number (defaulting to `80` if not available).
 - **`start_time`**: The formatted start time of the request.
+- **`<Header-Name>`**: Any existing response header. For example `{Content-Type}` or `{Set-Cookie}` will be replaced with its current value.
 
 The mechanism also allows any available matching regex capture from routes defined in the [location](/middleware/location) block.
 If no match is found, otherwise, the placeholder remains unchanged (i.e. it is rendered as `{placeholder_name}`).
 
+## Rewriting a Response
+
+When you use String Rewrite in `response_headers`, you can refer to built‑in response fields **and** any header in the outgoing response:
+
+- **`status`**: The HTTP status code (e.g., `200`, `404`).
+- **`response_time`**: The computed response time, formatted (e.g., `12.345ms`).
+- **`<Header-Name>`**: Any existing response header. For example `{Content-Type}` or `{Set-Cookie}` will be replaced with its current value.
+
+If a header placeholder does not exist on the response, it will render as `{Header-Name}`.
 
 ## Example Templates
 

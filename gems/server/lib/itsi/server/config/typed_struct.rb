@@ -163,7 +163,7 @@ module Itsi
                       end
                   rescue StandardError => e
                     raise ArgumentError,
-                          "─ `#{@name}` Validation Failed. Invalid #{validation.to_s.split("::").last} value: #{value.inspect}. Failure reason: \n  └#{e.message}"
+                          "─ `#{@name}` Validation Failed. Invalid #{validation.to_s.split("::").last} value: #{value.inspect}. Failure reason: \n  └─ #{e.message}"
                   end
                 end
               end
@@ -203,6 +203,7 @@ module Itsi
           Hash: ->(key_type, value_type) {
             Validation.new(:Hash, ->(v){
               return true if v.nil?
+              raise StandardError.new("Expected hash got #{v.class}") unless v.is_a?(Hash)
               v.map do |k, v|
                 [
                   key_type.validate!(k),
@@ -216,6 +217,8 @@ module Itsi
           Array: lambda { |*value_validations|
             Validation.new(:Array, [::Array, lambda { |value|
               return true unless value
+
+              raise StandardError.new("Expected Array got #{value.class}") unless value.is_a?(Array)
 
               value&.map! do |v|
                 value_validations.all? { v = _1.validate!(v) }

@@ -140,12 +140,17 @@ module Itsi
               []
             else
               ([lineno-2, 0].max...[file_lines.length, lineno.succ.succ].min).map do |currline|
-                [
-                  " #{currline.succ.to_s.rjust(3)} | #{file_lines[currline].strip}",
-                  if currline == lineno-1
-                    "     | ^^^ "
-                  end
-                ].compact
+                if currline == lineno-1
+                  line = file_lines[currline][0...-1]
+                  padding = line[/^\s+/]&.length || 0
+
+                  [
+                    " \e[31m#{currline.succ.to_s.rjust(3)} | #{line}\e[0m",
+                    "     | #{' ' * padding}\e[33m^^^\e[0m "
+                  ]
+                else
+                  " #{currline.succ.to_s.rjust(3)} | #{file_lines[currline][0...-1]}"
+                end
               end.flatten
             end
             [
