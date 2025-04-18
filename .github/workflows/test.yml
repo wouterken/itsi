@@ -2,9 +2,9 @@ name: Test Native Ruby Gems
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   test:
@@ -20,7 +20,7 @@ jobs:
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: '3.4'
+          ruby-version: "3.4"
           bundler-cache: true
 
       - name: Install Rust
@@ -38,4 +38,4 @@ jobs:
       - name: Build and Test all gems
         run: |
           bundle install
-          rake test
+          bundle exec rake test

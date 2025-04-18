@@ -1,6 +1,6 @@
+- Verify watch feature
 Feature complete! Polish and Release (At Lake):
 -- Feature breakdown. Per repeat the following list
-
 --- 1. General Code Review
 --- 2. Unit Tests
 --- 3. Add Debug logging
@@ -8,26 +8,47 @@ Feature complete! Polish and Release (At Lake):
 --- 5. Finish Documentation (Ensure links in list work)
 --- 6. Ensure looks good in middleware
 
-
 WIP:
 - compression[DONE]
-- CORS
+- CORS[DONE]
+- ETag[DONE]
+- Cache Control[DONE]
+- Location [DONE]
+- Redirect [DONE]
+- Reverse Proxy[DONE]
+- Static File Server [DONE]
+- Binds[DONE]
+- Auto reload config[DONE]
+- Auth (ALL) [DONE]
+- Repeatable (Docs,CodeReview,Tests,DebugLogging,ConfigDSL,Middleware print)
+- Rate Limiting [DONE]
+- Allow + Deny Lists [DONE]
+- Intrusion Protection [DONE]
+- Slow HTTP opts [DONE]
+- CSP Reporting (Test + Complete) [DONE]
+- Memory limits [DONE]
+- OOB gRPC [DONE]
+- Preload [DONE]
+- Stream body[Done], Shutdown_timeout[Done], pin_worker_cores[Done], multithreaded_reactor[Done], reuseaddr/port/nodelay
+- Opts: listen_backlog, recv_buffer_size
+- log_level, log_target, log_target_filters, log_format
+- Req/resp headers
 
+--- 12. Static Response
+--- 15. Hooks
+--- 18. include
+--- 5. Scheduler threads
+--- 3. Run + Rackfile
+--- 4. gRPC (+ REST) + Reflection
+--- 9. Endpoints
+--- Fix X-Forwarded-For treatment inside all IP address sensitive layers
 
---- 2. Unit Tests
---- 3. Add Debug logging
---- 1. [DONE]General Code Review
---- 4. [DONE] Migrate to new config DSL (Fuzz it!)
---- 5. [DONE] Finish Documentation (Ensure links in list work)
---- 6. [DONE] Ensure looks good in middleware
-
-- Go on unwrap hunt
-
-
-Fill in Changelog.md date
-Retest in live environment
-- Add examples
-*maybe* leave service running on live server to verify let's encrypt renewals.
+-- Go on unwrap hunt
+-- Author Final default Itsi-file
+-- Add notes on: PGGSSENCMODE="disable" and OBJC_DISABLE_INITIALIZE_FORK_SAFETY=
+-- GPT Sanity Check everything
+-- Fill in Changelog.md date
+-- Retest in fresh linux environment
 
 - Feature List:
 -- HTTP
@@ -64,8 +85,6 @@ Retest in live environment
 -- Unix Sockets
 -- Support for running high-performance mini-apps, written and served directly from the singular Itsi.rb configuration file.
 -- Well documented complete with LSP support.
--- Author Final default Itsi-file
--- Add notes on: PGGSSENCMODE="disable" and OBJC_DISABLE_INITIALIZE_FORK_SAFETY=
 
 Later:
 - OTel

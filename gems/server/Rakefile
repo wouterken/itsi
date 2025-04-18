@@ -12,10 +12,6 @@ Minitest::TestTask.create(:test) do |t|
   t.test_prelude = 'require "helpers/test_helper.rb"'
 end
 
-require "rubocop/rake_task"
-
-RuboCop::RakeTask.new
-
 require "rb_sys/extensiontask"
 
 task build: :compile

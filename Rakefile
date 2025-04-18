@@ -56,11 +56,15 @@ Rake::Task[:build].enhance([:build_all])
 task :sync_crates do
   require 'fileutils'
   GEMS.each do |gem_info|
+    ext_dir = File.join(gem_info[:dir], 'ext')
+    FileUtils.mkdir_p(ext_dir)
+
     Dir.chdir('crates') do
-      to_sync = Dir['*'].each do |to_sync|
+      Dir['*'].each do |to_sync|
         next unless File.directory?(to_sync)
 
-        system("rsync -q -av #{to_sync}/ ../#{gem_info[:dir]}/ext/#{to_sync} --delete")
+        dest = File.join('..', gem_info[:dir], 'ext', to_sync)
+        system("rsync -q -av #{to_sync}/ #{dest} --delete")
         system("cp ../Cargo.lock ../#{gem_info[:dir]}/Cargo.lock")
       end
     end

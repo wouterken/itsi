@@ -282,6 +282,7 @@ DEPENDENCIES
   pg
   rake (~> 13.0)
   rake-compiler
+  rb_sys (~> 0.9.91)
   rubocop (~> 1.21)
   ruby-lsp
   solargraph
