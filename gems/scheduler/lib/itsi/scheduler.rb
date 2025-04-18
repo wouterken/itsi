@@ -130,9 +130,12 @@ module Itsi
     # Need to defer to Process::Status rather than our extension
     # as we don't have a means of creating our own Process::Status.
     def process_wait(pid, flags)
-      Thread.new do
-        Process::Status.wait(pid, flags)
-      end.value
+      result = nil
+      thread = Thread.new do
+        result = Process::Status.wait(pid, flags)
+      end
+      thread.join
+      result
     end
 
     def closed?

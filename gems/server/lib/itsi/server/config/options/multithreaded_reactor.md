@@ -8,6 +8,13 @@ Configures whether the Tokio reactor should run in multithreaded mode.
 Itsi will attempt to intelligently determine this config value by default, by enabling it in single mode, and disabling it in cluster-mode (where attempting to utilize multiple cores via both multi-threaded reactor and multi-worker is generally less efficient, not recommended).
 however you can use this option to override it.
 
+## Options
+|Option | Description |
+|-------|-------------|
+| `true` | Enable multithreaded reactor |
+| `false` | Disable multithreaded reactor |
+| `:auto` | Automatically determine based on mode |
+
 ### Default
 
 ```ruby {filename=Itsi.rb}

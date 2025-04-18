@@ -61,8 +61,8 @@ end
 
 
 ## Customized Key-ID and Secret sources
-* The secret is expected inside an `Authorization` header, as a Bearer token.
-* The Key-ID (*if not using anonymous auth*) is expected inside an `X-Api-Key-Id` header.
+* By default, the secret is expected inside an `Authorization` header, as a Bearer token.
+* By default, the Key-ID (*if not using anonymous auth*) is expected inside an `X-Api-Key-Id` header.
 Both of these sources can be configured using the `key_id_source` and  `token_source` options.
 The source can be either a named `header` (with optional prefix) or `query` parameter,
 {{< callout >}}

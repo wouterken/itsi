@@ -10,9 +10,12 @@ class TestActiveRecordFiberScheduler < Minitest::Test
   def setup
     ActiveSupport::IsolatedExecutionState.isolation_level = :fiber
     ActiveRecord::Base.establish_connection(
-      adapter: "postgresql",
-      database: "fiber_scheduler_test",
-      pool: 2, # use a small pool to test contention scenarios
+      adapter:  "postgresql",
+      host:     ENV.fetch("PGHOST", "localhost"),
+      database: ENV.fetch("PGDATABASE", "fiber_scheduler_test"),
+      username: ENV.fetch("PGUSER", "postgres"),
+      password: ENV.fetch("PGPASSWORD", "postgres"),
+      pool:     2,
       checkout_timeout: 5
     )
   end
@@ -77,10 +80,12 @@ class TestActiveRecordFiberScheduler < Minitest::Test
     # Re-establish connection with a pool size of 1.
     ActiveSupport::IsolatedExecutionState.isolation_level = :fiber
     ActiveRecord::Base.establish_connection(
-      adapter: "postgresql",
-      host: "localhost",
-      database: "fiber_scheduler_test",
-      pool: 1,
+      adapter:  "postgresql",
+      host:     ENV.fetch("PGHOST", "localhost"),
+      database: ENV.fetch("PGDATABASE", "fiber_scheduler_test"),
+      username: ENV.fetch("PGUSER", "postgres"),
+      password: ENV.fetch("PGPASSWORD", "postgres"),
+      pool:     1,
       checkout_timeout: 0.25
     )
     # ActiveRecord::Base.connection_pool.disconnect!

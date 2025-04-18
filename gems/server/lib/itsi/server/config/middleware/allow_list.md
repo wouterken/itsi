@@ -9,8 +9,9 @@ The **allow_list** middleware restricts access to only those clients whose IP ad
 ```ruby
 allow_list \
   allowed_patterns: [
-    "^127\\.0\\.0\\.1$",       # only localhost
-    "^10\\.0\\.\\d+\\.\\d+$"   # any 10.0.x.x
+    /127\.0\.0\.1/,           # only localhost
+    /10\.0\.\d+\.\d+/,        # any 10.0.x.x
+    "192.168.1.0/24"          # CIDR range for 192.168.1.x
   ],
   error_response: "forbidden"
 ```

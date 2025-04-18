@@ -9,8 +9,9 @@ The **deny_list** middleware restricts access to only those clients whose IP add
 ```ruby
 deny_list \
   denied_patterns: [
-    "^192\\.168\\.0\\.\\d+$",   # block all 192.168.0.x
-    "^203\\.0\\.113\\.(10|11)$" # block .10 and .11
+    /192\.168\.0\.\d+/,     # block all 192.168.0.x
+    /203\.0\.113\.(10|11)/, # block .10 and .11
+    "10.0.0.0/24"           # block all IPs in the 10.0.0.x range
   ],
   error_response: { code: 403,
                     plaintext: { inline: "Access denied" },

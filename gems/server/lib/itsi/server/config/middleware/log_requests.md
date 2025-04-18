@@ -35,6 +35,8 @@ Available values are:
 * `query` - The request query string
 * `port` - The bound port
 * `start_time` - The request start time
+* `<Header-Name>`: Any existing request header. For example `{Accept}` or `{Cookie}` will be replaced with its current value.
+
 
 ### `after` Format String
 * `request_id` - (A short, unique hexadecimal request identifier)
@@ -42,6 +44,7 @@ Available values are:
 * `status` - The HTTP status code
 * `addr` - The client's IP address
 * `response_time` - The response time in milliseconds
+* `<Header-Name>`: Any existing response header. For example `{Content-Type}` or `{Set-Cookie}` will be replaced with its current value.
 
 
 ### Path Attributes

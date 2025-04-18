@@ -56,7 +56,11 @@ Available helper methods live under `Itsi::Server::KnownPaths`—for example:
 - `cms_wp_plugins`
 - `php_php_common_backdoors`
 - …and many more.
-To see all options, execute `Itsi::Server::KnownPaths::ALL` in a REPL or see the raw input files [here](https://github.com/wouterken/itsi/tree/main/gems/server/lib/itsi/server/config/known_paths)).
+To see all options, execute
+```ruby
+Itsi::Server::KnownPaths::ALL
+```
+in a REPL or see the raw input files [here](https://github.com/wouterken/itsi/tree/main/gems/server/lib/itsi/server/config/known_paths).
 
 ### Options
 

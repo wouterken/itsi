@@ -10,8 +10,28 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:15
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: fiber_scheduler_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     env:
       RUST_BACKTRACE: full
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/fiber_scheduler_test
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: fiber_scheduler_test
 
     steps:
       - name: Checkout code
@@ -35,7 +55,18 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libclang-dev pkg-config
 
-      - name: Build and Test all gems
+      - name: Wait for PostgreSQL to become healthy
+        run: |
+          until pg_isready -h localhost -p 5432 -U postgres; do
+            echo "Waiting for Postgres..."
+            sleep 2
+          done
+
+      - name: Build Gems
         run: |
           bundle install
+          bundle exec rake compile
+
+      - name: Run Tests
+        run: |
           bundle exec rake test
