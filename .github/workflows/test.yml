@@ -1,4 +1,4 @@
-name: Test Native Ruby Gems
+name: Tests
 
 on:
   push:
@@ -81,7 +81,24 @@ jobs:
       - name: Build Gems
         run: |
           bundle install
-          bundle exec rake compile
+
+      - name: Cache Cargo builds
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            gems/scheduler/target
+            gems/server/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Compile scheduler gem
+        run: bundle exec rake scheduler:compile
+
+      - name: Compile server gem
+        run: bundle exec rake server:compile
 
       - name: Run Tests
         run: |
