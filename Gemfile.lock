@@ -120,6 +120,8 @@ GEM
       reline (>= 0.4.2)
     jaro_winkler (1.6.0)
     json (2.10.2)
+    jwt (2.10.1)
+      base64
     kramdown (2.5.1)
       rexml (>= 3.3.9)
     kramdown-parser-gfm (1.1.0)
@@ -192,6 +194,10 @@ GEM
       logger
     rdoc (6.12.0)
       psych (>= 4.0.0)
+    redis (5.4.0)
+      redis-client (>= 0.22.0)
+    redis-client (0.24.0)
+      connection_pool
     regexp_parser (2.10.0)
     reline (0.6.0)
       io-console (~> 0.5)
@@ -276,6 +282,7 @@ DEPENDENCIES
   itsi!
   itsi-scheduler!
   itsi-server!
+  jwt
   minitest (~> 5.16)
   minitest-reporters
   net_http_unix
@@ -283,6 +290,7 @@ DEPENDENCIES
   rake (~> 13.0)
   rake-compiler
   rb_sys (~> 0.9.91)
+  redis
   rubocop (~> 1.21)
   ruby-lsp
   solargraph

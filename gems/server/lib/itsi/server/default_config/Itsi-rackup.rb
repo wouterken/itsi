@@ -85,8 +85,8 @@ worker_memory_limit 1024 * 1024 * 1024
 
 # You can provide an optional block of code to run, when a worker hits its memory threshold (Use this to send yourself an alert,
 # write metrics to disk etc. etc.)
-after_memory_threshold_reached do |pid|
-  puts "Worker #{pid} has reached its memory threshold and will restart"
+after_memory_limit_reached do |pid|
+  puts "Worker #{pid} has reached its memory limit and will restart"
 end
 
 # Do clean up of any non-threadsafe resources before forking a new worker here.

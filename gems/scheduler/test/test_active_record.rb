@@ -13,8 +13,8 @@ class TestActiveRecordFiberScheduler < Minitest::Test
       adapter:  "postgresql",
       host:     ENV.fetch("PGHOST", "localhost"),
       database: ENV.fetch("PGDATABASE", "fiber_scheduler_test"),
-      username: ENV.fetch("PGUSER", "postgres"),
-      password: ENV.fetch("PGPASSWORD", "postgres"),
+      **(ENV.fetch("PGUSER", nil).yield_self{|username| username ? {username: username} : {}}),
+      **(ENV.fetch("PGPASSWORD", nil).yield_self{|password| password ? {password: password} : {}}),
       pool:     2,
       checkout_timeout: 5
     )
@@ -83,8 +83,8 @@ class TestActiveRecordFiberScheduler < Minitest::Test
       adapter:  "postgresql",
       host:     ENV.fetch("PGHOST", "localhost"),
       database: ENV.fetch("PGDATABASE", "fiber_scheduler_test"),
-      username: ENV.fetch("PGUSER", "postgres"),
-      password: ENV.fetch("PGPASSWORD", "postgres"),
+      **(ENV.fetch("PGUSER", nil).yield_self{|username| username ? {username: username} : {}}),
+      **(ENV.fetch("PGPASSWORD", nil).yield_self{|password| password ? {password: password} : {}}),
       pool:     1,
       checkout_timeout: 0.25
     )

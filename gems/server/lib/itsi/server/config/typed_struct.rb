@@ -151,6 +151,8 @@ module Itsi
                       elsif validation.eql?(::Date) then Date.parse(value.to_s)
                       elsif validation.eql?(Float) then Float(value)
                       elsif validation.eql?(Integer) then Integer(value)
+                      elsif validation.eql?(Proc) then
+                        raise ArgumentError, "Invalid #{validation} value: #{value.inspect}" unless value.is_a?(Proc)
                       elsif validation.eql?(String) || validation.eql?(Symbol)
                         raise ArgumentError, "Invalid #{validation} value: #{value.inspect}" unless value.is_a?(String) || value.is_a?(Symbol)
                         if validation.eql?(String)

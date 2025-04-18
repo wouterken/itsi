@@ -93,30 +93,6 @@ module Itsi
           end
         end
 
-        def log_level(level)
-          raise "Log level must be set at the root" unless @parent.nil?
-
-          @options[:log_level] = level.to_s
-        end
-
-        def log_target(target)
-          raise "Log target must be set at the root" unless @parent.nil?
-
-          @options[:log_target] = target.to_s
-        end
-
-        def log_target_filters(target_filters)
-          raise "Log target filters must be set at the root" unless @parent.nil?
-
-          @options[:log_target_filters] = target_filters
-        end
-
-        def log_format(target)
-          raise "Log format must be set at the root" unless @parent.nil?
-
-          @options[:log_format] = target.to_s
-        end
-
         def get(route=nil, app_proc = nil, nonblocking: false, &blk)
           endpoint(route, [:get], app_proc, nonblocking: nonblocking,  &blk)
         end
@@ -224,33 +200,6 @@ module Itsi
           end
         end
 
-        def include(path)
-          code = IO.read("#{path}.rb")
-          instance_eval(code, "#{path}.rb", 1)
-        end
-
-        def after_fork(&block)
-          raise "After fork must be set at the root" unless @parent.nil?
-
-          @options[:hooks] ||= {}
-          @options[:hooks][:after_fork] = block
-        end
-
-        def before_fork(&block)
-          raise "Before fork must be set at the root" unless @parent.nil?
-
-          @options[:hooks] ||= {}
-          @options[:hooks][:before_fork] = block
-        end
-
-        def after_memory_threshold_reached(&block)
-          raise "Before fork must be set at the root" unless @parent.nil?
-
-          @options[:hooks] ||= {}
-          @options[:hooks][:after_memory_threshold_reached] = block
-        end
-
-
         def fiber_scheduler(klass_name = true)
           raise "Fiber scheduler must be set at the root" unless @parent.nil?
 
@@ -270,11 +219,6 @@ module Itsi
           else
             @controller
           end
-        end
-
-        def static_response(**args)
-          args[:body] = args[:body].bytes
-          @middleware[:static_response] = args
         end
 
         def file_server(**args)

@@ -16,7 +16,7 @@ worker_memory_limit 256 * 1024 ** 2 # 256 MB
 
 ```ruby {filename="Itsi.rb"}
 worker_memory_limit 256 * 1024 ** 2 # 256 MB
-after_memory_threshold_reached do |pid|
+after_memory_limit_reached do |pid|
   send_slack_alert("Worker #{pid} exceeded memory limit")
 end
 ```

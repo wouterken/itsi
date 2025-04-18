@@ -49,6 +49,16 @@ module Itsi
           [mw_args].flatten.map do |mw_args|
             "\e[33mintrusion_protection\e[0m(banned_url_patterns: #{mw_args['banned_url_patterns']&.length}, banned_header_patterns: #{mw_args['banned_header_patterns']&.keys&.join(", ")}, #{mw_args['banned_time_seconds']}s)"
           end.join("\n")
+        when "request_headers"
+          [mw_args].flatten.map do |mw_args|
+            "\e[33mrequest_headers\e[0m(added: #{mw_args["additions"].keys}, removed: #{mw_args["removals"]})"
+          end.join("\n")
+        when "response_headers"
+          [mw_args].flatten.map do |mw_args|
+            "\e[33mresponse_headers\e[0m(added: #{mw_args["additions"].keys}, removed: #{mw_args["removals"]})"
+          end.join("\n")
+        when "static_response"
+          "\e[response_headers\e[0m(#{mw_args["code"]} body: #{mw_args["body"][0..10]})"
         else
           "\e[33m#{mw.first}\e[0m"
         end

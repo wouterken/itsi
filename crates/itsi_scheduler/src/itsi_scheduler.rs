@@ -148,8 +148,9 @@ impl ItsiScheduler {
                 let mut events = self.events.lock();
                 {
                     let mut poll = self.poll.lock();
-                    poll.poll(&mut events, timeout)
-                        .map_err(|e| ItsiError::ArgumentError(format!("poll error: {}", e)))?;
+                    if let Err(_err) = poll.poll(&mut events, timeout) {
+                        return Ok(due_fibers);
+                    }
                 };
 
                 for event in events.iter() {

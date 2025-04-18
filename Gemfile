@@ -8,6 +8,8 @@ group :test do
   gem 'activerecord'
   gem 'pg'
   gem 'net_http_unix'
+  gem 'jwt'
+  gem 'redis'
 end
 
 group :development, :test do
@@ -24,4 +26,5 @@ group :development, :test do
   gem 'iodine'
   gem 'falcon'
   gem 'rb_sys', '~> 0.9.91'
+
 end

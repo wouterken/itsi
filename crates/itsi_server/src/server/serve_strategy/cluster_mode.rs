@@ -290,7 +290,7 @@ impl ClusterMode {
 
         self.build_runtime().block_on(async {
           let self_ref = self_ref.clone();
-          let mut memory_check_interval = time::interval(time::Duration::from_secs(2));
+          let mut memory_check_interval = time::interval(time::Duration::from_secs(15));
 
           loop {
             tokio::select! {
@@ -314,7 +314,7 @@ impl ClusterMode {
                     if let Some(current_mem_usage) = largest_worker.memory_usage(){
                       if current_mem_usage > memory_limit {
                         largest_worker.reboot(self_ref.clone()).await.ok();
-                        if let Some(hook) = self_ref.server_config.server_params.read().hooks.get("after_memory_threshold_reached") {
+                        if let Some(hook) = self_ref.server_config.server_params.read().hooks.get("after_memory_limit_reached") {
                           call_with_gvl(|_|  hook.call::<_, Value>((largest_worker.pid(),)).ok() );
                         }
                       }

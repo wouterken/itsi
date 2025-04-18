@@ -4,6 +4,7 @@ class TestRequestTimeout < Minitest::Test
   def test_request_timeout_applies
     server(
       itsi_rb: lambda do
+        workers 3
         request_timeout 0.1
         get("/") { |r| sleep 0.2; r.ok "late" }
       end

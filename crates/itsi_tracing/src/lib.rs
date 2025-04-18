@@ -6,7 +6,10 @@ use std::{
 use tracing::Level;
 pub use tracing::{debug, error, info, trace, warn};
 use tracing_appender::rolling;
-use tracing_subscriber::fmt::writer::BoxMakeWriter;
+use tracing_subscriber::fmt::{
+    format::{FmtSpan, JsonFields},
+    writer::BoxMakeWriter,
+};
 use tracing_subscriber::{EnvFilter, fmt, prelude::*, reload};
 use tracing_subscriber::{Layer, Registry, layer::Layered};
 
@@ -113,17 +116,23 @@ fn build_fmt_layer(
                 .with_thread_ids(false)
                 .with_writer(BoxMakeWriter::new(std::io::stdout))
                 .with_ansi(config.use_ansi)
+                .with_span_events(FmtSpan::NONE)
+                .fmt_fields(JsonFields::new())
                 .boxed(),
-            LogFormat::Json => fmt::layer()
-                .compact()
-                .with_file(false)
-                .with_line_number(false)
-                .with_target(true)
-                .with_thread_ids(false)
-                .with_writer(BoxMakeWriter::new(std::io::stdout))
-                .with_ansi(config.use_ansi)
-                .json()
-                .boxed(),
+            LogFormat::Json => {
+                fmt::layer()
+                    .compact()
+                    .with_file(false)
+                    .with_line_number(false)
+                    .with_target(true)
+                    .with_thread_ids(false)
+                    .with_writer(BoxMakeWriter::new(std::io::stdout))
+                    .with_ansi(config.use_ansi)
+                    .event_format(fmt::format().json()) // set the JSON event formatter
+                    .with_span_events(FmtSpan::NONE)
+                    .fmt_fields(JsonFields::new())
+                    .boxed()
+            }
         },
         LogTarget::File(file) => {
             let file_clone = file.clone();
@@ -138,6 +147,8 @@ fn build_fmt_layer(
                         rolling::daily(".", file_clone.clone())
                     }))
                     .with_ansi(false)
+                    .with_span_events(FmtSpan::NONE)
+                    .fmt_fields(JsonFields::new())
                     .boxed(),
                 LogFormat::Json => {
                     let file_clone = file.clone();
@@ -151,7 +162,9 @@ fn build_fmt_layer(
                             rolling::daily(".", file_clone.clone())
                         }))
                         .with_ansi(false)
-                        .json()
+                        .event_format(fmt::format().json()) // set the JSON event formatter
+                        .with_span_events(FmtSpan::NONE)
+                        .fmt_fields(JsonFields::new())
                         .boxed()
                 }
             }
@@ -167,6 +180,8 @@ fn build_fmt_layer(
                         .with_target(true)
                         .with_thread_ids(false)
                         .with_writer(BoxMakeWriter::new(std::io::stdout))
+                        .with_span_events(FmtSpan::NONE)
+                        .fmt_fields(JsonFields::new())
                         .with_ansi(config.use_ansi);
                     let file_layer = fmt::layer()
                         .compact()
@@ -177,6 +192,8 @@ fn build_fmt_layer(
                         .with_writer(BoxMakeWriter::new(move || {
                             rolling::daily(".", file_clone.clone())
                         }))
+                        .with_span_events(FmtSpan::NONE)
+                        .fmt_fields(JsonFields::new())
                         .with_ansi(false);
                     stdout_layer.and_then(file_layer).boxed()
                 }
@@ -189,7 +206,9 @@ fn build_fmt_layer(
                         .with_thread_ids(false)
                         .with_writer(BoxMakeWriter::new(std::io::stdout))
                         .with_ansi(config.use_ansi)
-                        .json();
+                        .event_format(fmt::format().json()) // set the JSON event formatter
+                        .with_span_events(FmtSpan::NONE)
+                        .fmt_fields(JsonFields::new());
                     let file_layer = fmt::layer()
                         .compact()
                         .with_file(false)
@@ -200,7 +219,9 @@ fn build_fmt_layer(
                             rolling::daily(".", file_clone.clone())
                         }))
                         .with_ansi(false)
-                        .json();
+                        .event_format(fmt::format().json()) // set the JSON event formatter
+                        .with_span_events(FmtSpan::NONE)
+                        .fmt_fields(JsonFields::new());
                     stdout_layer.and_then(file_layer).boxed()
                 }
             }

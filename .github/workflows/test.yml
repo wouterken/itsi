@@ -25,6 +25,16 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+
     env:
       RUST_BACKTRACE: full
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/fiber_scheduler_test
@@ -32,6 +42,7 @@ jobs:
       PGUSER: postgres
       PGPASSWORD: postgres
       PGDATABASE: fiber_scheduler_test
+      REDIS_URL: redis://localhost:6379
 
     steps:
       - name: Checkout code
@@ -53,12 +64,17 @@ jobs:
       - name: Install libclang and dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libclang-dev pkg-config
+          sudo apt-get install -y libclang-dev pkg-config redis-tools
 
-      - name: Wait for PostgreSQL to become healthy
+      - name: Wait for PostgreSQL and Redis to become healthy
         run: |
           until pg_isready -h localhost -p 5432 -U postgres; do
             echo "Waiting for Postgres..."
+            sleep 2
+          done
+
+          until redis-cli -h localhost ping | grep PONG; do
+            echo "Waiting for Redis..."
             sleep 2
           done
 

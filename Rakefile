@@ -29,13 +29,13 @@ GEMS.each do |gem|
   namespace gem[:shortname] do
     desc "Run tasks in the #{gem[:dir]} directory"
     task :default do
-      sh "cd #{gem[:dir]} && rake"
+      sh "cd #{gem[:dir]} && bundle exec rake"
     end
 
     SHARED_TASKS.each do |task|
       task task do
         Rake::Task[:sync_crates].invoke
-        sh "cd #{gem[:dir]} && rake #{task}"
+        sh "cd #{gem[:dir]} && bundle exec rake #{task}"
       end
     end
   end
