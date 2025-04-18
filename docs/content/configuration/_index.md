@@ -93,7 +93,8 @@ COMMAND:
     remove_worker - Remove a worker from the server cluster
     test - Test config file validity
     routes - Print the routes of the server
-    passfile - Manage hashed users and passwords in a passfile (like .htpasswd). [add, remove, list]
+    passfile - Manage hashed users and passwords in a passfile (like .htpasswd). [add, echo, remove, list]
+    secret - Generate a new secret for use in a JWT verifier
     test_route - Test which route a request will be routed to
     static - Serve static assets in the given directory
 

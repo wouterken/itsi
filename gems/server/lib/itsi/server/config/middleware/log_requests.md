@@ -1,7 +1,6 @@
 ---
 title: Request Logs
 url: /middleware/log_requests
-weight: 1
 ---
 
 The request logging middleware allows you to define customized log statements to occur before and/or after each request is processed.
@@ -10,15 +9,15 @@ You can provide a log level and format string to be written before and after eac
 
 
 ```ruby {filename=Itsi.rb}
-    log_requests \
-      before: {
-        level: "INFO",
-        format: "[{request_id}] {method} {path_and_query} - {addr} "
-      },
-      after: {
-        level: "INFO",
-        format: "[{request_id}] └─ {status} in {response_time}"
-      }
+log_requests \
+  before: {
+    level: "INFO",
+    format: "[{request_id}] {method} {path_and_query} - {addr} "
+  },
+  after: {
+    level: "INFO",
+    format: "[{request_id}] └─ {status} in {response_time}"
+  }
 ```
 
 

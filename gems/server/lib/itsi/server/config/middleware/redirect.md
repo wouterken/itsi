@@ -1,7 +1,6 @@
 ---
 title: Redirect
 url: /middleware/redirect
-weight: 4
 ---
 
 The Redirect middleware enables automatic redirection of incoming requests to a different URL. It computes the target URL using a string rewrite rule and responds with an HTTP redirect status code based on the configuration. Once the middleware processes a request, it immediately returns a redirection response without further processing.
@@ -24,6 +23,20 @@ location "/old-path" do
   # No further route processing occurs for /old-path.
 end
 ```
+## Redirect HTTP to HTTPS
+
+```ruby
+location protocols: [:http] do
+  redirect \
+    to: "https://{host}{path_and_query}", \
+    type: "moved_permanently"
+end
+```
+> A shorthand for the above exists, simply call `redirect_http_to_https!`. Note that this is simply
+an alias for the above, and as such is subject to ordinary [location](/middleware/location) resolution rules.
+To make sure this rule takes precedence, place it above other locations in the `Itsi.rb` file.
+
+
 
 ## Configuration Options
 

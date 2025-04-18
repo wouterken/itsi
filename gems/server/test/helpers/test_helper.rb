@@ -25,7 +25,6 @@ def free_bind(protocol="http", unix_socket: false)
 end
 
 
-
 def server(app: nil, protocol: "http", bind: free_bind(protocol), itsi_rb: nil, cleanup: true, &blk)
   itsi_rb ||= lambda do
     # Inline Itsi.rb
@@ -65,8 +64,8 @@ class RequestContext
     @binding.send(method_name, *args, &block)
   end
 
-  def post(path, data)
-    client.post(uri_for(path), data)
+  def post(path, data, headers = {})
+    client.post(uri_for(path), data, headers)
   end
 
   def get(path, headers = {})
@@ -113,10 +112,9 @@ class RequestContext
 
   def client
     if @uri.scheme == 'unix'
-      # `host` contains socket path; everything else is part of the request URI
-      NetX::HTTPUnix.new(@uri.to_s) # dummy, required by interface
+      NetX::HTTPUnix.new(@uri.to_s, read_timeout: 1)
     else
-      Net::HTTP.start(@uri.host, @uri.port, use_ssl: @uri.scheme == 'https')
+      Net::HTTP.start(@uri.host, @uri.port, use_ssl: @uri.scheme == 'https', read_timeout: 1)
     end
   end
 

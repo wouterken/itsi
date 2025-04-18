@@ -1,7 +1,6 @@
 ---
 title: Fiber Scheduler
 url: /options/fiber_scheduler
-weight: 3
 ---
 Itsi supports processing requests in threads that are managed by a fiber scheduler.
 This allows Itsi to process a very large number of IO heavy requests concurrently without the memory and context switching overhead of managing multiple threads.

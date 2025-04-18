@@ -6,29 +6,49 @@ module Itsi
       require "strscan"
       require "debug"
       def format_mw(mw)
-        case mw.first
+        mw_name, mw_args = mw
+        case mw_name
         when "app"
-          "\e[33mapp\e[0m(#{mw.last['app_proc'].inspect.split(' ')[1]})"
+          "\e[33mapp\e[0m(#{mw_args['app_proc'].inspect.split(' ')[1][0...-1]})"
         when "log_requests"
-          if mw.last['before'] && mw.last['after']
-            "\e[33mlog_requests\e[0m(before: #{mw.last['before']['format'][0..6]}..., after: #{mw.last['after']['format'][0..6]}...)"
-          elsif mw.last['before']
-            "\e[33mlog_requests\e[0m(before: #{mw.last['before']['format'][0..6]}...)"
-          elsif mw.last['after']
-            "\e[33mlog_requests\e[0m(before: nil, after: #{mw.last['after']['format'][0..6]}...)"
+          if mw_args['before'] && mw_args['after']
+            "\e[33mlog_requests\e[0m(before: #{mw_args['before']['format'][0..6]}..., after: #{mw_args['after']['format'][0..6]}...)"
+          elsif mw_args['before']
+            "\e[33mlog_requests\e[0m(before: #{mw_args['before']['format'][0..6]}...)"
+          elsif mw_args['after']
+            "\e[33mlog_requests\e[0m(before: nil, after: #{mw_args['after']['format'][0..6]}...)"
           end
         when "compress"
-          "\e[33mcompress\e[0m(#{mw.last['algorithms'].join(' ')}, #{mw.last['mime_types']})"
+          "\e[33mcompress\e[0m(#{mw_args['algorithms'].join(' ')}, #{mw_args['mime_types']})"
         when "cors"
-          "\e[33mcors\e[0m(#{mw.last['allow_origins'].join(' ')}, #{mw.last['allow_methods'].join(' ')})"
+          "\e[33mcors\e[0m(#{mw_args['allow_origins'].join(' ')}, #{mw_args['allow_methods'].join(' ')})"
         when "etag"
-          "\e[33metag\e[0m(#{mw.last['type']}/#{mw.last['algorithm']}, #{mw.last['handle_if_none_match'] ? 'if_none_match' : ''})"
+          "\e[33metag\e[0m(#{mw_args['type']}/#{mw_args['algorithm']}, #{mw_args['handle_if_none_match'] ? 'if_none_match' : ''})"
         when "cache_control"
-          "\e[33mcache_control\e[0m(max_age: #{mw.last['max_age']}, #{mw.last.select{|_,v| v == true }.keys.join(", ")})"
+          "\e[33mcache_control\e[0m(max_age: #{mw_args['max_age']}, #{mw_args.select{|_,v| v == true }.keys.join(", ")})"
         when "redirect"
-          "\e[33mredirect\e[0m(to: #{mw.last['to']}, type: #{mw.last['type']})"
+          "\e[33mredirect\e[0m(to: #{mw_args['to']}, type: #{mw_args['type']})"
         when "static_assets"
-          "\e[33mstatic_assets\e[0m(path: #{mw.last['root_dir']})"
+          "\e[33mstatic_assets\e[0m(path: #{mw_args['root_dir']})"
+        when "auth_api_key"
+          "\e[33mauth_api_key\e[0m(keys: #{mw_args['valid_keys'].keys}#{mw_args['credentials_file'] ? ", credentials_file: #{mw_args['credentials_file']}" : ""})"
+        when "auth_basic"
+          "\e[33mbasic_auth\e[0m(keys: #{mw_args['realm']}#{mw_args['credentials_file'] ? ", credentials_file: #{mw_args['credentials_file']}" : ""})"
+        when "auth_jwt"
+          "\e[33mjwt_auth\e[0m(#{mw_args['verifiers'].keys.join(",")})"
+        when "rate_limit"
+          key = mw_args['key'].kind_of?(Hash) ? mw_args['key']["parameter"] : mw_args['key']
+          "\e[33mrate_limit\e[0m(rps: #{mw_args['requests']}/#{mw_args['seconds']}, key: #{key})"
+        when "allow_list"
+          "\e[33mallow_list\e[0m(patterns: #{mw_args['allowed_patterns'].join(", ")})"
+        when "deny_list"
+          "\e[33mdeny_list\e[0m(patterns: #{mw_args['denied_patterns'].join(", ")})"
+        when "csp"
+          "\e[33mcsp\e[0m(#{mw_args['policy'].map{|k,v| "#{k}: #{v.join(",")}"}.join(", ")})"
+        when "intrusion_protection"
+          [mw_args].flatten.map do |mw_args|
+            "\e[33mintrusion_protection\e[0m(banned_url_patterns: #{mw_args['banned_url_patterns']&.length}, banned_header_patterns: #{mw_args['banned_header_patterns']&.keys&.join(", ")}, #{mw_args['banned_time_seconds']}s)"
+          end.join("\n")
         else
           "\e[33m#{mw.first}\e[0m"
         end

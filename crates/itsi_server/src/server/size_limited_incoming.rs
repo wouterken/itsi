@@ -10,6 +10,7 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::task::Context;
 use std::task::Poll;
+use tracing::debug;
 
 /// Custom error to indicate that the maximum body size was exceeded.
 #[derive(Debug)]
@@ -71,6 +72,11 @@ where
                         Ok(data) => {
                             let len = data.remaining();
                             self.current += len;
+                            debug!(
+                              target: "option::max_body",
+                              "current: {}, limit: {}",
+                              self.current, self.limit.load(Ordering::Relaxed)
+                            );
                             if self.current > self.limit.load(Ordering::Relaxed) {
                                 Poll::Ready(Some(Err(Box::new(MaxBodySizeReached))))
                             } else {

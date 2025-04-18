@@ -34,7 +34,6 @@ module Itsi
       end
 
       def echo(filename, algorithm)
-        return unless (creds = load(filename))
         print "Enter username: "
         username = $stdin.gets.chomp
 

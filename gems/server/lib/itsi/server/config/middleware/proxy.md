@@ -1,7 +1,6 @@
 ---
 title: Reverse Proxy
 url: /middleware/proxy
-weight: 6
 ---
 
 The Reverse Proxy middleware enables reverse proxying by forwarding incoming HTTP requests to one of several backend servers. It supports streaming requests and responses, uses a dynamic URL rewriting mechanism to compute the target URL, supports multiple backend selection strategies, and can override or add headers before forwarding requests.

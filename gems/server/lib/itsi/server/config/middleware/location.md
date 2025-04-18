@@ -1,7 +1,6 @@
 ---
 title: Location
 url: /middleware/location
-weight: 1
 ---
 
 The `location` block is the essential building block of Itsi-powered apps.

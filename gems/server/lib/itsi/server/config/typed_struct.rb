@@ -37,7 +37,7 @@ module Itsi
                 begin
                   inputs[k] = default_config[VALIDATE].validate!(value)
                 rescue StandardError => e
-                  raise ArgumentError, e.message
+                  raise ArgumentError, "─ #{k}: #{e.message}"
                 end
               end
 
@@ -150,6 +150,7 @@ module Itsi
                       if validation.eql?(Time) then Time.parse(value.to_s)
                       elsif validation.eql?(::Date) then Date.parse(value.to_s)
                       elsif validation.eql?(Float) then Float(value)
+                      elsif validation.eql?(Integer) then Integer(value)
                       elsif validation.eql?(String) || validation.eql?(Symbol)
                         raise ArgumentError, "Invalid #{validation} value: #{value.inspect}" unless value.is_a?(String) || value.is_a?(Symbol)
                         if validation.eql?(String)
@@ -201,6 +202,7 @@ module Itsi
           },
           Hash: ->(key_type, value_type) {
             Validation.new(:Hash, ->(v){
+              return true if v.nil?
               v.map do |k, v|
                 [
                   key_type.validate!(k),

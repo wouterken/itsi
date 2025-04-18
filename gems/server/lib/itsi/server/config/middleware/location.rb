@@ -16,6 +16,7 @@ module Itsi
             routes: Array(Type(String)),
             methods: Array(Type(String)),
             protocols: Array(Type(String)),
+            schemes: Array(Type(String)),
             hosts: Array(Type(String)),
             ports: Array(Type(String)),
             extensions: Array(Type(String)),
@@ -32,6 +33,7 @@ module Itsi
           *routes,
           methods: [],
           protocols: [],
+          schemes: [],
           hosts: [],
           ports: [],
           extensions: [],
@@ -44,6 +46,7 @@ module Itsi
             routes: routes,
             methods: methods,
             protocols: protocols,
+            schemes: schemes,
             hosts: hosts,
             ports: ports,
             extensions: extensions,
@@ -51,9 +54,9 @@ module Itsi
             accepts: accepts,
             block: block
           }).to_h
-          @routes = params[:routes]
+          @routes = params[:routes].empty? ? ["*"] : params[:routes]
           @methods = params[:methods]
-          @protocols = params[:protocols]
+          @protocols = params[:protocols] | params[:schemes]
           @hosts = params[:hosts]
           @ports = params[:ports]
           @extensions = params[:extensions]

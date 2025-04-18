@@ -91,12 +91,6 @@ module Itsi
           end
         end
 
-        def oob_gc_responses_threshold(threshold)
-          raise "OOB GC responses threshold must be set at the root" unless @parent.nil?
-
-          @options[:oob_gc_responses_threshold] = threshold.to_i
-        end
-
         def log_level(level)
           raise "Log level must be set at the root" unless @parent.nil?
 
@@ -233,24 +227,9 @@ module Itsi
           instance_eval(code, "#{path}.rb", 1)
         end
 
-        def reuse_address(reuse_address)
-          raise "reuse_address must be set at the root" unless @parent.nil?
-          @options[:reuse_address] = reuse_address
-        end
-
-        def reuse_port(reuse_port)
-          raise "reuse_port must be set at the root" unless @parent.nil?
-          @options[:reuse_port] = reuse_port
-        end
-
         def listen_backlog(listen_backlog)
           raise "listen_backlog must be set at the root" unless @parent.nil?
           @options[:listen_backlog] = listen_backlog
-        end
-
-        def nodelay(nodelay)
-          raise "nodelay must be set at the root" unless @parent.nil?
-          @options[:nodelay] = nodelay
         end
 
         def recv_buffer_size(recv_buffer_size)
@@ -279,42 +258,6 @@ module Itsi
           @options[:hooks][:after_memory_threshold_reached] = block
         end
 
-        def worker_memory_limit(memory_limit)
-          raise "Worker memory limit must be set at the root" unless @parent.nil?
-
-          @options[:worker_memory_limit] = memory_limit
-        end
-
-        def multithreaded_reactor(multithreaded)
-          raise "Multithreaded reactor must be set at the root" unless @parent.nil?
-
-          @options[:multithreaded_reactor] = !!multithreaded
-        end
-
-        def pin_worker_cores(pin_worker_cores)
-          raise "Pin worker cores must be set at the root" unless @parent.nil?
-
-          @options[:pin_worker_cores] = !!pin_worker_cores
-        end
-
-        def auto_reload_config!
-          return if @auto_reloading
-
-          @auto_reloading = true
-
-          if ENV["BUNDLE_BIN_PATH"]
-            watch "Itsi.rb", [%w[bundle exec itsi restart]]
-          else
-            watch "Itsi.rb", [%w[itsi restart]]
-          end
-        end
-
-        def watch(path, commands)
-          raise "Watch be set at the root" unless @parent.nil?
-
-          @options[:notify_watchers] ||= []
-          @options[:notify_watchers] << [path, commands]
-        end
 
         def fiber_scheduler(klass_name = true)
           raise "Fiber scheduler must be set at the root" unless @parent.nil?
@@ -329,58 +272,6 @@ module Itsi
           @options[:scheduler_threads] = threads
         end
 
-        def request_timeout(request_timeout)
-          raise "Request timeout must be set at the root" unless @parent.nil?
-
-          @options[:request_timeout] = request_timeout
-        end
-
-        def preload(preload)
-          raise "Preload must be set at the root" unless @parent.nil?
-
-          @options[:preload] = preload
-        end
-
-        def shutdown_timeout(shutdown_timeout)
-          raise "Shutdown timeout must be set at the root" unless @parent.nil?
-
-          @options[:shutdown_timeout] = shutdown_timeout.to_f
-        end
-
-        def header_read_timeout(header_read_timeout)
-          raise "Header read timeout must be set at the root" unless @parent.nil?
-
-          @options[:header_read_timeout] = header_read_timeout.to_f
-        end
-
-        def stream_body(stream_body)
-          raise "Stream body must be set at the root" unless @parent.nil?
-
-          @options[:stream_body] = !!stream_body
-        end
-
-        def allow_list(**args)
-          args[:allowed_patterns] = Array(args[:allowed_patterns]).map do |pattern|
-            if pattern.is_a?(Regexp)
-              pattern.source
-            else
-              pattern
-            end
-          end
-          @middleware[:allow_list] = args
-        end
-
-        def deny_list(**args)
-          args[:denied_patterns] = Array(args[:denied_patterns]).map do |pattern|
-            if pattern.is_a?(Regexp)
-              pattern.source
-            else
-              pattern
-            end
-          end
-          @middleware[:deny_list] = args
-        end
-
         def controller(controller=nil)
           if controller
             @controller = controller
@@ -389,75 +280,18 @@ module Itsi
           end
         end
 
-        def auth_basic(**args)
-          if File.exist?(".itsi-credentials") && !args[:credential_file]
-            args[:credential_file] = ".itsi-credentials"
-          end
-
-          if args[:credential_file] && File.exist?(args[:credential_file])
-            args[:credential_pairs] = Passfile.load(args[:credential_file])
-          end
-
-          @middleware[:auth_basic] = args
-        end
-
         def static_response(**args)
           args[:body] = args[:body].bytes
           @middleware[:static_response] = args
-        end
-
-        def auth_jwt(**args)
-          @middleware[:auth_jwt] = args
-        end
-
-        def auth_api_key(**args)
-          if args[:valid_keys] && args[:valid_keys].is_a?(Array)
-            args[:valid_keys] = args[:valid_keys].each_with_index.map { |key, index| [index, key] }.to_h
-            args[:key_id_source] = nil
-          end
-
-          if File.exist?(".itsi-credentials") && !args[:credential_file]
-            args[:credential_file] = ".itsi-credentials"
-          end
-
-          if args[:credential_file] && File.exist?(args[:credential_file])
-            args[:valid_keys] = Passfile.load(args[:credential_file])
-          end
-
-          @middleware[:auth_api_key] = args
         end
 
         def request_headers(**args)
           @middleware[:request_headers] = args
         end
 
-        def max_body(**args)
-          @middleware[:max_body] = args
-        end
-
         def response_headers(**args)
           @middleware[:response_headers] = args
         end
-
-        def rate_limit(**args)
-          @middleware[:rate_limit] = args
-        end
-
-        def csp(**args)
-          @middleware[:csp] = args
-        end
-
-        def intrusion_protection(**args)
-          args[:banned_url_patterns] = Array(args[:banned_url_patterns]).flatten.map do |pattern|
-            if pattern.is_a?(Regexp)
-              pattern.source
-            else
-              pattern
-            end
-          end
-          @middleware[:intrusion_protection] = args
-        end
-
 
         def file_server(**args)
           Itsi.log_info "Note: file_server is an alias for static_assets"
@@ -537,7 +371,11 @@ module Itsi
 
           chain.each do |n|
             n.middleware.each do |k, v|
-              merged[k] = v
+              if v[:combine]
+                merged[k] = ([merged[k] || []] + [v]).flatten
+              else
+                merged[k] = v
+              end
             end
           end
           deep_stringify_keys(merged)

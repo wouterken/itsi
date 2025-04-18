@@ -124,12 +124,16 @@ module Itsi
       end
     end
 
+    def body
+      @body ||= build_input_io
+    end
+
     def build_input_io
-      case body
+      case body_parts
       when nil then EMPTY_IO
-      when String then StringIO.new(body)
-      when Array then File.open(body.first, "rb")
-      else body
+      when String then StringIO.new(body_parts)
+      when Array then File.open(body_parts.first, "rb")
+      else body_parts
       end
     end
 

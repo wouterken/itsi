@@ -11,6 +11,7 @@ use magnus::error::Result;
 use regex::RegexSet;
 use serde::Deserialize;
 use std::sync::OnceLock;
+use tracing::debug;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct DenyList {
@@ -42,6 +43,7 @@ impl MiddlewareLayer for DenyList {
     ) -> Result<Either<HttpRequest, HttpResponse>> {
         if let Some(denied_ips) = self.denied_ips.get() {
             if denied_ips.is_match(&context.addr) {
+                debug!(target: "middleware::deny_list", "IP address {} is not allowed", context.addr);
                 return Ok(Either::Right(
                     self.error_response
                         .to_http_response(req.accept().into())

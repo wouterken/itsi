@@ -8,6 +8,7 @@ use magnus::error::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::str;
+use tracing::debug;
 
 use crate::{
     server::http_message_types::{HttpRequest, HttpResponse, RequestExt},
@@ -48,6 +49,7 @@ impl MiddlewareLayer for AuthBasic {
         let auth_header = req.header("Authorization");
 
         if !auth_header.is_some_and(|header| header.starts_with("Basic ")) {
+            debug!(target: "middleware::auth_basic", "Basic auth failed. Authorization Header doesn't start with 'Basic '");
             return Ok(Either::Right(self.basic_auth_failed_response()));
         }
 
@@ -57,6 +59,7 @@ impl MiddlewareLayer for AuthBasic {
         let decoded = match general_purpose::STANDARD.decode(encoded_credentials) {
             Ok(bytes) => bytes,
             Err(_) => {
+                debug!(target: "middleware::auth_basic", "Basic auth failed. Decoding failed");
                 return Ok(Either::Right(self.basic_auth_failed_response()));
             }
         };
@@ -64,6 +67,7 @@ impl MiddlewareLayer for AuthBasic {
         let decoded_str = match str::from_utf8(&decoded) {
             Ok(s) => s,
             Err(_) => {
+                debug!(target: "middleware::auth_basic", "Basic auth failed. Decoding failed");
                 return Ok(Either::Right(self.basic_auth_failed_response()));
             }
         };
@@ -71,6 +75,7 @@ impl MiddlewareLayer for AuthBasic {
         let mut parts = decoded_str.splitn(2, ':');
         let username = parts.next().unwrap_or("");
         let password = parts.next().unwrap_or("");
+
         match self.credential_pairs.get(username) {
             Some(expected_password_hash) => {
                 match verify_password_hash(password, expected_password_hash) {
@@ -78,7 +83,10 @@ impl MiddlewareLayer for AuthBasic {
                     _ => Ok(Either::Right(self.basic_auth_failed_response())),
                 }
             }
-            None => Ok(Either::Right(self.basic_auth_failed_response())),
+            None => {
+                debug!(target: "middleware::auth_basic", "Basic auth failed. Username {} not found", username);
+                Ok(Either::Right(self.basic_auth_failed_response()))
+            }
         }
     }
 }

@@ -28,7 +28,7 @@ pub struct IntrusionProtection {
     pub banned_header_pattern_matchers: OnceLock<HashMap<String, RegexSet>>,
     #[serde(default)]
     pub banned_header_patterns: HashMap<String, Vec<String>>,
-    pub banned_time_seconds: u64,
+    pub banned_time_seconds: f64,
     #[serde(skip_deserializing)]
     pub rate_limiter: OnceLock<Arc<dyn RateLimiter>>,
     #[serde(skip_deserializing)]
@@ -49,6 +49,7 @@ impl MiddlewareLayer for IntrusionProtection {
         if !self.banned_url_patterns.is_empty() {
             match RegexSet::new(&self.banned_url_patterns) {
                 Ok(regex_set) => {
+                    debug!(target: "middleware::intrusion_protection", "Compiled URL regex patterns: {} items.", regex_set.len());
                     let _ = self.banned_url_pattern_matcher.set(regex_set);
                 }
                 Err(e) => {
@@ -64,6 +65,7 @@ impl MiddlewareLayer for IntrusionProtection {
                 if !patterns.is_empty() {
                     match RegexSet::new(patterns) {
                         Ok(regex_set) => {
+                            debug!(target: "middleware::intrusion_protection", "Compiled header regex patterns for {}: {} items.", header_name, regex_set.len());
                             header_matchers.insert(header_name.clone(), regex_set);
                         }
                         Err(e) => {
@@ -81,12 +83,14 @@ impl MiddlewareLayer for IntrusionProtection {
         // Initialize rate limiter (used for tracking bans)
         // This will automatically fall back to in-memory if Redis fails
         if let Ok(limiter) = get_rate_limiter(&self.store_config).await {
+            debug!(target: "middleware::intrusion_protection", "Initialized rate limiter.");
             let _ = self.rate_limiter.set(limiter);
         }
 
         // Initialize ban manager
         // This will automatically fall back to in-memory if Redis fails
         if let Ok(manager) = get_ban_manager(&self.store_config).await {
+            debug!(target: "middleware::intrusion_protection", "Initialized ban manager.");
             let _ = self.ban_manager.set(manager);
         }
 
@@ -105,6 +109,7 @@ impl MiddlewareLayer for IntrusionProtection {
         if let Some(ban_manager) = self.ban_manager.get() {
             match ban_manager.is_banned(client_ip).await {
                 Ok(Some(_)) => {
+                    debug!(target: "middleware::intrusion_protection", "IP {} is banned.", client_ip);
                     return Ok(Either::Right(
                         self.error_response
                             .to_http_response(req.accept().into())
@@ -115,9 +120,7 @@ impl MiddlewareLayer for IntrusionProtection {
                     error!("Error checking IP ban status: {:?}", e);
                     // Continue processing - fail open
                 }
-                _ => {
-                    // Not banned, continue with intrusion checks
-                }
+                _ => {}
             }
         } else {
             warn!("No ban manager available for intrusion protection");
@@ -128,12 +131,13 @@ impl MiddlewareLayer for IntrusionProtection {
             let path = req.uri().path_and_query().map(|p| p.as_str()).unwrap_or("");
 
             if url_matcher.is_match(path) {
+                debug!(target: "middleware::intrusion_protection", "Banned URL pattern detected: {}", path);
                 if let Some(ban_manager) = self.ban_manager.get() {
                     match ban_manager
                         .ban_ip(
                             client_ip,
                             &format!("Banned URL pattern detected: {}", path),
-                            Duration::from_secs(self.banned_time_seconds),
+                            Duration::from_secs_f64(self.banned_time_seconds),
                         )
                         .await
                     {
@@ -156,10 +160,7 @@ impl MiddlewareLayer for IntrusionProtection {
             for (header_name, pattern_set) in header_matchers {
                 if let Some(header_value) = req.header(header_name) {
                     if pattern_set.is_match(header_value) {
-                        info!(
-                            "Intrusion detected: Header pattern match for {} in header {}",
-                            header_value, header_name
-                        );
+                        debug!(target: "middleware::intrusion_protection", "Banned header pattern detected: {} in {}", header_value, header_name);
 
                         // Ban the IP address if possible
                         if let Some(ban_manager) = self.ban_manager.get() {
@@ -170,7 +171,7 @@ impl MiddlewareLayer for IntrusionProtection {
                                         "Banned header pattern detected: {} in {}",
                                         header_value, header_name
                                     ),
-                                    Duration::from_secs(self.banned_time_seconds),
+                                    Duration::from_secs_f64(self.banned_time_seconds),
                                 )
                                 .await
                             {

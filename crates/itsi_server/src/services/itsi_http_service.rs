@@ -18,6 +18,7 @@ use itsi_error::ItsiError;
 use regex::Regex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
+use tracing::error;
 
 use std::{future::Future, ops::Deref, pin::Pin, sync::Arc};
 use tokio::sync::watch::{self};
@@ -199,7 +200,10 @@ impl Service<Request<Incoming>> for ItsiHttpService {
                         depth = index;
                         break;
                     }
-                    Err(e) => return Err(e.into()),
+                    Err(e) => {
+                        error!("Middleware error: {}", e);
+                        break;
+                    }
                 }
             }
 

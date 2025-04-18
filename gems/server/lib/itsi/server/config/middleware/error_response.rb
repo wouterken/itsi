@@ -28,7 +28,8 @@ module Itsi
       end
 
       ErrorResponseDef = TypedStruct.new do
-        Or(Type(String), Type(ErrorResponse)) & Required()
+        Or(Enum(%w[internal_server_error not_found unauthorized forbidden payload_too_large
+        too_many_requests bad_gateway service_unavailable gateway_timeout]), Type(ErrorResponse)) & Required()
       end
     end
   end

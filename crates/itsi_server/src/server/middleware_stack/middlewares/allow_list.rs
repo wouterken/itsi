@@ -10,6 +10,7 @@ use magnus::error::Result;
 use regex::RegexSet;
 use serde::Deserialize;
 use std::sync::OnceLock;
+use tracing::debug;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct AllowList {
@@ -41,6 +42,7 @@ impl MiddlewareLayer for AllowList {
     ) -> Result<Either<HttpRequest, HttpResponse>> {
         if let Some(allowed_ips) = self.allowed_ips.get() {
             if !allowed_ips.is_match(&context.addr) {
+                debug!(target: "middleware::allow_list", "IP address {} is not allowed", context.addr);
                 return Ok(Either::Right(
                     self.error_response
                         .to_http_response(req.accept().into())

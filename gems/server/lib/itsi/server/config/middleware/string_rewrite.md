@@ -1,7 +1,6 @@
 ---
 title: String Rewrites
 url: /middleware/string_rewrites
-weight: 5
 ---
 
 The String Rewrite mechanism is used when configuring Itsi for

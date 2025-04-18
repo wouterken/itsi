@@ -73,7 +73,7 @@ impl ClusterMode {
                 Ok(())
             }
             LifecycleEvent::Restart => {
-                if self.server_config.check_config() {
+                if self.server_config.check_config().await {
                     self.server_config.dup_fds()?;
                     self.shutdown().await.ok();
                     info!("Shutdown complete. Calling reload exec");
@@ -82,7 +82,7 @@ impl ClusterMode {
                 Ok(())
             }
             LifecycleEvent::Reload => {
-                if !self.server_config.check_config() {
+                if !self.server_config.check_config().await {
                     return Ok(());
                 }
                 let should_reexec = self.server_config.clone().reload(true)?;

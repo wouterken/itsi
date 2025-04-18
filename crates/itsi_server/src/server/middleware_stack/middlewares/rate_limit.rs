@@ -10,6 +10,7 @@ use magnus::error::Result;
 use serde::Deserialize;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
+use tracing::{debug, error, warn};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct RateLimit {
@@ -68,7 +69,7 @@ impl MiddlewareLayer for RateLimit {
                             }
                         } else {
                             // If no token is found, skip rate limiting
-                            tracing::warn!("No token found in header for rate limiting");
+                            warn!("No token found in header for rate limiting");
                             return Ok(Either::Left(req));
                         }
                     }
@@ -77,7 +78,7 @@ impl MiddlewareLayer for RateLimit {
                             value
                         } else {
                             // If no token is found, skip rate limiting
-                            tracing::warn!("No token found in query for rate limiting");
+                            warn!("No token found in query for rate limiting");
                             return Ok(Either::Left(req));
                         }
                     }
@@ -88,6 +89,7 @@ impl MiddlewareLayer for RateLimit {
         // Create a rate limit key
         let rate_limit_key = create_rate_limit_key(key_value, req.uri().path());
 
+        debug!(target: "middleware::rate_limit", "Rate limit key: {}", rate_limit_key);
         // Get the rate limiter
         if let Some(limiter) = self.rate_limiter.get() {
             // Check if rate limit is exceeded
@@ -95,8 +97,12 @@ impl MiddlewareLayer for RateLimit {
             let limit = self.requests;
 
             match limiter.check_limit(&rate_limit_key, limit, timeout).await {
-                Ok(_) => Ok(Either::Left(req)),
+                Ok(_) => {
+                    debug!(target: "middleware::rate_limit", "Rate limit not exceeded");
+                    Ok(Either::Left(req))
+                }
                 Err(RateLimitError::RateLimitExceeded { limit, ttl, .. }) => {
+                    debug!(target: "middleware::rate_limit", "Rate limit exceeded. Limit: {}, ttl: {}", limit, ttl);
                     let mut response = self
                         .error_response
                         .to_http_response(req.accept().into())
@@ -116,14 +122,12 @@ impl MiddlewareLayer for RateLimit {
                     Ok(Either::Right(response))
                 }
                 Err(e) => {
-                    // Other error, log and allow request (fail open)
-                    tracing::error!("Rate limiter error: {:?}", e);
+                    error!("Rate limiter error: {:?}", e);
                     Ok(Either::Left(req))
                 }
             }
         } else {
-            // If rate limiter is not initialized, allow request
-            tracing::warn!("Rate limiter not initialized");
+            warn!("Rate limiter not initialized");
             Ok(Either::Left(req))
         }
     }

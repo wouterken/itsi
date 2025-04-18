@@ -100,6 +100,7 @@ module RubyLsp
         end
 
         ::Itsi::Server::Config::Middleware.subclasses.each do |middleware|
+          puts middleware.middleware_name
           completion_item = Interface::CompletionItem.new(
             label: middleware.middleware_name,
             kind: Constant::CompletionItemKind::METHOD,

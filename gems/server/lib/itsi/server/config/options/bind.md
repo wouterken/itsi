@@ -1,7 +1,6 @@
 ---
 title: Bind
 url: /options/bind
-weight: 3
 ---
 
 The **Bind** option instructs Itsi on which network interfaces to listen on.

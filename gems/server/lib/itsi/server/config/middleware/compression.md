@@ -1,8 +1,6 @@
 ---
 title: Compression
 url: /middleware/compression
-weight: 1
-prev: middleware/
 ---
 
 The compression middleware allows you to configure compression settings for your application.
@@ -11,12 +9,12 @@ You can enable several different compression algorithms, and choose to selective
 
 ## Top level compression
 ```ruby {filename=Itsi.rb}
-    compress \
-      min_size: 1024 # 1KiB,
-      algorithms: %w[zstd gzip deflate br],
-      compress_streams: true,
-      mime_types: %[all],
-      level: "fastest"
+  compress \
+    min_size: 1024 # 1KiB,
+    algorithms: %w[zstd gzip deflate br],
+    compress_streams: true,
+    mime_types: %[all],
+    level: "fastest"
 ```
 
 ## Compression within a location block

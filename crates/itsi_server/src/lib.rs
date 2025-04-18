@@ -62,7 +62,7 @@ fn init(ruby: &Ruby) -> Result<()> {
     request.define_method("scheme", method!(ItsiHttpRequest::scheme, 0))?;
     request.define_method("remote_addr", method!(ItsiHttpRequest::remote_addr, 0))?;
     request.define_method("port", method!(ItsiHttpRequest::port, 0))?;
-    request.define_method("body", method!(ItsiHttpRequest::body, 0))?;
+    request.define_method("body_parts", method!(ItsiHttpRequest::body, 0))?;
     request.define_method("response", method!(ItsiHttpRequest::response, 0))?;
     request.define_method("json?", method!(ItsiHttpRequest::is_json, 0))?;
     request.define_method("html?", method!(ItsiHttpRequest::is_html, 0))?;

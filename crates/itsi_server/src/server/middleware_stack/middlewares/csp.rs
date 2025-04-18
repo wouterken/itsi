@@ -15,6 +15,7 @@ use std::sync::Arc;
 use std::{path::PathBuf, sync::OnceLock};
 use tokio::sync::Mutex;
 use tokio::time::{self, Duration};
+use tracing::debug;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CspReport {
@@ -46,11 +47,11 @@ pub struct CspConfig {
 
 #[derive(Debug, Deserialize)]
 pub struct Csp {
-    pub policy_input: Option<CspConfig>,
+    pub policy: Option<CspConfig>,
     pub reporting_enabled: bool,
     pub report_file: Option<PathBuf>,
     pub report_endpoint: String,
-    pub flush_interval: u64,
+    pub flush_interval: f64,
 
     #[serde(skip)]
     pub computed_policy: OnceLock<String>,
@@ -63,7 +64,7 @@ pub struct Csp {
 #[async_trait]
 impl super::MiddlewareLayer for Csp {
     async fn initialize(&self) -> Result<(), magnus::error::Error> {
-        if let Some(policy_config) = &self.policy_input {
+        if let Some(policy_config) = &self.policy {
             let mut parts = Vec::new();
             if !policy_config.default_src.is_empty() {
                 parts.push(format!(
@@ -81,6 +82,7 @@ impl super::MiddlewareLayer for Csp {
                 parts.push(format!("report-uri {}", policy_config.report_uri.join(" ")));
             }
             let policy = parts.join("; ");
+            debug!(target: "middleware::csp", "Computed CSP policy: {}", policy);
             self.computed_policy
                 .set(policy)
                 .map_err(|_| ItsiError::new("Failed to set computed CSP policy"))?;
@@ -92,7 +94,7 @@ impl super::MiddlewareLayer for Csp {
                 let report_path = report_file.clone();
                 let pending_reports = Arc::clone(&self.pending_reports);
                 let handle = tokio::spawn(async move {
-                    let mut interval = time::interval(Duration::from_secs(flush_interval));
+                    let mut interval = time::interval(Duration::from_secs_f64(flush_interval));
                     loop {
                         interval.tick().await;
 
@@ -106,18 +108,25 @@ impl super::MiddlewareLayer for Csp {
                                 }
                             }
                             reports.clear();
-                            if let Err(e) = tokio::fs::OpenOptions::new()
+
+                            debug!("Flushing CSP report to file {:?}", &report_path.display());
+
+                            use tokio::io::AsyncWriteExt;
+
+                            match tokio::fs::OpenOptions::new()
                                 .append(true)
                                 .create(true)
                                 .open(&report_path)
                                 .await
-                                .map(|mut file| async move {
-                                    use tokio::io::AsyncWriteExt;
-                                    file.write_all(lines.as_bytes()).await
-                                })
-                                .map_err(ItsiError::new)
                             {
-                                eprintln!("Error writing CSP reports: {:?}", e);
+                                Ok(mut file) => {
+                                    if let Err(e) = file.write_all(lines.as_bytes()).await {
+                                        eprintln!("Error writing CSP reports: {:?}", e);
+                                    }
+                                }
+                                Err(e) => {
+                                    eprintln!("Error opening CSP report file: {:?}", e);
+                                }
                             }
                         }
                     }
@@ -136,6 +145,7 @@ impl super::MiddlewareLayer for Csp {
         _context: &mut HttpRequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>, magnus::error::Error> {
         if self.reporting_enabled && req.uri().path() == self.report_endpoint {
+            debug!(target: "middleware::csp", "Received CSP report");
             let full_bytes: Result<Bytes, _> = req
                 .into_body()
                 .into_data_stream()
@@ -148,6 +158,7 @@ impl super::MiddlewareLayer for Csp {
 
             if let Ok(body_bytes) = full_bytes {
                 if let Ok(report) = serde_json::from_slice::<CspReport>(&body_bytes) {
+                    debug!(target: "middleware::csp", "Report: {:?}", report);
                     let mut pending = self.pending_reports.lock().await;
                     pending.push(report);
                 }
@@ -163,6 +174,7 @@ impl super::MiddlewareLayer for Csp {
     async fn after(&self, resp: HttpResponse, _context: &mut HttpRequestContext) -> HttpResponse {
         if let Some(policy) = self.computed_policy.get() {
             if !resp.headers().contains_key("Content-Security-Policy") {
+                debug!(target: "middleware::csp", "Adding CSP header");
                 let (mut parts, body) = resp.into_parts();
                 if let Ok(header_value) = HeaderValue::from_str(policy) {
                     parts
@@ -170,6 +182,8 @@ impl super::MiddlewareLayer for Csp {
                         .insert("Content-Security-Policy", header_value);
                 }
                 return HttpResponse::from_parts(parts, body);
+            } else {
+                debug!(target: "middleware::csp", "CSP header already present");
             }
         }
         resp

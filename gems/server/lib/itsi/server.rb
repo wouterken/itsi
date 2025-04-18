@@ -17,6 +17,9 @@ require_relative "http_response"
 require_relative "passfile"
 require_relative "../shell_completions/completions"
 
+require "securerandom"
+require "fileutils"
+
 module Itsi
   class Server
     extend RackInterface
@@ -30,14 +33,15 @@ module Itsi
       end
 
       def start_in_background_thread(cli_params = {}, &blk)
-        @background_thread ||= []
+        @background_threads ||= []
         server, background_thread = start(cli_params, background: true, &blk)
-        @background_thread << background_thread
+        @background_threads << background_thread
         server
       end
 
       def start(cli_params, background: false, &blk)
         itsi_file = Itsi::Server::Config.config_file_path(cli_params[:config_file])
+        Itsi.log_debug "Constructing server #{cli_params}: #{itsi_file}"
         server = new(cli_params, itsi_file, blk)
         previous_handler = Signal.trap(:INT, :DEFAULT)
         run = lambda do
@@ -51,13 +55,16 @@ module Itsi
           end
           write_pid
 
+          Itsi.log_info "Starting Itsi..."
           server.start
           @running.delete(server)
           Signal.trap(:INT, previous_handler)
           server
         end
         background ? [server, Thread.new(&run)] : run[]
-      rescue
+      rescue Exception => e
+        Itsi.log_error e.message
+        raise e
       end
 
       def static(cli_params)
@@ -124,7 +131,7 @@ module Itsi
 
       def passfile(options, subcmd)
         filename = options[:passfile]
-        unless filename
+        unless filename || subcmd == 'echo'
           puts "Error: passfile not set. Use --passfile option to provide a path to a file containing hashed credentials."
           puts "This file contains hashed credentials and should not be included in source control without additional protection."
           exit(1)
@@ -146,6 +153,73 @@ module Itsi
           exit(0)
         end
       end
+
+      def unique_path(dir, filename)
+        base = File.basename(filename, ".*")
+        ext  = File.extname(filename)
+        candidate = File.join(dir, filename)
+        return candidate unless File.exist?(candidate)
+
+        i = 1
+        loop do
+          new_name = "#{base}_#{i}#{ext}"
+          candidate = File.join(dir, new_name)
+          return candidate unless File.exist?(candidate)
+          i += 1
+        end
+      end
+
+      def save_or_print(filename, content, options)
+        if options[:save_dir]
+          FileUtils.mkdir_p(options[:save_dir])
+          path = unique_path(options[:save_dir], filename)
+          File.write(path, content)
+          puts "Written to #{path}"
+        else
+          puts content
+        end
+      end
+
+      def secret(options)
+        require "openssl"
+        require "base64"
+
+        puts "Enter algorithm (one of: HS256, HS384, HS512, RS256, RS384, RS512, PS256, PS384, PS512, ES256, ES384):"
+        alg = $stdin.gets.chomp.upcase
+
+        case alg
+        when /^HS(\d+)$/
+          bits = $1.to_i
+          bytes = bits / 8
+          key = SecureRandom.random_bytes(bytes)
+          pem = Base64.strict_encode64(key)
+          content =  "=== HMAC #{bits}-bit Secret (base64) ===\n#{pem}\n"
+          save_or_print("hmac_#{bits}_secret.txt", content, options)
+
+        when /^RS/, /^PS/
+          rsa = OpenSSL::PKey::RSA.new(2048)
+          priv = rsa.to_pem
+          pub  = rsa.public_key.to_pem
+          save_or_print("rsa_private.pem", "=== RSA Private Key ===\n#{priv}", options)
+          save_or_print("rsa_public.pem",  "=== RSA Public Key ===\n#{pub}", options)
+
+        when "ES256", "ES384"
+          curve = (alg == "ES256" ? "prime256v1" : "secp384r1")
+          ec = OpenSSL::PKey::EC.new(curve)
+          ec.generate_key
+          priv = ec.to_pem
+          pub_ec = ec.dup
+          pub_ec.private_key = nil
+          pub = pub_ec.to_pem
+          save_or_print("ecdsa_private.pem", "=== ECDSA Private Key ===\n#{priv}", options)
+          save_or_print("ecdsa_public.pem",  "=== ECDSA Public Key ===\n#{pub}", options)
+
+        else
+          STDERR.puts "Unsupported algorithm: #{alg}"
+          exit 1
+        end
+      end
+
 
       def add_worker
         return unless pid = get_pid

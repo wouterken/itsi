@@ -38,7 +38,7 @@ Then, install Itsi using `gem`:
   gem install itsi
   ```
 
-## 3. Run Itsi
+### 3. Run Itsi
 Want to serve a Ruby app? Go to a directory containing a `config.ru` file and run:
 ```
 itsi

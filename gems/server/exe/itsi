@@ -17,7 +17,8 @@ COMMANDS = {
   "add_worker" => "Add a new worker to the server cluster",
   "remove_worker" => "Remove a worker from the server cluster",
   "routes" => "Print the routes of the server",
-  "passfile" => "Manage hashed users and passwords in a passfile (like .htpasswd). [add, remove, list]",
+  "passfile" => "Manage hashed users and passwords in a passfile (like .htpasswd). [add, echo, remove, list]",
+  "secret" => "Generate a new secret for use in a JWT verifier",
   "test_route" => "Test which route a request will be routed to",
   "static" => "Serve static assets in the given directory"
 }
@@ -146,6 +147,10 @@ parser = OptionParser.new do |opts|
 
   opts.on("--algorithm ALGORITHM", String, "Algorithm for password hashing") do |algorithm|
     options[:algorithm] = algorithm
+  end
+
+  opts.on("-dDIR", "--dir=DIR", "(For use with secret) Save keys/secret to DIR instead of printing") do |d|
+    options[:save_dir] = d
   end
 end
 

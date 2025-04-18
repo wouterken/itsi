@@ -11,6 +11,7 @@ use async_trait::async_trait;
 use either::Either;
 use magnus::error::Result;
 use serde::Deserialize;
+use tracing::debug;
 
 type PasswordHash = String;
 
@@ -51,6 +52,8 @@ impl MiddlewareLayer for AuthAPIKey {
             }
             TokenSource::Query(query_name) => req.query_param(query_name),
         } {
+            debug!(target: "middleware::auth_api_key", "API Key Retrieved. Anonymous {}", self.key_id_source.is_none());
+
             if let Some(key_id) = self.key_id_source.as_ref() {
                 let key_id = match &key_id {
                     TokenSource::Header { name, prefix } => {
@@ -66,17 +69,21 @@ impl MiddlewareLayer for AuthAPIKey {
                     }
                     TokenSource::Query(query_name) => req.query_param(query_name),
                 };
+                debug!(target: "middleware::auth_api_key", "Key ID Retrieved");
                 if let Some(hash) = key_id.and_then(|kid| self.valid_keys.get(kid)) {
+                    debug!(target: "middleware::auth_api_key", "Key for ID found");
                     if password_hasher::verify_password_hash(submitted_key, hash).is_ok_and(|v| v) {
                         return Ok(Either::Left(req));
                     }
                 }
-            } else if self.valid_keys.iter().any(|(_key_id, key)| {
+            } else if self.valid_keys.values().any(|key| {
                 password_hasher::verify_password_hash(submitted_key, key).is_ok_and(|v| v)
             }) {
                 return Ok(Either::Left(req));
             }
         }
+
+        debug!(target: "middleware::auth_api_key", "Failed to authenticate API key");
         Ok(Either::Right(
             self.error_response
                 .to_http_response(req.accept().into())

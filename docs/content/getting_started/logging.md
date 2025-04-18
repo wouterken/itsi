@@ -2,8 +2,7 @@
 title: Logging
 type: docs
 weight: 4
-next: /configuration
-
+next: /signals
 ---
 
 ## Targeted Logging
@@ -15,4 +14,11 @@ E.g.
 # In this example, the auth_api_key middleware will log debug messages
 # while everything else will stick to the INFO level.
 ITSI_LOG=info,middleware::auth_api_key=debug itsi
+```
+
+You can also configure log target filters inside an Itsi.rb config file. E.g.
+```ruby {filename=Itsi.rb}
+# Enable debug logs *just* for the CORs and ETag middleware
+log_target_filters ["middleware::cors=debug", "middleware::etag=debug"]
+log_level :info
 ```

@@ -165,24 +165,47 @@ impl MiddlewareSet {
                         format!("middleware must be a hash. Got {:?}", routes_raw),
                     ))?;
 
+                let ruby = Ruby::get().unwrap();
                 let mut layers = middleware
                     .enumeratorize("each", ())
-                    .map(|pair| {
+                    .flat_map(|pair| {
                         let pair = RArray::from_value(pair.unwrap()).unwrap();
                         let middleware_type: String = pair.entry(0).unwrap();
                         let value: Value = pair.entry(1).unwrap();
-                        let middleware = if let Vacant(e) = unique_middlewares.entry(value.as_raw())
+                        let middleware_values: Vec<Value> = if value.is_kind_of(ruby.class_array())
                         {
-                            let middleware =
-                                MiddlewareSet::parse_middleware(middleware_type.clone(), value);
-                            if let Ok(middleware) = middleware.as_ref() {
-                                e.insert(middleware.clone());
-                            };
-                            middleware
+                            RArray::from_value(value)
+                                .ok_or_else(|| {
+                                    magnus::Error::new(
+                                        magnus::exception::type_error(),
+                                        "Expected array",
+                                    )
+                                })
+                                .unwrap()
+                                .into_iter()
+                                .collect()
                         } else {
-                            Ok(unique_middlewares.get(&value.as_raw()).unwrap().clone())
+                            vec![value]
                         };
-                        middleware
+                        middleware_values
+                            .into_iter()
+                            .map(|value| {
+                                let middleware =
+                                    if let Vacant(e) = unique_middlewares.entry(value.as_raw()) {
+                                        let middleware = MiddlewareSet::parse_middleware(
+                                            middleware_type.clone(),
+                                            value,
+                                        );
+                                        if let Ok(middleware) = middleware.as_ref() {
+                                            e.insert(middleware.clone());
+                                        };
+                                        middleware
+                                    } else {
+                                        Ok(unique_middlewares.get(&value.as_raw()).unwrap().clone())
+                                    };
+                                middleware
+                            })
+                            .collect::<Vec<Result<Middleware>>>()
                     })
                     .collect::<Result<Vec<_>>>()?;
                 routes.push(route_raw);

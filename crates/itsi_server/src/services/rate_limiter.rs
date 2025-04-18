@@ -109,10 +109,19 @@ impl RedisRateLimiter {
         // Create the Lua script once when initializing the rate limiter
         let increment_script = Script::new(
             r#"
+            -- Increment the counter
             local current = redis.call('INCR', KEYS[1])
-            if redis.call('TTL', KEYS[1]) < 0 then
-                redis.call('EXPIRE', KEYS[1], ARGV[1])
+
+            -- Fetch existing TTL
+            local ttl = redis.call('TTL', KEYS[1])
+            if ttl < 0 then
+                -- If no TTL is set, apply the window interval
+                local window = tonumber(ARGV[1])
+                redis.call('EXPIRE', KEYS[1], window)
+                ttl = window
             end
+
+            -- Return both the current count and remaining TTL
             return { current, ttl }
             "#,
         );

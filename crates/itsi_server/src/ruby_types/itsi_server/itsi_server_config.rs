@@ -7,7 +7,6 @@ use crate::{
     },
 };
 use derive_more::Debug;
-use futures::executor::block_on;
 use itsi_error::ItsiError;
 use itsi_rb_helpers::{call_with_gvl, print_rb_backtrace, HeapValue};
 use itsi_tracing::{set_format, set_level, set_target, set_target_filters};
@@ -174,11 +173,11 @@ impl ServerParams {
             .transpose()?
             .unwrap_or_default();
         let preload: bool = rb_param_hash.fetch("preload")?;
-        let request_timeout: Option<u64> = rb_param_hash.fetch("request_timeout")?;
-        let request_timeout = request_timeout.map(Duration::from_secs);
+        let request_timeout: Option<f64> = rb_param_hash.fetch("request_timeout")?;
+        let request_timeout = request_timeout.map(Duration::from_secs_f64);
         let header_read_timeout: Duration = rb_param_hash
-            .fetch::<_, Option<u64>>("header_read_timeout")?
-            .map(Duration::from_secs)
+            .fetch::<_, Option<f64>>("header_read_timeout")?
+            .map(Duration::from_secs_f64)
             .unwrap_or(Duration::from_secs(1));
 
         let notify_watchers: Option<Vec<(String, Vec<Vec<String>>)>> =
@@ -337,28 +336,34 @@ impl ItsiServerConfig {
         itsi_config_proc: Option<Proc>,
     ) -> Result<Self> {
         let itsi_config_proc = Arc::new(itsi_config_proc.map(HeapValue::from));
-        let server_params = Self::combine_params(
+        match Self::combine_params(
             ruby,
             cli_params,
             itsifile_path.as_ref(),
             itsi_config_proc.clone(),
-        )?;
+        ) {
+            Ok(server_params) => {
+                cli_params.delete::<_, Value>(Symbol::new("listeners"))?;
 
-        cli_params.delete::<_, Value>(Symbol::new("listeners"))?;
+                let watcher_fd = if let Some(watchers) = server_params.notify_watchers.clone() {
+                    file_watcher::watch_groups(watchers)?
+                } else {
+                    None
+                };
 
-        let watcher_fd = if let Some(watchers) = server_params.notify_watchers.clone() {
-            file_watcher::watch_groups(watchers)?
-        } else {
-            None
-        };
-
-        Ok(ItsiServerConfig {
-            cli_params: Arc::new(cli_params.into()),
-            server_params: RwLock::new(server_params.clone()).into(),
-            itsi_config_proc,
-            itsifile_path,
-            watcher_fd: watcher_fd.into(),
-        })
+                Ok(ItsiServerConfig {
+                    cli_params: Arc::new(cli_params.into()),
+                    server_params: RwLock::new(server_params.clone()).into(),
+                    itsi_config_proc,
+                    itsifile_path,
+                    watcher_fd: watcher_fd.into(),
+                })
+            }
+            Err(err) => Err(magnus::Error::new(
+                magnus::exception::standard_error(),
+                format!("Error loading initial configuration {:?}", err),
+            )),
+        }
     }
 
     /// Reload
@@ -424,7 +429,7 @@ impl ItsiServerConfig {
         Ok(())
     }
 
-    pub fn get_config_errors(&self) -> Option<Vec<String>> {
+    pub async fn get_config_errors(&self) -> Option<Vec<String>> {
         let rb_param_hash = call_with_gvl(|ruby| {
             let inner = self
                 .itsi_config_proc
@@ -451,8 +456,13 @@ impl ItsiServerConfig {
                         let err_val = call_with_gvl(|_| format!("{}", err));
                         return Some(vec![err_val]);
                     }
-                    if let Err(err) =
-                        block_on(params_arc.middleware.get().unwrap().initialize_layers())
+
+                    if let Err(err) = params_arc
+                        .middleware
+                        .get()
+                        .unwrap()
+                        .initialize_layers()
+                        .await
                     {
                         let err_val = call_with_gvl(|_| format!("{}", err));
                         return Some(vec![err_val]);
@@ -504,8 +514,8 @@ impl ItsiServerConfig {
         }
     }
 
-    pub fn check_config(&self) -> bool {
-        if let Some(errors) = self.get_config_errors() {
+    pub async fn check_config(&self) -> bool {
+        if let Some(errors) = self.get_config_errors().await {
             Self::print_config_errors(errors);
             return false;
         }

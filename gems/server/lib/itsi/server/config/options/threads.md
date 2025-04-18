@@ -1,7 +1,6 @@
 ---
 title: Threads
 url: /options/threads
-weight: 2
 ---
 Itsi supports running in threaded mode. Spawning more than one thread per worker is helpful for applications that require high concurrency and low latency.
 

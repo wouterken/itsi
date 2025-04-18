@@ -18,7 +18,7 @@ use std::{
     collections::{HashMap, HashSet},
     sync::OnceLock,
 };
-use tracing::{debug, error};
+use tracing::debug;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct AuthJwt {
@@ -32,6 +32,10 @@ pub struct AuthJwt {
     pub audiences: Option<HashSet<String>>,
     pub subjects: Option<HashSet<String>>,
     pub issuers: Option<HashSet<String>>,
+    #[serde(skip_deserializing)]
+    pub audience_vec: OnceLock<Option<Vec<String>>>,
+    #[serde(skip_deserializing)]
+    pub issuer_vec: OnceLock<Option<Vec<String>>>,
     pub leeway: Option<u64>,
     #[serde(default = "unauthorized_error_response")]
     pub error_response: ErrorResponse,
@@ -91,7 +95,7 @@ impl JwtAlgorithm {
     /// Given a base64-encoded key string, decode and construct a jsonwebtoken::DecodingKey.
     pub fn key_from(&self, base64: &str) -> itsi_error::Result<DecodingKey> {
         match self {
-            // For HMAC algorithms, use the secret directly.
+            // For HMAC algorithms, expect a base64 encoded secret.
             JwtAlgorithm::Hs256 | JwtAlgorithm::Hs384 | JwtAlgorithm::Hs512 => {
                 Ok(DecodingKey::from_secret(
                     &general_purpose::STANDARD
@@ -118,15 +122,16 @@ impl JwtAlgorithm {
 
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
+#[allow(dead_code)]
 enum Audience {
     Single(String),
     Multiple(Vec<String>),
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct Claims {
     // Here we assume the token includes an expiration.
-    #[allow(dead_code)]
     exp: usize,
     // The audience claim may be a single string or an array.
     aud: Option<Audience>,
@@ -171,6 +176,17 @@ impl MiddlewareLayer for AuthJwt {
         self.keys
             .set(keys)
             .map_err(|_| ItsiError::new("Failed to set keys"))?;
+
+        if let Some(audiences) = self.audiences.as_ref() {
+            self.audience_vec
+                .set(Some(audiences.iter().cloned().collect::<Vec<_>>()))
+                .ok();
+        }
+        if let Some(issuers) = self.issuers.as_ref() {
+            self.issuer_vec
+                .set(Some(issuers.iter().cloned().collect::<Vec<_>>()))
+                .ok();
+        }
         Ok(())
     }
 
@@ -219,8 +235,17 @@ impl MiddlewareLayer for AuthJwt {
             ));
         }
         let token_str = token_str.unwrap();
-        let header =
-            decode_header(token_str).map_err(|_| ItsiError::new("Invalid token header"))?;
+        let header = match decode_header(token_str) {
+            Ok(header) => header,
+            Err(_) => {
+                debug!(target: "middleware::auth_jwt", "JWT decoding failed");
+                return Ok(Either::Right(
+                    self.error_response
+                        .to_http_response(req.accept().into())
+                        .await,
+                ));
+            }
+        };
 
         let alg: JwtAlgorithm = header.alg.into();
 
@@ -256,12 +281,28 @@ impl MiddlewareLayer for AuthJwt {
             validation.leeway = leeway;
         }
 
+        if let Some(Some(auds)) = &self.audience_vec.get() {
+            validation.set_audience(auds);
+            validation.required_spec_claims.insert("aud".to_owned());
+        } else {
+            validation.validate_aud = false;
+        }
+
+        if let Some(Some(issuers)) = &self.issuer_vec.get() {
+            validation.set_issuer(issuers);
+            validation.required_spec_claims.insert("iss".to_owned());
+        }
+
+        if self.subjects.is_some() {
+            validation.required_spec_claims.insert("sub".to_owned());
+        }
+
         let token_data: Option<TokenData<Claims>> =
             keys.iter()
                 .find_map(|key| match decode::<Claims>(token_str, key, &validation) {
                     Ok(data) => Some(data),
                     Err(e) => {
-                        error!("Token validation failed: {:?}", e);
+                        debug!("Token validation failed: {:?}", e);
                         None
                     }
                 });
@@ -278,49 +319,13 @@ impl MiddlewareLayer for AuthJwt {
 
         let claims = token_data.claims;
 
-        if let Some(expected_audiences) = &self.audiences {
-            if let Some(aud) = &claims.aud {
-                let token_auds: HashSet<String> = match aud {
-                    Audience::Single(s) => [s.clone()].into_iter().collect(),
-                    Audience::Multiple(v) => v.iter().cloned().collect(),
-                };
-                if expected_audiences.is_disjoint(&token_auds) {
-                    debug!(
-                        "AUD check failed, token_auds: {:?}, expected_audiences: {:?}",
-                        token_auds, expected_audiences
-                    );
-                    return Ok(Either::Right(
-                        self.error_response
-                            .to_http_response(req.accept().into())
-                            .await,
-                    ));
-                }
-            }
-        }
-
         if let Some(expected_subjects) = &self.subjects {
             if let Some(sub) = &claims.sub {
                 if !expected_subjects.contains(sub) {
                     debug!(
+                        target: "middleware::auth_jwt",
                         "SUB check failed, token_sub: {:?}, expected_subjects: {:?}",
                         sub, expected_subjects
-                    );
-                    return Ok(Either::Right(
-                        self.error_response
-                            .to_http_response(req.accept().into())
-                            .await,
-                    ));
-                }
-            }
-        }
-
-        // Verify expected issuer.
-        if let Some(expected_issuers) = &self.issuers {
-            if let Some(iss) = &claims.iss {
-                if !expected_issuers.contains(iss) {
-                    debug!(
-                        "ISS check failed, token_iss: {:?}, expected_issuers: {:?}",
-                        iss, expected_issuers
                     );
                     return Ok(Either::Right(
                         self.error_response

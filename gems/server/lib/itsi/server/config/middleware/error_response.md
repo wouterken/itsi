@@ -1,7 +1,6 @@
 ---
 title: Error Response
 url: /middleware/error_response
-weight: 5
 ---
 
 All of the below middlewares allow error responses to be customized (though will select a sane default if left unspecified).

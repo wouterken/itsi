@@ -87,6 +87,9 @@ module Itsi
           @params = case self.schema
           when TypedStruct::Validation
             self.schema.validate!(params)
+          when Array
+            default, validation = self.schema
+            params ? validation.validate!(params) : default
           when nil
             nil
           else

@@ -83,8 +83,7 @@ impl SingleMode {
         builder
             .thread_name("itsi-server-accept-loop")
             .thread_stack_size(3 * 1024 * 1024)
-            .enable_io()
-            .enable_time()
+            .enable_all()
             .build()
             .expect("Failed to build Tokio runtime")
     }
@@ -165,7 +164,7 @@ impl SingleMode {
             create_ruby_thread(move || {
                 call_without_gvl(move || {
                     let monitor_runtime = RuntimeBuilder::new_current_thread()
-                        .enable_time()
+                        .enable_all()
                         .build()
                         .unwrap();
                     let receiver = self.clone();
@@ -190,10 +189,10 @@ impl SingleMode {
                                   lifecycle_event = lifecycle_rx.recv() => {
                                       match lifecycle_event {
                                           Ok(LifecycleEvent::Restart) => {
-                                              receiver.restart().ok();
+                                              receiver.restart().await.ok();
                                           }
                                           Ok(LifecycleEvent::Reload) => {
-                                              receiver.reload().ok();
+                                              receiver.reload().await.ok();
                                           }
                                           Ok(LifecycleEvent::Shutdown) => {
                                             break;
@@ -417,8 +416,8 @@ impl SingleMode {
     /// Attempts to reload the config "live"
     /// Not that when running in single mode this will not unload
     /// old code. If you need a clean restart, use the `restart` (SIGHUP) method instead
-    pub fn reload(&self) -> Result<()> {
-        if !self.server_config.check_config() {
+    pub async fn reload(&self) -> Result<()> {
+        if !self.server_config.check_config().await {
             return Ok(());
         }
         let should_reexec = self.server_config.clone().reload(false)?;
@@ -433,8 +432,8 @@ impl SingleMode {
     }
 
     /// Restart the server while keeping connections open.
-    pub fn restart(&self) -> Result<()> {
-        if !self.server_config.check_config() {
+    pub async fn restart(&self) -> Result<()> {
+        if !self.server_config.check_config().await {
             return Ok(());
         }
         self.server_config.dup_fds()?;

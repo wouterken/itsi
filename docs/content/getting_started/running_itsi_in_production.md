@@ -22,3 +22,5 @@ K8s and Docker swarm.
 If you're planning to use Itsi for a high throughput application in K8s, read [this article](https://github.com/puma/puma/blob/master/docs/kubernetes.md) about running
 Puma in Kubernetes. The same advice applies to Itsi.
 {{< /callout >}}
+
+See [Signal Handling](/getting_started/signals) for more details on Itsi's signal handling.

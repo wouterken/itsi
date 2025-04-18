@@ -1,7 +1,6 @@
 ---
 title: Cache-Control
 url: /middleware/cache_control
-weight: 3
 ---
 
 The Cache-Control middleware allows you to configure HTTP caching headers for your application. It creates a standard `Cache-Control` header based on a set of directives and, optionally, an `Expires` header when a maximum age is specified. The middleware also supports setting a `Vary` header and any additional custom headers.

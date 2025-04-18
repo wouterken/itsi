@@ -13,7 +13,7 @@ use std::sync::atomic::Ordering;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct MaxBody {
-    pub max_size: usize,
+    pub limit_bytes: usize,
     #[serde(default = "payload_too_large_error_response")]
     pub error_response: ErrorResponse,
 }
@@ -29,7 +29,7 @@ impl MiddlewareLayer for MaxBody {
         req: HttpRequest,
         context: &mut HttpRequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
-        req.body().limit.store(self.max_size, Ordering::Relaxed);
+        req.body().limit.store(self.limit_bytes, Ordering::Relaxed);
         context.set_response_format(req.accept().into());
         Ok(Either::Left(req))
     }

@@ -1,94 +1,59 @@
 ---
-title: CORS
-url: /middleware/cors
-weight: 1
+title: ETag
+url: /middleware/etag
 ---
 
-The CORS middleware allows you to configure CORS settings for your application.
-You can enable CORS for specific origins, methods, headers, and credentials.
+The ETag middleware enables HTTP entity tag generation for responses. It provides cache validation by automatically computing and attaching an ETag to outgoing responses, and optionally responding with `304 Not Modified` if the client includes a matching `If-None-Match` header.
+
+ETags are useful for optimizing client-side caching, conditional GETs, and reducing unnecessary data transfer.
 
 
-## CORS configuration
+## ETag configuration
 ```ruby {filename=Itsi.rb}
-    cors \
-      allow_origins: ["*"],
-      allow_methods: ["GET", "POST", "PUT", "DELETE"],
-      allow_headers: ["Content-Type", "Authorization"],
-      allow_credentials: true,
-      expose_headers: ["X-Total-Count"],
-      max_age: 3600
+etag \
+  type: "strong",
+  algorithm: "sha256",
+  min_body_size: 0,
+  handle_if_none_match: true
 ```
 
-
-
-## CORS Applied to a sub-location
+## ETag Applied to a sub-location
 ```ruby {filename=Itsi.rb}
-location "/api" do
-  cors \
-    allow_origins: ["*"],
-    allow_methods: ["GET", "POST", "PUT", "DELETE"],
-    allow_headers: ["Content-Type", "Authorization"],
-    allow_credentials: true,
-    expose_headers: ["X-Total-Count"],
-    max_age: 3600
+location "/assets" do
+  etag \
+    type: "weak",
+    algorithm: "md5",
+    min_body_size: 1024,
+    handle_if_none_match: true
 end
 ```
 
 ## Configuration Options
 
-You can customize the CORS behavior using the following options:
+- **type**: Specifies whether the generated ETag is `"strong"` or `"weak"`.
+  - `strong`: ETag changes with any byte-level difference in the body.
+  - `weak`: Indicates a semantic equivalence rather than byte-level identity.
 
-- **allow_origins**:
-  A list of allowed origins (e.g., `"*"` or specific domain names).
-  When credentials are allowed (see `allow_credentials`), the middleware echoes back the exact origin from the request.
+- **algorithm**: Specifies the hash algorithm used to compute the ETag.
+  - `sha256` (default)
+  - `md5`
 
-- **allow_methods**:
-  A list of allowed HTTP methods. Supported methods include:
-  - `GET`
-  - `POST`
-  - `PUT`
-  - `DELETE`
-  - `OPTIONS`
-  - `HEAD`
-  - `PATCH`
-  The internal implementation uses an enum (`HttpMethod`) with helper methods to match and convert these values.
+- **min_body_size**: Minimum response body size (in bytes) required before an ETag is generated. Use this to skip ETags for small or trivial responses.
 
-- **allow_headers**:
-  A list of headers that the client is allowed to include in its requests.
-
-- **allow_credentials**:
-  A boolean flag indicating whether credentials (like cookies or authorization headers) are allowed.
-
-- **expose_headers**:
-  A list of headers that browsers are allowed to access from the response.
-
-- **max_age**:
-  An optional field that sets the maximum time (in seconds) the result of a preflight request can be cached.
+- **handle_if_none_match**: When `true`, incoming requests with a matching `If-None-Match` header will receive a `304 Not Modified` response (instead of a full body), if the ETag matches the computed value.
 
 ## How It Works
 
-### Preflight Requests
+### Before the Response
+If `handle_if_none_match` is enabled and the request includes an `If-None-Match` header, the value is stored in the request context for comparison later.
 
-For HTTP OPTIONS requests (used to determine if the actual request is safe to send):
-#### 1.	Extraction of Request Headers
-The middleware extracts the following from the incoming request:
-*	`Origin`
-*	`Access-Control-Request-Method`
-*	`Access-Control-Request-Headers`
+### After the Response
 
-#### 2.	Validation via preflight_headers
-These values are validated:
-*	The Origin must be provided and permitted according to allow_origins.
-*	The Access-Control-Request-Method must match one of the configured allow_methods.
-*	Any headers listed in Access-Control-Request-Headers must appear in the allow_headers configuration.
+1. If the status code is cacheable (e.g., 200 OK, 201 Created), the middleware proceeds.
+2. If an ETag header is already present or if `Cache-Control: no-store` is set, it skips computation.
+3. If the response body is not streamable and meets the `min_body_size`, it is buffered.
+4. A hash (SHA-256 or MD5) is computed from the full body content.
+5. The ETag header is inserted using either strong (`"abc123"`) or weak (`W/"abc123"`) formatting.
+6. If the incoming request had a matching `If-None-Match`, the response is replaced with a 304 Not Modified.
 
-#### 3.	Response Generation
-If the validation succeeds, the middleware constructs a set of CORS headers including:
-*	`Access-Control-Allow-Origin`
-*	`Access-Control-Allow-Methods`
-*	`Access-Control-Allow-Headers`
-*	`Access-Control-Allow-Credentials` (if enabled)
-*	`Access-Control-Max-Age` (if set)
-*	`Access-Control-Expose-Headers` (if configured)
-
-A response with status code 204 No Content is sent immediately, ending further processing.
+---

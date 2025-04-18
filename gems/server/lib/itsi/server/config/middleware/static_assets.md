@@ -1,7 +1,6 @@
 ---
 title: Static Assets
 url: /middleware/static_assets
-weight: 7
 ---
 
 The Static Assets middleware serves files from a specified root directory. It is capable of optimized delivery of static content such as HTML, CSS, JavaScript, images, as well as large assets, such as video files using streaming bodies and range requests.
@@ -14,6 +13,12 @@ It can auto-index directories for simple directory listings.
 - **Custom Headers**: User-supplied headers (e.g., for caching) can be added to responses.
 - **Relative Path Processing**: When enabled, the middleware rewrites request paths relative to a configured base path.
 - **Partial Content**: Supports Range requests for serving partial file content.
+
+## Example
+
+```ruby {filename=Itsi.rb}
+static_assets root_dir: "./"
+```
 
 ## Configuration Options
 

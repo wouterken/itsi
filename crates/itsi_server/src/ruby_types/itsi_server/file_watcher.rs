@@ -15,6 +15,7 @@ use std::{
     sync::mpsc,
     thread::{self},
 };
+use tracing::debug;
 
 /// Represents a set of patterns and commands.
 #[derive(Debug, Clone)]
@@ -105,7 +106,7 @@ pub fn watch_groups(pattern_groups: Vec<(String, Vec<Vec<String>>)>) -> Result<O
         let mut groups = Vec::new();
         for (pattern, commands) in pattern_groups.into_iter() {
             let base_dir = extract_and_canonicalize_base_dir(&pattern);
-            let glob = Glob::new(&pattern).map_err(|e| {
+            let glob = Glob::new(pattern.trim_start_matches("./")).map_err(|e| {
                 magnus::Error::new(
                     magnus::exception::standard_error(),
                     format!("Failed to create watch glob: {}", e),
@@ -143,6 +144,7 @@ pub fn watch_groups(pattern_groups: Vec<(String, Vec<Vec<String>>)>) -> Result<O
             notify::recommended_watcher(event_fn(sender)).expect("Failed to create watcher");
         for group in &groups {
             if watched_dirs.insert(group.base_dir.clone()) {
+                debug!("Watching {}{}", group.base_dir.display(), group.pattern);
                 watcher
                     .watch(&group.base_dir, RecursiveMode::Recursive)
                     .expect("Failed to add watch");
@@ -157,12 +159,18 @@ pub fn watch_groups(pattern_groups: Vec<(String, Vec<Vec<String>>)>) -> Result<O
                         continue;
                     }
                     let now = Instant::now();
+                    debug!("Watch event fired for {:?}", event.paths);
                     for group in &mut groups {
                         for path in event.paths.iter() {
                             if let Ok(rel_path) = path.strip_prefix(&group.base_dir) {
+                                debug!(
+                                    "Testing relative path: {:?} against {:?}",
+                                    rel_path, group.pattern
+                                );
                                 if group.glob_set.is_match(rel_path)
                                     || rel_path.to_str().is_some_and(|s| s == group.pattern)
                                 {
+                                    debug!("Matched pattern: {:?}", group.pattern);
                                     // Check if we should debounce this event
                                     if let Some(last_triggered) = group.last_triggered {
                                         if now.duration_since(last_triggered) < DEBOUNCE_DURATION {
@@ -183,6 +191,10 @@ pub fn watch_groups(pattern_groups: Vec<(String, Vec<Vec<String>>)>) -> Result<O
                                         if command.len() > 1 {
                                             cmd.args(&command[1..]);
                                         }
+                                        debug!(
+                                            "Executing command: {:?} due to change in {:?}",
+                                            command, path
+                                        );
                                         match cmd.spawn() {
                                             Ok(mut child) => {
                                                 if let Err(e) = child.wait() {
