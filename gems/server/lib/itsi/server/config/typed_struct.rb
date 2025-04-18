@@ -122,10 +122,7 @@ module Itsi
             @validations.each do |validation|
               case validation
               when Proc
-                unless validation.call(value)
-                  raise ArgumentError,
-                        "─ `#{@name}` validation failed. Invalid value: #{value.inspect}"
-                end
+                validation.call(value)
               when Array
                 unless !value || validation.include?(value)
                   raise ArgumentError,
@@ -183,6 +180,7 @@ module Itsi
           Required: Validation.new(:Required, ->(value) { !value.nil? }),
           Or: ->(*validations){
             Validation.new(:Or, ->(v){
+
               return true if v.nil?
               errs = []
               validations.each do |validation|

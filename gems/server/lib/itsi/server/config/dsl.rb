@@ -200,13 +200,6 @@ module Itsi
           end
         end
 
-        def fiber_scheduler(klass_name = true)
-          raise "Fiber scheduler must be set at the root" unless @parent.nil?
-
-          klass_name = "Itsi::Scheduler" if klass_name == true
-          @options[:scheduler_class] = klass_name if klass_name
-        end
-
         def scheduler_threads(threads = 1)
           raise "Scheduler threads must be set at the root" unless @parent.nil?
 

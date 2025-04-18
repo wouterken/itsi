@@ -30,5 +30,5 @@ and can cause increased contention on shared locks.
 
 While well-tuned Fiber based servers can drastically outperform their blocking counterparts in some scenarios, the above compromises can make it an unsafe blanket choice, particularly for some large applications with dependencies not specifically designed for a cooperative multitasking environment.
 
-To see Itsi's recommended approach to enjoying the benefits of a Fiber scheduler while managing these risks, consider using Itsi's [hybrid mode](https://itsi.fyi/options/scheduler_threads).
+To see Itsi's recommended approach to enjoying the benefits of a Fiber scheduler while managing these risks, consider using Itsi's [hybrid mode](/options/scheduler_threads).
 {{< /callout >}}

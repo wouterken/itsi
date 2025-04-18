@@ -11,6 +11,10 @@ module Itsi
           Or(Bool(), (Type(String) & Required()))
         end
 
+        def build!
+          @params = "Itsi::Scheduler" if @params == true
+          location.options[:scheduler_class] = @params if @params
+        end
       end
     end
   end

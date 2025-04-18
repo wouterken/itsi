@@ -161,7 +161,8 @@ module Itsi
           end
         return config, error_lines
       rescue
-        binding.b
+        Itsi.log_error e.message
+        puts e.backtrace
       end
 
       def self.test!(cli_params)
