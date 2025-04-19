@@ -133,7 +133,7 @@ class TestProxy < Minitest::Test
            get("/host-test") { |r| r.ok r.header("Host").first }
          end,
          bind: backend_bind1
-       ){}
+       ){ sleep 1 }
      end
      thread2 = Thread.new do
        server(
@@ -141,9 +141,10 @@ class TestProxy < Minitest::Test
            get("/host-test") { |r| r.ok r.header("Host").first }
          end,
          bind: backend_bind2
-       ){}
+       ){ sleep 1 }
      end
-     sleep 0.2
+
+     sleep 0.1
 
      server(
        itsi_rb: lambda do

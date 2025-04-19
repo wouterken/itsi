@@ -66,6 +66,8 @@ module Itsi
         511 => :network_authentication_required
       }.freeze
 
+      HTTP_STATUS_NAME_TO_CODE_MAP = HTTP_STATUS_CODES.invert.freeze
+
       HTTP_STATUS_CODES.each do |code, name|
         define_method(name) {|*args, **kwargs| respond(*args, **kwargs, status: code) }
       end

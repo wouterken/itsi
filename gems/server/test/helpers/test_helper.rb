@@ -38,12 +38,19 @@ def server(app: nil, protocol: "http", bind: free_bind(protocol), itsi_rb: nil, 
   cli_params = {}
   cli_params[:binds] = [bind] if bind
 
-  server = Itsi::Server.start_in_background_thread(cli_params, &itsi_rb)
+  sync = Queue.new
+  cli_params[:hooks] ||= {}
+  cli_params[:hooks]["after_start"] = lambda do
+    sync.push(true)
+  end
+
+  Itsi::Server.start_in_background_thread(cli_params, &itsi_rb)
+
+  sync.pop
   uri = URI(bind)
   Timeout.timeout(timeout) do
     RequestContext.new(uri, self).instance_exec(uri, &blk)
   end
-  server
 rescue StandardError => e
   puts e
   puts e.message

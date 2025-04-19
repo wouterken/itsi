@@ -45,17 +45,6 @@ module Itsi
           DateTime  => ->(v){ DateTime.parse(v.to_s) }
         }.compare_by_identity
 
-        # Extracts the expected type and required flag from a schema definition.
-        def extract_schema(schema_def)
-          if schema_def.is_a?(Hash) && schema_def.key?(:_type)
-            expected_type = schema_def[:_type]
-            required = schema_def.fetch(:required, true)
-            [expected_type, required]
-          else
-            [schema_def, true]
-          end
-        end
-
         # Preprocess the schema into fixed keys (as symbols) and regex keys.
         # Memoizes the result based on the schema.
         def processed_schema(schema)
@@ -63,8 +52,9 @@ module Itsi
           @@schema_cache[schema] ||= begin
             fixed = {}
             regex = []
+            required_params = schema[:_required] || []
             schema.each do |k, schema_def|
-              expected_type, required = extract_schema(schema_def)
+              expected_type, required = schema_def, required_params.include?(k)
               if k.is_a?(Regexp)
                 regex << [k, [expected_type, required]]
               else

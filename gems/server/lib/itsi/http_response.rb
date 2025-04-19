@@ -8,7 +8,8 @@ module Itsi
   class HttpResponse
 
     def respond _body=nil, _status=200, _header=nil, status: _status, headers: _header, body: _body, hijack: false, &blk
-      self.status = status
+
+      self.status = status.kind_of?(Symbol) ? HTTP_STATUS_NAME_TO_CODE_MAP.fetch(status) : status.to_i
 
       body = body.to_s unless body.is_a?(String)
 

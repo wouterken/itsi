@@ -100,7 +100,7 @@ module Itsi
           worker_memory_limit: args.fetch(:worker_memory_limit) { itsifile_config.fetch(:worker_memory_limit, nil) },
           silence: args.fetch(:silence) { itsifile_config.fetch(:silence, false) },
           shutdown_timeout: args.fetch(:shutdown_timeout) { itsifile_config.fetch(:shutdown_timeout, 5) },
-          hooks: itsifile_config.fetch(:hooks, nil),
+          hooks: args[:hooks] && itsifile_config[:hooks] ? args[:hooks].merge(itsifile_config[:hooks]) : itsifile_config.fetch(:hooks, args[:hooks]),
           preload: !!preload,
           request_timeout: itsifile_config.fetch(:request_timeout, nil),
           header_read_timeout: args.fetch(:header_read_timeout) { itsifile_config.fetch(:header_read_timeout, nil) },

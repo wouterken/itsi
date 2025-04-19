@@ -290,7 +290,17 @@ impl ClusterMode {
 
         self.build_runtime().block_on(async {
           let self_ref = self_ref.clone();
-          let mut memory_check_interval = time::interval(time::Duration::from_secs(15));
+          let memory_check_duration = if self_ref.server_config.server_params.read().worker_memory_limit.is_some(){
+            time::Duration::from_secs(15)
+          } else {
+            time::Duration::from_secs(60 * 60 * 24 * 365 * 100)
+          };
+
+          let mut memory_check_interval = time::interval(memory_check_duration);
+
+          if let Some(hook) = self_ref.server_config.server_params.read().hooks.get("after_start") {
+            call_with_gvl(|_|  hook.call::<_, Value>(()).ok() );
+          }
 
           loop {
             tokio::select! {

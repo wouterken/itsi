@@ -7,7 +7,7 @@ next: /getting_started
 
 Itsi bundles a slew of essential modern web features into a single, easy-to-use package.
 Here's a list of the essentials.
-Or jump straight in to <a target="_blank" href="tsi](/getting_started)">install</a>and <a target="_blank" href="t](/configuration)">configure</a>for a deeper dive.
+Or jump straight in to <a target="_blank" href="tsi](/getting_started)">install</a> and <a target="_blank" href="t](/configuration)"> configure</a> for a deeper dive.
 
 {{< callout >}}
 You don't need to use all of the features listed below to benefit from Itsi. E.g.

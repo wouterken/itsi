@@ -77,3 +77,26 @@ Just add the bottom to your `~/.bashrc` or `~/.zshrc` file:
 ```bash
 eval "$(itsi --install-completions)"
 ```
+
+## macOS Fork Safety Considerations
+
+On macOS, using fork() in multithreaded applications can lead to crashes due to the Objective-C runtime’s behavior. This is particularly relevant when working with tools like Itsi that may utilize fork() under the hood.
+
+### Understanding the Issue
+
+Apple’s Objective-C runtime is not fork-safe in multithreaded environments. When a process that uses Objective-C APIs forks, the child process may crash if it interacts with the Objective-C runtime before calling exec(). This behavior is by design to prevent potential deadlocks and inconsistent states. ￼ ￼
+
+Common symptoms include errors like:
+```
+objc[51435]: +[__NSCFConstantString initialize] may have been in progress in another thread when fork() was called.
+We cannot safely call it or ignore it in the fork() child process. Crashing instead.
+```
+
+### Workarounds:
+To mitigate these issues, consider the following environment variables:
+*	`OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES`: Disables the Objective-C runtime’s fork safety checks. Use with caution, as it may mask underlying issues . ￼ ￼
+*	`PGGSSENCMODE=disable`: Disables GSSAPI encryption in PostgreSQL, which can cause issues in forked processes .
+
+Itsi includes a mechanism to automatically re-execute itself with the necessary environment variables set when running on macOS, effectively performing the above work-arounds for you.
+
+If you prefer to manage these settings yourself, you can disable this behavior by setting the `ITSI_DISABLE_AUTO_DISABLE_DARWIN_FORK_SAFETY_WARNINGS` environment variable:

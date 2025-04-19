@@ -19,7 +19,7 @@ use itsi_rb_helpers::{
     call_with_gvl, call_without_gvl, create_ruby_thread, funcall_no_ret, print_rb_backtrace,
 };
 use itsi_tracing::{debug, error, info};
-use magnus::value::ReprValue;
+use magnus::{value::ReprValue, Value};
 use nix::unistd::Pid;
 use parking_lot::RwLock;
 use std::{
@@ -305,6 +305,10 @@ impl SingleMode {
                     while let Some(_res) = acceptor_task_set.join_next().await {}
                 });
 
+              }
+
+              if let Some(hook) = self.server_config.server_params.read().hooks.get("after_start") {
+                call_with_gvl(|_|  hook.call::<_, Value>(()).ok() );
               }
 
               while let Some(_res) = listener_task_set.join_next().await {}
