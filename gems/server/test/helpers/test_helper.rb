@@ -25,7 +25,7 @@ def free_bind(protocol="http", unix_socket: false)
 end
 
 
-def server(app: nil, protocol: "http", bind: free_bind(protocol), itsi_rb: nil, cleanup: true, &blk)
+def server(app: nil, protocol: "http", bind: free_bind(protocol), itsi_rb: nil, cleanup: true, timeout: 5, &blk)
   itsi_rb ||= lambda do
     # Inline Itsi.rb
     bind bind
@@ -40,7 +40,9 @@ def server(app: nil, protocol: "http", bind: free_bind(protocol), itsi_rb: nil, 
 
   server = Itsi::Server.start_in_background_thread(cli_params, &itsi_rb)
   uri = URI(bind)
-  RequestContext.new(uri, self).instance_exec(uri, &blk)
+  Timeout.timeout(timeout) do
+    RequestContext.new(uri, self).instance_exec(uri, &blk)
+  end
   server
 rescue StandardError => e
   puts e
@@ -111,10 +113,20 @@ class RequestContext
   private
 
   def client
+    opts = {
+      read_timeout: 1,
+      open_timeout: 1
+    }
     if @uri.scheme == 'unix'
-      NetX::HTTPUnix.new(@uri.to_s, read_timeout: 1)
+      NetX::HTTPUnix.new(
+        @uri.to_s,
+        **opts)
     else
-      Net::HTTP.start(@uri.host, @uri.port, use_ssl: @uri.scheme == 'https', read_timeout: 1)
+      Net::HTTP.start(
+        @uri.host,
+        @uri.port,
+        use_ssl: @uri.scheme == 'https',
+        **opts)
     end
   end
 

@@ -10,6 +10,12 @@ To minimize this overhead, it's recommended to keep the number of threads low, a
 
 When running Itsi in blocking mode, the total number of concurrent requests will be equal to `workers` x `threads`
 
+
+{{< callout >}}
+If you enable  a [fiber_scheduler](/options/fiber_scheduler), the threads will be non-blocking, unless you are using both [threads](/options/threads) and [scheduler_threads](/options/scheduler_threads) **together**.
+{{< /callout >}}
+
+
 ## Configuration File
 The number of threads to use can be specified inside the configuration file (usually `./Itsi.rb` at the project root)
 using the `threads` function.

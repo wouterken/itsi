@@ -115,7 +115,7 @@ Efficiently serves static assets with proper content types and caching headers.
 * Zero-downtime config file reloads.
 * Phased restart support when running in `cluster` mode
 * Config file testing and dry-run functionality
-* See <a target="_blank" href="/getting_started/hot_reloads">hot_reloads</a>.
+* See <a target="_blank" href="/getting_started/signals">signals</a> and <a target="_blank" href="/options/auto_reload_config">auto_reload_config</a>.
 {{% /details %}}
 
 {{% details title="Configurable Error Responses" closed="true" %}}
@@ -175,7 +175,7 @@ Itsi also comes bundled with a passfile generator, to help you manage your passw
 
 {{% details title="Slowhttp attack prevention" closed="true" %}}
 * Protections against several slowhttp attacks (e.g. Slowloris, Slowbody), through header and request timeouts and maximum request body sizes.
-* See <a target="_blank" href="/middleware/max_body">max_body</a>, <a target="_blank" href="/options/request_timeout">request_timeout</a> and <a target="_blank" href="/options/header_read_timeout">header_read_timeout</a>
+* See <a target="_blank" href="/options/max_body">max_body</a>, <a target="_blank" href="/options/request_timeout">request_timeout</a> and <a target="_blank" href="/options/header_read_timeout">header_read_timeout</a>
 {{% /details %}}
 
 {{% details title="CSP Reporting" closed="true" %}}
@@ -187,18 +187,18 @@ Itsi also comes bundled with a passfile generator, to help you manage your passw
 ## Protocols & Standards
 {{% details title="HTTP2" closed="true" %}}
 * Benefit from connection multiplexing by using http2 all the way from client to app/file server.
-* `Itsi`'s  underlying HTTP1 and 2 implementations are provided directly by <target="_blank" a href="https://github.">hyper</acm/hyperium/hyper). Itsi simply exposes these existing capabilities. This means that once <target="_blank" a href="https://hyper.">h3</ar/contrib/roadmap/#http3) lands in Hyper - we'll get it in Itsi too!
+* `Itsi`'s  underlying HTTP1 and 2 implementations are provided directly by <a target="_blank"  href="https://github.com/hyperium/hyper">hyper</a>. Itsi simply exposes these existing capabilities. This means that once <a target="_blank" href="https://hyper.rs/contrib/roadmap/#http3">h3</a> lands in Hyper - we'll get it in Itsi too!
 {{% /details %}}
 
 {{% details title="Rack Server" closed="true" %}}
 * Rack compliant. Itsi plays nicely with your existing Rack-based applications and middleware.
-* See <a target="_blank" href="/middleware/run">run</a> and <a target="_blank" href="/middleware/rack_file">rack_file</a>
+* See <a target="_blank" href="/middleware/run">run</a> and <a target="_blank" href="/middleware/rackup_file">rackup_file</a>
 {{% /details %}}
 
 {{% details title="gRPC Server" closed="true" %}}
 * Itsi is compatible with ruby `grpc` service handlers and can
-replace the <a hreftarget="_blank" ="uby gRPC server implementation">official</a>(https://github.com/grpc/grpc/blob/master/src/ruby/README.md) for a free performance boost!
-* Consider implementing non-blocking IO to further enhance performance.
+replace the <a  target="_blank" href="https://github.com/grpc/grpc/blob/master/src/ruby/README.md">official</a> Ruby gRPC server implementation for a free performance boost!
+* Consider enabling [non-blocking IO](/options/fiber_scheduler) to further enhance performance.
 * Support for gRPC server reflection (use with tools like evans and Postman for easy service discovery)
 * Support for gzip and zlib compression
 * See <a target="_blank" href="/middleware/grpc">grpc</a>
@@ -208,12 +208,12 @@ replace the <a hreftarget="_blank" ="uby gRPC server implementation">official</a
 * Itsi provides a `gRPC+REST` compatibility layer for easy reuse of gRPC endpoints by clients and environments that are not gRPC capable. Invoke unidirectional and streaming endpoints using plain-old JSON.
 * See <a target="_blank" href="/middleware/grpc">grpc</a>
 {{< callout type="warn" >}}
-Note: This is not the same as <a hreftarget="_blank" ="ith Json](https">gRPC</a:/grpc.io/blog/grpc-with-json/), which swaps out protobuf for JSON but still relies on gRPC's underlying framing mechanics.
+Note: This is not the same as <a target="_blank" href="https://grpc.io/blog/grpc-with-json/">gRPC with JSON</a> which swaps out protobuf for JSON but still relies on gRPC's underlying framing mechanics.
 {{< /callout >}}
 {{% /details %}}
 
 {{% details title="WebSockets" closed="true" %}}
-* WebSocket support for Rack apps (e.g. <target="_blank" a href="https://guides.">ActionCable</arbyonrails.org/action_cable_overview.html))
+* WebSocket support for Rack apps (e.g. <a target="_blank" a href="https://guides.rubyonrails.org/action_cable_overview.html">ActionCable</a>)
 {{% /details %}}
 
 ## Concurrency & Performance
@@ -224,7 +224,7 @@ Note: This is not the same as <a hreftarget="_blank" ="ith Json](https">gRPC</a:
 
 {{% details title="Non-blocking(Fiber Scheduler) Mode" closed="true" %}}
 * Support for Ruby’s fiber scheduler for non-blocking concurrency, boosting performance during I/O operations.
-* Use Itsi's own high-performance build-in <a target="_blank" href="cheduler](/itsi_scheduler),">Fiber</a>or if your prefer you can bring your own!
+* Use Itsi's own high-performance built-in <a target="_blank" href="/itsi_scheduler">Fiber Scheduler</a> or if your prefer you can bring your own!
 * See <a target="_blank" href="/options/fiber_scheduler">fiber_scheduler</a>.
 {{% /details %}}
 
@@ -234,7 +234,7 @@ Note: This is not the same as <a hreftarget="_blank" ="ith Json](https">gRPC</a:
 {{% /details %}}
 
 {{% details title="Non-blocking by design" closed="true" %}}
-* Itsi is underpinned by <target="_blank" a href="https://hyper.">hyper</ar/) and <target="_blank" a href="https://tokio.">tokio</ar/) and as such is fundamentally an evented, non-blocking server. Whether you're proxying, serving large files, or delegating to Ruby endpoints, `Itsi` remains responsive, even under heavy load.
+* Itsi is underpinned by <a target="_blank" href="https://hyper.rs/">hyper</a> and <a target="_blank" href="https://tokio.rs/">tokio</a> and as such is fundamentally an evented, non-blocking server. Whether you're proxying, serving large files, or delegating to Ruby endpoints, `Itsi` remains responsive, even under heavy load.
 {{% /details %}}
 
 ## Ruby
@@ -254,7 +254,7 @@ Note: This is not the same as <a hreftarget="_blank" ="ith Json](https">gRPC</a:
 {{% /details %}}
 
 {{% details title="Full & Partial Rack Hijacking" closed="true" %}}
-* Itsi supports both <a hreftarget="_blank" ="nd partial Rack hijacking">full</a>(https://github.com/rack/rack/blob/main/SPEC.rdoc#hijacking-). Even over HTTP2!
+* Itsi supports both <a href="https://github.com/rack/rack/blob/main/SPEC.rdoc#hijacking-" target="_blank">full</a> and partial Rack hijacking. Even over HTTP2!
 {{< callout type="warn" >}}
 By design, Full hijacking assumes you are writing a raw HTTP1 response directly to a raw connection stream.
 Itsi's support for full hijack over HTTP2 is similar to what you would see if running a dedicated reverse proxy in front of a Ruby app.
@@ -264,7 +264,7 @@ Itsi translates that request from HTTP1 to HTTP2, in real-time, allowing full hi
 
 {{% details title="Sendfile" closed="true" %}}
 * Itsi allows Ruby apps to set a `X-Sendfile` header to enable efficient, streaming file transfers, outside of Ruby, via fast native code.
-* See <a target="_blank" href="/middleware/run">run</a> and <a target="_blank" href="/middleware/rack_file">rack_file</a>.
+* See <a target="_blank" href="/middleware/run">run</a> and <a target="_blank" href="/middleware/rackup_file">rackup_file</a>.
 
 {{< callout type="info" >}}
 Note that despite the header being named `X-Sendfile`, Itsi does not use the Sendfile system call, instead delegating the efficient streaming to Tokio's native asynchronous file streaming capabilities.
@@ -281,7 +281,7 @@ so that you can log the event for further analysis.
 {{% details title="OOB GC" closed="true" %}}
 * Itsi can be configured to periodically trigger GC every N idle periods (where an idle period is defined as a time where no requests are currently queued).
 * Periodic triggering of GC outside of the request flow can help reduce the impact of GC on latency.
-* See <a target="_blank" href="/options/oob_gc_threshold">oob_gc_threshold</a>
+* See <a target="_blank" href="/options/oob_gc">oob_gc_threshold</a>
 {{% /details %}}
 
 {{% details title="'Rackless' Ruby Apps" closed="true" %}}

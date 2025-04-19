@@ -182,28 +182,13 @@ module Itsi
           end
         end
 
-        def run(app, sendfile: true, nonblocking: false, path_info: "/")
-          app_args = { preloader: -> { Itsi::Server::RackInterface.for(app) }, sendfile: sendfile, base_path: "^(?<base_path>#{paths_from_parent.gsub(/\.\*\)$/, ')')}).*$", path_info: path_info, nonblocking: nonblocking }
-          base_path =  "^(?<base_path>#{paths_from_parent.gsub(/\.\*\)$/, ')')}).*$"
-          @middleware[:app] = app_args
-          location("*") do
-            @middleware[:app] = app_args
-          end
-        end
-
-        def rackup_file(rackup_file, nonblocking: false, sendfile: true, path_info: "/")
+        def rackup_file(rackup_file, nonblocking: false, sendfile: true)
           raise "Rackup file #{rackup_file} doesn't exist" unless File.exist?(rackup_file)
-          app_args = { preloader: -> { Itsi::Server::RackInterface.for(rackup_file) }, sendfile: sendfile, base_path: "^(?<base_path>#{paths_from_parent.gsub(/\.\*\)$/, ')')}).*$", path_info: path_info, nonblocking: nonblocking }
+          app_args = { preloader: -> { Itsi::Server::RackInterface.for(rackup_file) }, sendfile: sendfile, base_path: "^(?<base_path>#{paths_from_parent.gsub(/\.\*\)$/, ')')}).*$", nonblocking: nonblocking }
           @middleware[:app] = app_args
           location("*") do
             @middleware[:app] = app_args
           end
-        end
-
-        def scheduler_threads(threads = 1)
-          raise "Scheduler threads must be set at the root" unless @parent.nil?
-
-          @options[:scheduler_threads] = threads
         end
 
         def controller(controller=nil)
