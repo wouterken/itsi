@@ -5,7 +5,7 @@ sidebar:
   exclude: true
 ---
 
-## [0.2.0] - 2025-04-28
+## [0.2.0] - 2025-04-22
 
 - Public release!
 - https://itsi.fyi

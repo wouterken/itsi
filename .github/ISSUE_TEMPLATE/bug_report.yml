@@ -1,0 +1,98 @@
+name: Bug Report
+description: Report a bug in the Itsi server or supporting components.
+title: "[Bug] "
+labels: [bug, needs-triage]
+assignees:
+  - wouterken
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Itsi! Please complete all required sections. Issues without enough detail may be closed or receive lower triage priority.
+
+  - type: input
+    id: ruby_version
+    attributes:
+      label: Ruby version
+      placeholder: e.g. 3.3.1
+    validations:
+      required: true
+
+  - type: input
+    id: itsi_version
+    attributes:
+      label: Itsi version(s)
+      description: Please include the versions of all relevant gems.
+      placeholder: itsi 0.1.5, itsi-scheduler 0.1.2, itsi-server 0.1.7
+    validations:
+      required: true
+
+  - type: textarea
+    id: itsi_rb
+    attributes:
+      label: Minimal `Itsi.rb` configuration
+      description: |
+        Please provide the smallest config snippet that still reproduces the issue.
+        Wrap in triple backticks for formatting.
+      placeholder: |
+        ```ruby
+        get("/hello") { |r| r.ok "world" }
+        ```
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction_steps
+    attributes:
+      label: Steps to Reproduce
+      description: Be specific and include exact curl commands, browser actions, or test cases.
+      placeholder: |
+        1. Run server with `Itsi.rb`
+        2. Visit http://localhost:3000/hello
+        3. Observe 500 error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_vs_actual
+    attributes:
+      label: What did you expect to happen? What happened instead?
+      placeholder: 'Expected: "200 OK with ''world''" | Actual: "500 Internal Server Error"'
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, CPU, architecture, and any Docker/VM/WSL context
+      placeholder: |
+        OS: macOS 14.3 (Apple Silicon)
+        CPU: M1 Pro 10-core
+        Shell: zsh in tmux
+        Container: No
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs, stack traces, or error output
+      description: Paste logs and errors here if available. Wrap in triple backticks.
+      placeholder: |
+        ```log
+        2025-04-20T08:21:33.901Z ERROR ...uninitialized constant Foo::Bar
+        ```
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: final_checklist
+    attributes:
+      label: Final checklist
+      options:
+        - label: I have tested the minimal reproduction case and confirmed it fails
+          required: true
+        - label: I am using the latest released versions of Itsi and its supporting gems
+          required: true
+        - label: I have reviewed the documentation and existing issues for this problem
+          required: true

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Itsi Discussions
+    url: https://github.com/wouterken/itsi/discussions
+    about: General questions and design discussions go here.
+  - name: Security Disclosure
+    url: mailto:wc@pico.net.nz
+    about: Please report security issues privately.
