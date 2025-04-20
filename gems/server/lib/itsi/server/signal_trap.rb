@@ -19,7 +19,7 @@ module Itsi
     end
 
     def server_running?
-      Itsi::Server.respond_to?(:running) && Itsi::Server.running?
+      Itsi::Server.respond_to?(:running?) && Itsi::Server.running?
     end
   end
 end

@@ -3,7 +3,7 @@ module Itsi
     module Config
       class AfterStart < Option
         insert_text <<~SNIPPET
-        after_start do |pid|
+        after_start do
           ${1:# code to run after worker starts}
         end
         SNIPPET

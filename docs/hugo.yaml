@@ -8,7 +8,7 @@ module:
   mounts:
     - source: "../gems/server/lib/itsi/server/config"
       target: "content/configuration"
-      includeFiles: ["*/*.md"]
+      includeFiles: ["*/*.md", "*/endpoint/*.md", "*/hooks/*.md"]
       excludeFiles: ["*/**.html", "*/tmp/**", "*/target/**"]
     - source: "content"
       target: "content"

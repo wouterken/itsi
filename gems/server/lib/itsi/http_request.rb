@@ -92,7 +92,14 @@ module Itsi
     )
 
       if json
-        validate!(json, as: as) if as
+        if as
+          begin
+            validate!(json, as: as)
+          rescue ValidationError => e
+            json = {type: 'error', message: "Validation Error: #{e.message}"}
+            status = 400
+          end
+        end
         body = json.to_json
         headers ||= {}
         headers["Content-Type"] ||= "application/json"
@@ -109,7 +116,6 @@ module Itsi
         headers ||= {}
         headers["Content-Type"] ||= "text/plain"
       end
-
       response.respond(status: status, headers: headers, body: body, hijack: hijack, &blk)
     end
 
@@ -171,6 +177,7 @@ module Itsi
       end
 
     rescue StandardError => e
+      Itsi.log_error e.message
       puts e.backtrace
       if response.json?
         respond(json: {error: e.message}, status: 400)

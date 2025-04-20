@@ -2,9 +2,7 @@ use crate::ruby_types::itsi_server::itsi_server_config::ItsiServerConfig;
 use crate::server::signal::SIGNAL_HANDLER_CHANNEL;
 use crate::server::{lifecycle_event::LifecycleEvent, process_worker::ProcessWorker};
 use itsi_error::{ItsiError, Result};
-use itsi_rb_helpers::{
-    call_proc_and_log_errors, call_with_gvl, call_without_gvl, create_ruby_thread,
-};
+use itsi_rb_helpers::{call_with_gvl, call_without_gvl, create_ruby_thread};
 use itsi_tracing::{error, info, warn};
 use magnus::Value;
 use nix::{libc::exit, unistd::Pid};
@@ -56,6 +54,12 @@ impl ClusterMode {
             .expect("Failed to build Tokio runtime")
     }
 
+    pub fn invoke_hook(&self, hook_name: &str) {
+        if let Some(hook) = self.server_config.server_params.read().hooks.get(hook_name) {
+            call_with_gvl(|_| hook.call::<_, Value>(()).ok());
+        }
+    }
+
     #[allow(clippy::await_holding_lock)]
     pub async fn handle_lifecycle_event(
         self: Arc<Self>,
@@ -70,10 +74,12 @@ impl ClusterMode {
             LifecycleEvent::Shutdown => {
                 self.server_config.stop_watcher()?;
                 self.shutdown().await?;
+                self.invoke_hook("before_shutdown");
                 Ok(())
             }
             LifecycleEvent::Restart => {
                 if self.server_config.check_config().await {
+                    self.invoke_hook("before_restart");
                     self.server_config.dup_fds()?;
                     self.shutdown().await.ok();
                     info!("Shutdown complete. Calling reload exec");
@@ -268,15 +274,7 @@ impl ClusterMode {
     #[instrument(skip(self), fields(mode = "cluster", pid=format!("{:?}", Pid::this())))]
     pub fn run(self: Arc<Self>) -> Result<()> {
         info!("Starting in Cluster mode");
-        if let Some(proc) = self
-            .server_config
-            .server_params
-            .read()
-            .hooks
-            .get("before_fork")
-        {
-            call_with_gvl(|_| call_proc_and_log_errors(proc.clone()))
-        }
+        self.invoke_hook("before_fork");
         self.process_workers
             .lock()
             .iter()
@@ -298,9 +296,7 @@ impl ClusterMode {
 
           let mut memory_check_interval = time::interval(memory_check_duration);
 
-          if let Some(hook) = self_ref.server_config.server_params.read().hooks.get("after_start") {
-            call_with_gvl(|_|  hook.call::<_, Value>(()).ok() );
-          }
+          self.invoke_hook("after_start");
 
           loop {
             tokio::select! {

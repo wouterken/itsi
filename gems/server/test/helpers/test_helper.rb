@@ -73,7 +73,7 @@ class RequestContext
     @binding.send(method_name, *args, &block)
   end
 
-  def post(path, data, headers = {})
+  def post(path, data="", headers = {})
     client.post(uri_for(path), data, headers)
   end
 
@@ -100,21 +100,23 @@ class RequestContext
     client.request(request)
   end
 
-  def put(path, data)
+  def put(path, data="", headers = {})
     request = Net::HTTP::Put.new(uri_for(path))
     request.body = data
+    headers.each { |k, v| request[k] = v }
     client.request(request)
   end
 
-  def delete(path)
+  def delete(path, headers = {})
     request = Net::HTTP::Delete.new(uri_for(path))
+    headers.each { |k, v| request[k] = v }
     client.request(request)
   end
 
-  def patch(path, data)
+  def patch(path, data="", headers = {})
     request = Net::HTTP::Patch.new(uri_for(path))
     request.body = data
-    @client.request(request)
+    client.request(request)
   end
 
   private

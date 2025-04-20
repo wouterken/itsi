@@ -169,15 +169,21 @@ module Itsi
           end
 
           # Process regex keys (only string keys not already handled as fixed keys).
-          params.keys.select { |k| k.is_a?(String) }.each do |key|
+          params.keys.each do |key|
+            if key == :_required
+              params.delete(key)
+              next
+            end
             next if fixed_schema.has_key?(key.to_sym) || fixed_schema.has_key?(key)
-            regex_schema.each do |regex, (expected_type, _required)|
+            unless regex_schema.find do |regex, (expected_type, _required)|
               if regex.match(key)
                 new_path = path + [key]
                 err = cast_value!(params, key, expected_type, new_path)
                 errors << err if err
-                break  # only use the first matching regex
+                true  # only use the first matching regex
               end
+            end
+              params.delete(key)
             end
           end
 

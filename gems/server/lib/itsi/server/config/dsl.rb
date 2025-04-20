@@ -6,7 +6,7 @@ module Itsi
         require_relative "option"
         require_relative "middleware"
 
-        attr_reader :parent, :children, :middleware, :controller_class, :routes, :http_methods, :protocols,
+        attr_reader :parent, :children, :middleware, :controller, :routes, :http_methods, :protocols,
                     :hosts, :ports, :extensions, :content_types, :accepts, :options
 
         def self.evaluate(config = Itsi::Server::Config.config_file_path, &blk)
@@ -40,7 +40,6 @@ module Itsi
           @parent           = parent
           @children         = []
           @middleware       = {}
-          @controller_class = nil
 
           @controller = controller
           @routes = Array(routes).flatten
@@ -88,72 +87,71 @@ module Itsi
           middleware_name = middleware.middleware_name
           define_method(middleware_name) do |*args, **kwargs, &blk|
             middleware.new(self, *args, **kwargs, &blk).build!
+          rescue Config::Endpoint::InvalidHandlerException => e
+            @errors << [e, "#{e.backtrace[0]}:in #{e.message}"]
           rescue => e
+            binding.b
             @errors << [e, caller[1]]
           end
         end
 
-        def get(route=nil, app_proc = nil, nonblocking: false, &blk)
-          endpoint(route, [:get], app_proc, nonblocking: nonblocking,  &blk)
-        end
-
         def post(route=nil, app_proc = nil, nonblocking: false, &blk)
-          endpoint(route, [:post], app_proc, nonblocking: nonblocking,  &blk)
+          endpoint(route, app_proc, http_methods: [:post], nonblocking: nonblocking,  &blk)
         end
 
         def put(route=nil, app_proc = nil, nonblocking: false, &blk)
-          endpoint(route, [:put], app_proc, nonblocking: nonblocking,  &blk)
+          endpoint(route, app_proc, http_methods: [:put], nonblocking: nonblocking,  &blk)
         end
 
         def delete(route=nil, app_proc = nil, nonblocking: false, &blk)
-          endpoint(route, [:delete], app_proc, nonblocking: nonblocking,  &blk)
+          endpoint(route, app_proc, http_methods: [:delete], nonblocking: nonblocking,  &blk)
         end
 
         def patch(route=nil, app_proc = nil, nonblocking: false, &blk)
-          endpoint(route, [:patch], app_proc, nonblocking: nonblocking,  &blk)
+          endpoint(route, app_proc, http_methods: [:patch], nonblocking: nonblocking,  &blk)
         end
 
-        def endpoint(route=nil, methods=[], app_proc = nil, nonblocking: false, &blk)
-          raise "You must provide either a block or an explicit handler for the endpoint" if app_proc.nil? && blk.nil?
+        # def endpoint(route=nil, methods=[], app_proc = nil, nonblocking: false, &blk)
+        #   raise "You must provide either a block or an explicit handler for the endpoint" if app_proc.nil? && blk.nil?
 
-          app_proc = @controller.method(app_proc).to_proc if app_proc.is_a?(Symbol)
+        #   app_proc = @controller.method(app_proc).to_proc if app_proc.is_a?(Symbol)
 
-          app_proc ||= blk
+        #   app_proc ||= blk
 
-          num_required, keywords = Itsi::Server::TypedHandlers::SourceParser.extract_expr_from_source_location(app_proc)
-          params_schema = keywords[:params]
+        #   num_required, keywords = Itsi::Server::TypedHandlers::SourceParser.extract_expr_from_source_location(app_proc)
+        #   params_schema = keywords[:params]
 
-          if params_schema && num_required > 1
-            raise "Cannot accept multiple required parameters in a single endpoint. A single typed or untyped params argument is supported"
-          end
-          if num_required > 2
-            raise "Cannot accept more than two required parameters in a single endpoint. An can either accept a single request argument, or a request and a params argument (which may be typed or untyped)"
-          end
-          if num_required == 0
-            raise "Cannot accept zero required parameters in a single endpoint. Endpoint must accept a request parameter"
-          end
+        #   if params_schema && num_required > 1
+        #     raise "Cannot accept multiple required parameters in a single endpoint. A single typed or untyped params argument is supported"
+        #   end
+        #   if num_required > 2
+        #     raise "Cannot accept more than two required parameters in a single endpoint. An can either accept a single request argument, or a request and a params argument (which may be typed or untyped)"
+        #   end
+        #   if num_required == 0
+        #     raise "Cannot accept zero required parameters in a single endpoint. Endpoint must accept a request parameter"
+        #   end
 
-          accepts_params = !params_schema.nil? || num_required > 1
+        #   accepts_params = !params_schema.nil? || num_required > 1
 
-          if accepts_params
-            app_proc = Itsi::Server::TypedHandlers.handler_for(app_proc, params_schema)
-          end
+        #   if accepts_params
+        #     app_proc = Itsi::Server::TypedHandlers.handler_for(app_proc, params_schema)
+        #   end
 
-          if route || http_methods.any?
-            # For endpoints, it's usually assumed trailing slash and non-trailing slash behaviour is the same
-            route ||= ""
-            routes = route == "/" ? ["", "/"] : [route]
-            location(*routes, methods: http_methods) do
-              @middleware[:app] = { preloader: -> { app_proc }, nonblocking: nonblocking }
-            end
-          else
-            app = { preloader: -> { app_proc }, nonblocking: nonblocking }
-            @middleware[:app] = app
-            location("*") do
-              @middleware[:app] = app
-            end
-          end
-        end
+        #   if route || http_methods.any?
+        #     # For endpoints, it's usually assumed trailing slash and non-trailing slash behaviour is the same
+        #     route ||= ""
+        #     routes = route == "/" ? ["", "/"] : [route]
+        #     location(*routes, methods: http_methods) do
+        #       @middleware[:app] = { preloader: -> { app_proc }, nonblocking: nonblocking }
+        #     end
+        #   else
+        #     app = { preloader: -> { app_proc }, nonblocking: nonblocking }
+        #     @middleware[:app] = app
+        #     location("*") do
+        #       @middleware[:app] = app
+        #     end
+        #   end
+        # end
 
         def grpc(*handlers, reflection: true, nonblocking: false, **, &blk)
           if @middleware[:app] && @middleware[:app][:request_type].to_s != "grpc"

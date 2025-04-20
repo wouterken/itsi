@@ -29,7 +29,7 @@ module Itsi
     class << self
 
       def running?
-        !@running || @running.empty?
+        @running && !@running.empty?
       end
 
       def start_in_background_thread(cli_params = {}, &blk)

@@ -307,8 +307,8 @@ impl SingleMode {
 
               }
 
-              if let Some(hook) = self.server_config.server_params.read().hooks.get("after_start") {
-                call_with_gvl(|_|  hook.call::<_, Value>(()).ok() );
+              if self.is_single_mode() {
+                self.invoke_hook("after_start");
               }
 
               while let Some(_res) = listener_task_set.join_next().await {}
@@ -349,13 +349,22 @@ impl SingleMode {
             sleep(Duration::from_millis(50));
         }
 
+        if self.is_single_mode() {
+            self.invoke_hook("before_shutdown");
+        }
+
         if self.restart_requested.load(Ordering::SeqCst) {
             self.restart_requested.store(false, Ordering::SeqCst);
             info!("Worker restarting");
             self.run()?;
         }
+
         debug!("Runtime has shut down");
         result
+    }
+
+    pub fn is_single_mode(&self) -> bool {
+        self.server_config.server_params.read().workers == 1
     }
 
     pub(crate) async fn serve_connection(
@@ -426,6 +435,9 @@ impl SingleMode {
         }
         let should_reexec = self.server_config.clone().reload(false)?;
         if should_reexec {
+            if self.is_single_mode() {
+                self.invoke_hook("before_restart");
+            }
             self.server_config.dup_fds()?;
             self.server_config.reload_exec()?;
         }
@@ -435,10 +447,18 @@ impl SingleMode {
         Ok(())
     }
 
+    pub fn invoke_hook(&self, hook_name: &str) {
+        if let Some(hook) = self.server_config.server_params.read().hooks.get(hook_name) {
+            call_with_gvl(|_| hook.call::<_, Value>(()).ok());
+        }
+    }
     /// Restart the server while keeping connections open.
     pub async fn restart(&self) -> Result<()> {
         if !self.server_config.check_config().await {
             return Ok(());
+        }
+        if self.is_single_mode() {
+            self.invoke_hook("before_restart");
         }
         self.server_config.dup_fds()?;
         self.server_config.reload_exec()?;

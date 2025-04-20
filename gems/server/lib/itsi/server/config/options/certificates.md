@@ -5,7 +5,7 @@ url: /options/certificates
 
 Itsi can automatically generate TLS certificates for you, both in development and production environments.
 
-## Development
+## Development / Self-signed
 To automatically generate a TLS certificate in development, just bind using the `https` scheme.
 E.g.
 ```ruby {filename=Itsi.rb}
@@ -56,5 +56,10 @@ Let's Encrypt enforces strict rate limits on production certificate generation. 
 
 {{< callout type="warn" >}}
 Currently only the TLS-ALPN-01 challenge type is supported for automated certificates.
-The HTTP-01 challenge is not *yet* supported. This means that, for e.g. if your server is sitting behind a CDN or reverse proxy that performs HTTPS termination, you will not be able to rely on the automated certificate generation.
+The HTTP-01 challenge is not *yet* supported. This means that, for e.g. if your server is sitting behind a CDN or reverse proxy that performs HTTPS termination, you will not be able to rely on the *automated* certificate generation for fully automated, verified e2e encryption.
+
+Instead you may wish to use:
+* [Self-signed](#development--self-signed) certificates
+* [Manually](#existing-certificates) install certificates
+* Use HTTP between the CDN and the server
 {{< /callout >}}

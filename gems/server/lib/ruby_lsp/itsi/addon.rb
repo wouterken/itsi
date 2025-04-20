@@ -100,25 +100,26 @@ module RubyLsp
         end
 
         ::Itsi::Server::Config::Middleware.subclasses.each do |middleware|
-          puts middleware.middleware_name
-          completion_item = Interface::CompletionItem.new(
-            label: middleware.middleware_name,
-            kind: Constant::CompletionItemKind::METHOD,
-            label_details: Interface::CompletionItemLabelDetails.new(
-              detail: middleware.detail,
-              description: middleware.documentation
-            ),
-            documentation: Interface::MarkupContent.new(
-              kind: Constant::MarkupKind::MARKDOWN,
-              value: middleware.documentation
-            ),
-            insert_text: middleware.insert_text,
-            insert_text_format: Constant::InsertTextFormat::SNIPPET,
-            data: {
-              delegateCompletion: true
-            }
-          )
-          @response_builder << completion_item
+          Array(middleware.insert_text).zip(Array(middleware.detail)).each do |insert_text, detail|
+            completion_item = Interface::CompletionItem.new(
+              label: middleware.middleware_name,
+              kind: Constant::CompletionItemKind::METHOD,
+              label_details: Interface::CompletionItemLabelDetails.new(
+                detail: detail,
+                description: middleware.documentation
+              ),
+              documentation: Interface::MarkupContent.new(
+                kind: Constant::MarkupKind::MARKDOWN,
+                value: middleware.documentation
+              ),
+              insert_text: insert_text,
+              insert_text_format: Constant::InsertTextFormat::SNIPPET,
+              data: {
+                delegateCompletion: true
+              }
+            )
+            @response_builder << completion_item
+          end
         end
       end
 

@@ -95,6 +95,13 @@ module Itsi
           Bundler.require(preload)
         end
 
+        if itsifile_config[:daemonize]
+          Itsi.log_info("Itsi is running in the background. Writing pid to #{Itsi::Server::Config.pid_file_path}")
+          Itsi.log_info("To stop Itsi, run 'itsi stop' from this directory.")
+          Process.daemon(true, false)
+          Server.write_pid
+        end
+
         config = {
           workers: args.fetch(:workers) { itsifile_config.fetch(:workers, 1) },
           worker_memory_limit: args.fetch(:worker_memory_limit) { itsifile_config.fetch(:worker_memory_limit, nil) },

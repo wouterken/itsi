@@ -7,8 +7,8 @@ module Itsi
           config_type = klass.name.split("::").last.downcase.gsub(/([a-z]()[A-Z])/, '\1_\2')
 
           listing = [
-            Dir[File.expand_path(File.dirname(__FILE__) + "/#{config_type}/**.rb")],
-            Dir[File.expand_path(File.dirname(__FILE__) + "/#{config_type}s/**.rb")]
+            Dir[File.expand_path(File.dirname(__FILE__) + "/#{config_type}/**/*.rb")],
+            Dir[File.expand_path(File.dirname(__FILE__) + "/#{config_type}s/**/*.rb")]
           ].flatten
 
           listing.each do |file|
@@ -18,6 +18,9 @@ module Itsi
             new_class = (following - current).first
 
             documentation_file = "#{file[/(.*)\.rb/,1]}.md"
+            if ! File.exist?(documentation_file)
+              documentation_file =  "#{file[/(.*)\/[^\/]+\.rb/,1]}/_index.md"
+            end
             if File.exist?(documentation_file) && new_class
               new_class.documentation IO.read(documentation_file)
                 .gsub(/^---.*?\n.*?-+/m,'') # Strip frontmatter

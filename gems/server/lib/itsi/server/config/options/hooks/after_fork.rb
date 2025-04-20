@@ -1,14 +1,14 @@
 module Itsi
   class Server
     module Config
-      class BeforeFork < Option
+      class AfterFork < Option
         insert_text <<~SNIPPET
-        before_fork do |pid|
-          ${1:# code to run before worker forks}
+        after_fork do
+          ${1:# code to run after worker forks}
         end
         SNIPPET
 
-        detail "Run code before worker forks"
+        detail "Run code after worker forks"
 
         schema do
           (Type(Proc) & Required())
@@ -20,7 +20,7 @@ module Itsi
 
         def build!
           location.options[:hooks] ||= {}
-          location.options[:hooks][:before_fork] = @params
+          location.options[:hooks][:after_fork] = @params
         end
       end
     end

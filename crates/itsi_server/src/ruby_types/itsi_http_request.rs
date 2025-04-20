@@ -312,6 +312,10 @@ impl ItsiHttpRequest {
             .collect::<Vec<(&str, &str)>>())
     }
 
+    pub(crate) fn uri(&self) -> MagnusResult<String> {
+        Ok(self.parts.uri.to_string())
+    }
+
     pub fn header(&self, name: String) -> MagnusResult<Option<Vec<&str>>> {
         let result: Vec<&str> = self
             .parts
