@@ -159,7 +159,7 @@ impl SingleMode {
     pub fn start_monitors(
         self: Arc<Self>,
         thread_workers: Arc<Vec<Arc<ThreadWorker>>>,
-    ) -> magnus::Thread {
+    ) -> Option<magnus::Thread> {
         call_with_gvl(move |_| {
             create_ruby_thread(move || {
                 call_without_gvl(move || {
@@ -232,6 +232,11 @@ impl SingleMode {
 
         let (shutdown_sender, _) = watch::channel(RunningPhase::Running);
         let monitor_thread = self.clone().start_monitors(thread_workers.clone());
+        if monitor_thread.is_none() {
+            error!("Failed to start monitor thread");
+            return Err(ItsiError::new("Failed to start monitor thread"));
+        }
+        let monitor_thread = monitor_thread.unwrap();
         if SHUTDOWN_REQUESTED.load(Ordering::SeqCst) {
             return Ok(());
         }
@@ -289,6 +294,7 @@ impl SingleMode {
                             }
                             lifecycle_event = lifecycle_rx.recv() => match lifecycle_event{
                               Ok(LifecycleEvent::Shutdown) => {
+                                debug!("Received lifecycle event: {:?}", lifecycle_event);
                                 shutdown_sender.send(RunningPhase::ShutdownPending).unwrap();
                                 tokio::time::sleep(Duration::from_millis(25)).await;
                                 for _i in 0..workers_clone.len() {

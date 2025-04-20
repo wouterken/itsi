@@ -3,14 +3,14 @@ use crate::{
     services::itsi_http_service::HttpRequestContext,
 };
 
-use super::{ErrorResponse, FromValue, MiddlewareLayer};
+use super::{token_source::TokenSource, ErrorResponse, FromValue, MiddlewareLayer};
 use async_trait::async_trait;
 use either::Either;
 use itsi_error::ItsiError;
 use magnus::error::Result;
 use regex::RegexSet;
 use serde::Deserialize;
-use std::sync::OnceLock;
+use std::{collections::HashMap, sync::OnceLock};
 use tracing::debug;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -18,6 +18,7 @@ pub struct DenyList {
     #[serde(skip_deserializing)]
     pub denied_ips: OnceLock<RegexSet>,
     pub denied_patterns: Vec<String>,
+    pub trusted_proxies: HashMap<String, TokenSource>,
     #[serde(default = "forbidden_error_response")]
     pub error_response: ErrorResponse,
 }
@@ -41,9 +42,15 @@ impl MiddlewareLayer for DenyList {
         req: HttpRequest,
         context: &mut HttpRequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
+        let addr = if self.trusted_proxies.contains_key(&context.addr) {
+            let source = self.trusted_proxies.get(&context.addr).unwrap();
+            source.extract_token(&req).unwrap_or(&context.addr)
+        } else {
+            &context.addr
+        };
         if let Some(denied_ips) = self.denied_ips.get() {
-            if denied_ips.is_match(&context.addr) {
-                debug!(target: "middleware::deny_list", "IP address {} is not allowed", context.addr);
+            if denied_ips.is_match(addr) {
+                debug!(target: "middleware::deny_list", "IP address {} is not allowed", addr);
                 return Ok(Either::Right(
                     self.error_response
                         .to_http_response(req.accept().into())

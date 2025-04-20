@@ -25,7 +25,7 @@ pub fn schedule_thread() {
         rb_thread_schedule();
     };
 }
-pub fn create_ruby_thread<F>(f: F) -> Thread
+pub fn create_ruby_thread<F>(f: F) -> Option<Thread>
 where
     F: FnOnce() + Send + 'static,
 {
@@ -51,7 +51,7 @@ where
         let thread = rb_thread_create(Some(trampoline::<F>), ptr);
         rb_thread_wakeup(thread);
         rb_thread_schedule();
-        Thread::from_value(Value::from_raw(thread)).unwrap()
+        Thread::from_value(Value::from_raw(thread))
     }
 }
 
@@ -127,7 +127,8 @@ pub fn fork(after_fork: Option<HeapValue<Proc>>) -> Option<i32> {
     let fork_result = ruby
         .module_kernel()
         .funcall::<_, _, Option<i32>>(*ID_FORK, ())
-        .unwrap();
+        .ok()
+        .flatten();
     if fork_result.is_none() {
         if let Some(proc) = after_fork {
             call_proc_and_log_errors(proc)

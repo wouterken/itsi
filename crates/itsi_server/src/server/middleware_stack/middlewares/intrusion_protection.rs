@@ -4,6 +4,7 @@ use crate::services::rate_limiter::{
     get_ban_manager, get_rate_limiter, BanManager, RateLimiter, RateLimiterConfig,
 };
 
+use super::token_source::TokenSource;
 use super::{ErrorResponse, FromValue, MiddlewareLayer};
 
 use async_trait::async_trait;
@@ -34,6 +35,7 @@ pub struct IntrusionProtection {
     #[serde(skip_deserializing)]
     pub ban_manager: OnceLock<BanManager>,
     pub store_config: RateLimiterConfig,
+    pub trusted_proxies: HashMap<String, TokenSource>,
     #[serde(default = "forbidden_error_response")]
     pub error_response: ErrorResponse,
 }
@@ -103,7 +105,12 @@ impl MiddlewareLayer for IntrusionProtection {
         context: &mut HttpRequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
         // Get client IP address from context's service
-        let client_ip = &context.addr;
+        let client_ip = if self.trusted_proxies.contains_key(&context.addr) {
+            let source = self.trusted_proxies.get(&context.addr).unwrap();
+            source.extract_token(&req).unwrap_or(&context.addr)
+        } else {
+            &context.addr
+        };
 
         // Check if the IP is already banned
         if let Some(ban_manager) = self.ban_manager.get() {

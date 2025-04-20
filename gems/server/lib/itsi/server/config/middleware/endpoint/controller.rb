@@ -12,6 +12,21 @@ module Itsi
         schema do
           Type(Object) & Required()
         end
+
+        def initialize(location, controller=nil)
+          super
+
+          if controller
+            location.instance_eval{ @controller = controller}
+          end
+        end
+
+        def build!
+          if !@params
+            location.instance_eval{ @controller }
+          end
+        end
+
       end
     end
   end

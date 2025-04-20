@@ -63,17 +63,22 @@ use crate::server::http_message_types::HttpRequest;
 use crate::server::http_message_types::HttpResponse;
 use crate::services::itsi_http_service::HttpRequestContext;
 
+use std::collections::HashMap;
+use std::sync::Mutex;
+static CACHE: LazyLock<Mutex<HashMap<u64, Arc<dyn std::any::Any + Send + Sync>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+pub fn clear_value_cache() {
+    let mut cache = CACHE.lock().unwrap();
+    cache.clear();
+}
+
 pub trait FromValue: Sized + Send + Sync + 'static {
     fn from_value(value: Value) -> Result<Arc<Self>>
     where
         Self: Deserialize<'static>,
     {
-        use std::collections::HashMap;
-        use std::sync::Mutex;
-
         let raw = value.as_raw();
-        static CACHE: LazyLock<Mutex<HashMap<u64, Arc<dyn std::any::Any + Send + Sync>>>> =
-            LazyLock::new(|| Mutex::new(HashMap::new()));
 
         let mut cache = CACHE.lock().unwrap();
 

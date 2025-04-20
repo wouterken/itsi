@@ -5,10 +5,12 @@ use redis::{Client, RedisError, Script};
 use serde::Deserialize;
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
+use std::result::Result;
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::{Mutex as AsyncMutex, RwLock};
 use tokio::time::timeout;
+use tracing::warn;
 use url::Url;
 
 #[derive(Debug)]
@@ -144,14 +146,14 @@ impl RedisRateLimiter {
         let mut connection = (*self.connection).clone();
 
         // Set the ban with the reason as the value
-        let _: () = redis::cmd("SET")
+        let _: Result<(), RedisError> = redis::cmd("SET")
             .arg(&ban_key)
             .arg(reason)
             .arg("EX")
             .arg(timeout_secs)
             .query_async(&mut connection)
             .await
-            .map_err(RateLimitError::RedisError)?;
+            .inspect_err(|e| warn!("Exception banning IP {:?}", e));
 
         Ok(())
     }

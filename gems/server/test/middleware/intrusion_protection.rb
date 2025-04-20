@@ -198,4 +198,62 @@ class TestIntrusionProtection < Minitest::Test
       assert_equal "403", res5.code
     end
   end
+
+  # 7. Trusted proxy: bans applied based on forwarded IP
+  def test_trusted_proxy_bans_based_on_forwarded_ip
+    server(
+      itsi_rb: lambda do
+        intrusion_protection \
+          banned_url_patterns: ["/flagged"],
+          banned_time_seconds: 0.1,
+          trusted_proxies: {
+            "127.0.0.1" => { header: { name: "X-Forwarded-For" } }
+          },
+          store_config: "in_memory"
+        get("/flagged") { |r| r.ok "should not see" }
+        get("/okay")    { |r| r.ok "ok" }
+      end
+    ) do
+      # Request with client IP 203.0.113.42 via trusted proxy → triggers ban
+      res1 = get_resp("/flagged", { "X-Forwarded-For" => "203.0.113.42" })
+      assert_equal "403", res1.code
+
+      # Second request (same IP) still banned
+      res2 = get_resp("/flagged", { "X-Forwarded-For" => "203.0.113.42" })
+      assert_equal "403", res2.code
+
+      # Different client IP → not banned
+      res3 = get_resp("/flagged", { "X-Forwarded-For" => "203.0.113.99" })
+      assert_equal "403", res3.code  # path still matches; gets banned
+
+      # Wait for first ban to expire
+      sleep 0.11
+      res4 = get_resp("/okay", { "X-Forwarded-For" => "203.0.113.42" })
+      assert_equal "200", res4.code
+    end
+  end
+
+  # 8. Untrusted proxy: forwarded IP ignored; ban keyed by socket IP
+  def test_untrusted_proxy_ignores_forwarded_ip
+    server(
+      itsi_rb: lambda do
+        intrusion_protection \
+          banned_url_patterns: ["/banned"],
+          banned_time_seconds: 0.1,
+          trusted_proxies: {
+            "10.0.0.1" => { header: { name: "X-Forwarded-For" } }
+          },
+          store_config: "in_memory"
+        get("/banned") { |r| r.ok "nope" }
+      end
+    ) do
+      # This header is ignored (sender IP is not trusted)
+      res1 = get_resp("/banned", { "X-Forwarded-For" => "198.51.100.7" })
+      assert_equal "403", res1.code
+
+      # Banned again based on socket IP, not spoofed one
+      res2 = get_resp("/banned", { "X-Forwarded-For" => "198.51.100.99" })
+      assert_equal "403", res2.code
+    end
+  end
 end

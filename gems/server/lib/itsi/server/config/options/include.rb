@@ -12,8 +12,22 @@ module Itsi
         end
 
         def build!
-          code = IO.read("#{@params}.rb")
-          location.instance_eval(code, "#{@params}.rb", 1)
+          included_file = @params
+          location.instance_eval do
+            @included ||= []
+            @included << included_file
+
+            if @auto_reloading
+              if ENV["BUNDLE_BIN_PATH"]
+                watch "#{included_file}.rb", [%w[bundle exec itsi restart]]
+              else
+                watch "#{included_file}.rb", [%w[itsi restart]]
+              end
+            end
+          end
+
+          code = IO.read("#{included_file}.rb")
+          location.instance_eval(code, "#{included_file}.rb", 1)
         end
 
       end

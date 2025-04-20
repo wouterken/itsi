@@ -13,7 +13,7 @@ module Itsi
 
         schema do
           {
-            routes: Array(Type(String)),
+            routes: Array(Or(Type(String), Type(Regexp))),
             methods: Array(Type(String)),
             protocols: Array(Type(String)),
             schemes: Array(Type(String)),
@@ -41,6 +41,7 @@ module Itsi
           accepts: [],
           &block
         )
+
           @location = location
           params = self.schema.new({
             routes: routes,

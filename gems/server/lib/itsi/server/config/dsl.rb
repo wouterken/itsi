@@ -90,81 +90,7 @@ module Itsi
           rescue Config::Endpoint::InvalidHandlerException => e
             @errors << [e, "#{e.backtrace[0]}:in #{e.message}"]
           rescue => e
-            binding.b
             @errors << [e, caller[1]]
-          end
-        end
-
-        def post(route=nil, app_proc = nil, nonblocking: false, &blk)
-          endpoint(route, app_proc, http_methods: [:post], nonblocking: nonblocking,  &blk)
-        end
-
-        def put(route=nil, app_proc = nil, nonblocking: false, &blk)
-          endpoint(route, app_proc, http_methods: [:put], nonblocking: nonblocking,  &blk)
-        end
-
-        def delete(route=nil, app_proc = nil, nonblocking: false, &blk)
-          endpoint(route, app_proc, http_methods: [:delete], nonblocking: nonblocking,  &blk)
-        end
-
-        def patch(route=nil, app_proc = nil, nonblocking: false, &blk)
-          endpoint(route, app_proc, http_methods: [:patch], nonblocking: nonblocking,  &blk)
-        end
-
-        # def endpoint(route=nil, methods=[], app_proc = nil, nonblocking: false, &blk)
-        #   raise "You must provide either a block or an explicit handler for the endpoint" if app_proc.nil? && blk.nil?
-
-        #   app_proc = @controller.method(app_proc).to_proc if app_proc.is_a?(Symbol)
-
-        #   app_proc ||= blk
-
-        #   num_required, keywords = Itsi::Server::TypedHandlers::SourceParser.extract_expr_from_source_location(app_proc)
-        #   params_schema = keywords[:params]
-
-        #   if params_schema && num_required > 1
-        #     raise "Cannot accept multiple required parameters in a single endpoint. A single typed or untyped params argument is supported"
-        #   end
-        #   if num_required > 2
-        #     raise "Cannot accept more than two required parameters in a single endpoint. An can either accept a single request argument, or a request and a params argument (which may be typed or untyped)"
-        #   end
-        #   if num_required == 0
-        #     raise "Cannot accept zero required parameters in a single endpoint. Endpoint must accept a request parameter"
-        #   end
-
-        #   accepts_params = !params_schema.nil? || num_required > 1
-
-        #   if accepts_params
-        #     app_proc = Itsi::Server::TypedHandlers.handler_for(app_proc, params_schema)
-        #   end
-
-        #   if route || http_methods.any?
-        #     # For endpoints, it's usually assumed trailing slash and non-trailing slash behaviour is the same
-        #     route ||= ""
-        #     routes = route == "/" ? ["", "/"] : [route]
-        #     location(*routes, methods: http_methods) do
-        #       @middleware[:app] = { preloader: -> { app_proc }, nonblocking: nonblocking }
-        #     end
-        #   else
-        #     app = { preloader: -> { app_proc }, nonblocking: nonblocking }
-        #     @middleware[:app] = app
-        #     location("*") do
-        #       @middleware[:app] = app
-        #     end
-        #   end
-        # end
-
-        def grpc(*handlers, reflection: true, nonblocking: false, **, &blk)
-          if @middleware[:app] && @middleware[:app][:request_type].to_s != "grpc"
-            raise "App has already been set. You can use only one of `run` and `rackup_file` or `grpc` per location"
-          end
-
-          grpc_reflection(handlers) if reflection
-
-          handlers.each do |handler|
-            location(Regexp.new("#{Regexp.escape(handler.class.service_name)}/(?:#{handler.class.rpc_descs.keys.map(&:to_s).join("|")})")) do
-              @middleware[:app] = { preloader: -> { Itsi::Server::GrpcInterface.for(handler) }, request_type: "grpc", nonblocking: nonblocking }
-              instance_exec(&blk)
-            end
           end
         end
 
@@ -172,28 +98,11 @@ module Itsi
           @grpc_reflected_services ||= []
           @grpc_reflected_services.concat(handlers)
 
-          location(["grpc.reflection.v1alpha.ServerReflection/ServerReflectionInfo",
-                    "grpc.reflection.v1.ServerReflection/ServerReflectionInfo"]) do
+          location("grpc.reflection.v1alpha.ServerReflection/ServerReflectionInfo",
+                    "grpc.reflection.v1.ServerReflection/ServerReflectionInfo") do
             @middleware[:app] = { preloader: lambda {
               Itsi::Server::GrpcInterface.reflection_for(handlers)
             }, request_type: "grpc" }
-          end
-        end
-
-        def rackup_file(rackup_file, nonblocking: false, sendfile: true)
-          raise "Rackup file #{rackup_file} doesn't exist" unless File.exist?(rackup_file)
-          app_args = { preloader: -> { Itsi::Server::RackInterface.for(rackup_file) }, sendfile: sendfile, base_path: "^(?<base_path>#{paths_from_parent.gsub(/\.\*\)$/, ')')}).*$", nonblocking: nonblocking }
-          @middleware[:app] = app_args
-          location("*") do
-            @middleware[:app] = app_args
-          end
-        end
-
-        def controller(controller=nil)
-          if controller
-            @controller = controller
-          else
-            @controller
           end
         end
 

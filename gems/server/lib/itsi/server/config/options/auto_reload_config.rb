@@ -17,6 +17,15 @@ module Itsi
           location.instance_eval do
             return if @auto_reloading
 
+            if @included
+              @included.each do |file|
+                if ENV["BUNDLE_BIN_PATH"]
+                  watch "#{file}.rb", [%w[bundle exec itsi restart]]
+                else
+                  watch "#{file}.rb", [%w[itsi restart]]
+                end
+              end
+            end
             @auto_reloading = true
 
             if ENV["BUNDLE_BIN_PATH"]

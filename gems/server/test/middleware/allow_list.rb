@@ -73,4 +73,56 @@ class TestAllowList < Minitest::Test
       assert_equal "No access", res.body
     end
   end
+
+  # 4. Trusted proxies: extract client IP from header if proxy is trusted
+   def test_trusted_proxy_allows_based_on_header
+     server(
+       itsi_rb: lambda do
+         allow_list \
+           allowed_patterns: ["^203\\.0\\.113\\.7$"],  # only allow this client IP
+           trusted_proxies: {
+             "127.0.0.1" => { header: { name: "X-Forwarded-For" } }
+           }
+         get("/trusted") { |r| r.ok "trusted" }
+       end
+     ) do
+       res = get_resp("/trusted", { "X-Forwarded-For" => "203.0.113.7" })
+       assert_equal "200", res.code
+       assert_equal "trusted", res.body
+     end
+   end
+
+   def test_trusted_proxy_denies_if_forwarded_ip_does_not_match
+     server(
+       itsi_rb: lambda do
+         allow_list \
+           allowed_patterns: ["^203\\.0\\.113\\.7$"],  # only allow this
+           trusted_proxies: {
+             "127.0.0.1" => { header: { name: "X-Forwarded-For" } }
+           }
+         get("/trusted") { |r| r.ok "nope" }
+       end
+     ) do
+       # Send a forwarded IP that doesn't match the allow list
+       res = get_resp("/trusted", { "X-Forwarded-For" => "192.0.2.55" })
+       assert_equal "403", res.code
+     end
+   end
+
+   def test_untrusted_proxy_ignores_forwarded_ip
+     server(
+       itsi_rb: lambda do
+         allow_list \
+           allowed_patterns: ["^203\\.0\\.113\\.7$"],  # client IP matches, but header is ignored
+           trusted_proxies: {
+             "10.0.0.1" => { header: { name: "X-Forwarded-For" } } # current proxy (127.0.0.1) is not trusted
+           }
+         get("/trusted") { |r| r.ok "never" }
+       end
+     ) do
+       res = get_resp("/trusted", { "X-Forwarded-For" => "203.0.113.7" })
+       # Since proxy is untrusted, header is ignored, and 127.0.0.1 is checked (not allowed)
+       assert_equal "403", res.code
+     end
+   end
 end

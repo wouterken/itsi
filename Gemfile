@@ -26,5 +26,5 @@ group :development, :test do
   gem 'iodine'
   gem 'falcon'
   gem 'rb_sys', '~> 0.9.91'
-
+  gem "grpc"
 end

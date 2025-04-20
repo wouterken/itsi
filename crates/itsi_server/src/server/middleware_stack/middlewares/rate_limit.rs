@@ -8,6 +8,7 @@ use async_trait::async_trait;
 use either::Either;
 use magnus::error::Result;
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 use tracing::{debug, error, warn};
@@ -20,6 +21,7 @@ pub struct RateLimit {
     #[serde(skip_deserializing)]
     pub rate_limiter: OnceLock<Arc<dyn RateLimiter>>,
     pub store_config: RateLimiterConfig,
+    pub trusted_proxies: HashMap<String, TokenSource>,
     #[serde(default = "too_many_requests_error_response")]
     pub error_response: ErrorResponse,
 }
@@ -56,7 +58,12 @@ impl MiddlewareLayer for RateLimit {
         let key_value = match &self.key {
             RateLimitKey::SocketAddress => {
                 // Use the socket address from the context
-                &context.addr
+                if self.trusted_proxies.contains_key(&context.addr) {
+                    let source = self.trusted_proxies.get(&context.addr).unwrap();
+                    source.extract_token(&req).unwrap_or(&context.addr)
+                } else {
+                    &context.addr
+                }
             }
             RateLimitKey::Parameter(token_source) => {
                 match token_source {

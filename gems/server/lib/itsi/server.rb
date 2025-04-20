@@ -240,9 +240,13 @@ module Itsi
       end
 
       def load_route_middleware_stack(cli_params)
-        Config.build_config(cli_params, Itsi::Server::Config.config_file_path(cli_params[:config_file_path])).first[
-          "middleware_loader"
-          ][]
+        middleware, errors = Config.build_config(cli_params, Itsi::Server::Config.config_file_path(cli_params[:config_file_path]))
+        if errors.any?
+          puts errors
+          []
+        else
+          middleware["middleware_loader"][]
+        end
       end
 
       def test_route(cli_params, route_str)

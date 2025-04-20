@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package test;
+
+// A service with one of each RPC type  [oai_citation_attribution:0‡Википедия — свободная энциклопедия](https://ru.wikipedia.org/wiki/GRPC?utm_source=chatgpt.com)
+service TestService {
+  // Unary RPC
+  rpc UnaryEcho (EchoRequest) returns (EchoResponse) {}
+
+  // Client‑streaming RPC
+  rpc ClientStream (stream StreamRequest) returns (StreamResponse) {}
+
+  // Server‑streaming RPC
+  rpc ServerStream (EchoRequest) returns (stream StreamResponse) {}
+
+  // Bidirectional streaming RPC
+  rpc BidiStream (stream EchoRequest) returns (stream EchoResponse) {}
+}
+
+message EchoRequest {
+  string message = 1;
+}
+message EchoResponse {
+  string message = 1;
+}
+
+message StreamRequest {
+  string message = 1;
+}
+message StreamResponse {
+  repeated string messages = 1;
+}

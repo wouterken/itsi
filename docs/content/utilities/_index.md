@@ -1,5 +1,8 @@
 ---
 title: Utilities
+type: docs
+prev: faqs/
+next: itsi_scheduler/
 ---
 Itsi comes bundled with several utilities for testing and development purposes.
 

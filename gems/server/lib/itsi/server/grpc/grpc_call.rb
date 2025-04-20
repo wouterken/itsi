@@ -74,7 +74,6 @@ module Itsi
 
           break
         end
-
         # The next non-whitespace, non-comma character should be the start of an object.
         return nil unless char == "{"
 
@@ -89,6 +88,7 @@ module Itsi
           return nil if ch.nil? # premature end of stream
 
           buffer << ch
+
 
           if in_string
             if escape

@@ -100,3 +100,27 @@ When a request **exceeds** the allowed rate, the middleware returns your configu
    - **Redis**: atomic `INCR` + `EXPIRE` commands, shared across all workers.
 
 Place `rate_limit` anywhere in your routing DSL to apply it to all downstream handlers in that scope.
+
+
+## Trusted Proxies
+
+By default, a rate limiter middleware uses the IP address from the underlying socket (remote_addr). However, if your server is behind a reverse proxy, all requests will appear to come from the proxy’s IP address. This can break IP-based rules or cause rate-limiting to group all users together.
+
+To address this, you can declare trusted proxies and instruct the server to extract the original client IP from forwarded headers only if the request came from one of these proxies.
+
+
+### Configuring trusted_proxies
+
+To trust one or more upstream proxies, provide a trusted_proxies map in the middleware configuration.
+E.g.
+```ruby {filename=Itsi.rb}
+rate_limit \
+  requests: 100,                   # max 100 requests
+  seconds: 60,                     # per 60‑second window
+  key: "address",                  # limit by client IP
+  store_config: "in_memory",       # use local in‑memory store
+  error_response: "too_many_requests",
+  trusted_proxies: {
+    "192.168.1.1" => { header: { name: "X-Forwarded-For" } }
+  }
+```

@@ -102,7 +102,7 @@ module Itsi
           Server.write_pid
         end
 
-        config = {
+        srv_config = {
           workers: args.fetch(:workers) { itsifile_config.fetch(:workers, 1) },
           worker_memory_limit: args.fetch(:worker_memory_limit) { itsifile_config.fetch(:worker_memory_limit, nil) },
           silence: args.fetch(:silence) { itsifile_config.fetch(:silence, false) },
@@ -166,7 +166,8 @@ module Itsi
               *info_lines
             ]
           end
-        return config, error_lines
+
+        return srv_config, error_lines
       rescue
         Itsi.log_error e.message
         puts e.backtrace

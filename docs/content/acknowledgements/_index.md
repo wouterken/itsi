@@ -1,6 +1,7 @@
 ---
 title: Acknowledgements
 type: docs
+prev: itsi_scheduler/
 sidebar:
   exclude: true
 ---

@@ -73,4 +73,59 @@ class TestDenyList < Minitest::Test
       assert_equal "Blocked by IP", res.body
     end
   end
+
+  # 4. Trusted proxies: extract client IP from header if proxy is trusted
+  def test_trusted_proxy_denies_based_on_header
+    server(
+      itsi_rb: lambda do
+        deny_list \
+          denied_patterns: ["^198\\.51\\.100\\.9$"],
+          trusted_proxies: {
+            "127.0.0.1" => { header: { name: "X-Forwarded-For" } }
+          }
+        get("/deny") { |r| r.ok "shouldn't see" }
+      end
+    ) do
+      # Header says user is 198.51.100.9, which is denied
+      res = get_resp("/deny", { "X-Forwarded-For" => "198.51.100.9" })
+      assert_equal "403", res.code
+    end
+  end
+
+  def test_trusted_proxy_allows_if_forwarded_ip_not_denied
+    server(
+      itsi_rb: lambda do
+        deny_list \
+          denied_patterns: ["^198\\.51\\.100\\.9$"],  # deny this IP
+          trusted_proxies: {
+            "127.0.0.1" => { header: { name: "X-Forwarded-For" } }
+          }
+        get("/deny") { |r| r.ok "welcome" }
+      end
+    ) do
+      # Header says user is 198.51.100.10, which is not denied
+      res = get_resp("/deny", { "X-Forwarded-For" => "198.51.100.10" })
+      assert_equal "200", res.code
+      assert_equal "welcome", res.body
+    end
+  end
+
+  def test_untrusted_proxy_ignores_forwarded_ip
+    server(
+      itsi_rb: lambda do
+        deny_list \
+          denied_patterns: ["^198\\.51\\.100\\.9$"],
+          trusted_proxies: {
+            "10.0.0.1" => { header: { name: "X-Forwarded-For" } } # current sender not trusted
+          }
+        get("/deny") { |r| r.ok "should be denied by socket IP" }
+      end
+    ) do
+      # Because 127.0.0.1 is not trusted, header is ignored and socket IP (which matches ^127) is not denied
+      # But 127.0.0.1 isn't in the denied_patterns, so it's allowed
+      res = get_resp("/deny", { "X-Forwarded-For" => "198.51.100.9" })
+      assert_equal "200", res.code
+      assert_equal "should be denied by socket IP", res.body
+    end
+  end
 end

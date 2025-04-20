@@ -4,6 +4,7 @@ module Itsi
       class AllowList < Middleware
         require_relative "error_response"
         require_relative "cidr_to_regex"
+        require_relative "token_source"
 
         include CidrToRegex
 
@@ -18,7 +19,8 @@ module Itsi
         schema do
           {
             allowed_patterns: Array(Type(String)) & Required(),
-            error_response: Type(ErrorResponseDef).default("forbidden")
+            error_response: Type(ErrorResponseDef).default("forbidden"),
+            trusted_proxies: (Hash(Type(String), Type(TokenSource)) & Required()).default({}),
           }
         end
 

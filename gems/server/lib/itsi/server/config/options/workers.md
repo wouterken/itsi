@@ -1,7 +1,7 @@
 ---
 title: Workers
 url: /options/workers
-prev: options
+next: middleware/
 ---
 Itsi is a preforking server. It can run as either a single process (`workers 1`) or in clustered mode (`workers > 1`).
 <br/>You can switch between the two without downtime.

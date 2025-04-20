@@ -21,8 +21,19 @@ Endpoints also support:
 * Controllers. See [Controllers](/middleware/controller)
 
 ## Usage
-Endpoint functions must accept a mandatory request object (See [Request](/middleware/http_request))
-and an optional params object.
+Endpoints require an optional path (default "*") and a handler proc or function, which must accept a mandatory request object (See [Request](/middleware/http_request)) and an optional params object.
+
+
+```ruby {filename=Itsi.rb}
+# A routeless endpoint is the same as a 'catch-all' endpoint.
+# E.g. this:
+get do |req|
+end
+
+# Is equivalent to this:
+get "*" do |req|
+end
+```
 
 The request object itself holds a reference [`#response`](/middleware/http_response) object, which can be used to manage the response explicitly.
 
@@ -36,11 +47,15 @@ There are several ways to write and close a response.
 **Simple Responses**
 * `request#respond`.
 ```ruby
-req.respond "ok", 200, {} # All params are optional, and can also use named kwargs instead of positional args
+get do |req|
+  req.respond "ok", 200, {} # All params are optional, and can also use named kwargs instead of positional args
+end
 ```
 * respond + status aliases. E.g. `request#ok`, `request#created`, `request#not_found`
 ```ruby
-req.ok "ok", {} # All params are optional, and can also use named kwargs instead of positional args
+get do |req|
+  req.ok "ok", {} # All params are optional, and can also use named kwargs instead of positional args
+end
 ```
 
 **Low-level responses** (for low-level control over long-lived requests)

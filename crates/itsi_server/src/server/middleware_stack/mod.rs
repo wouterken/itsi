@@ -135,6 +135,8 @@ impl MiddlewareStack {
 impl MiddlewareSet {
     pub fn new(routes_raw: Option<HeapVal>) -> Result<Self> {
         let mut unique_middlewares = HashMap::new();
+        clear_value_cache();
+
         if let Some(routes_raw) = routes_raw {
             let mut stacks = HashMap::new();
             let mut routes = vec![];
@@ -210,6 +212,9 @@ impl MiddlewareSet {
                     .collect::<Result<Vec<_>>>()?;
                 routes.push(route_raw);
                 layers.sort();
+
+                debug!("Middleware at index: {} has layers: {:?}", index, layers);
+
                 stacks.insert(
                     index,
                     MiddlewareStack {

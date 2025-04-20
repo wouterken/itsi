@@ -1,7 +1,7 @@
 ---
 title: Middleware
 type: docs
-next: /features/server/lib/itsi/server/config/options/workers/
+next: faqs/
 url: /middleware
 prev: options/
 cascade:

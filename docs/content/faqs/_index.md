@@ -1,6 +1,8 @@
 ---
 title: F.A.Qs
 type: docs
+prev: middleware/
+next: utilities/
 ---
 
 {{% details title="Is it just for Ruby applications?" closed="true" %}}

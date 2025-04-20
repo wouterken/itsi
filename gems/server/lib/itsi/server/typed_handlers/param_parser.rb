@@ -23,21 +23,21 @@ module Itsi
             case v
             when true, 'true', '1', 1 then true
             when false, 'false', '0', 0 then false
-            else raise "Cannot cast #{v.inspect} to Boolean"
+            else raise ValidationError.new("Cannot cast #{v.inspect} to Boolean")
             end
           },
           FalseClass => ->(v){
             case v
             when true, 'true', '1', 1 then true
             when false, 'false', '0', 0 then false
-            else raise "Cannot cast #{v.inspect} to Boolean"
+            else raise ValidationError.new("Cannot cast #{v.inspect} to Boolean")
             end
           },
           :Boolean  => ->(v){
             case v
             when true, 'true', '1', 1 then true
             when false, 'false', '0', 0 then false
-            else raise "Cannot cast #{v.inspect} to Boolean"
+            else raise ValidationError.new("Cannot cast #{v.inspect} to Boolean")
             end
           },
           Date      => ->(v){ Date.parse(v.to_s) },

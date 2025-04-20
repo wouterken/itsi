@@ -158,4 +158,54 @@ class TestRateLimit < Minitest::Test
       client.flushdb
     end
   end
+
+  # 8. Trusted proxy: forwarded IP is used for rate limit key
+  def test_trusted_proxy_respects_forwarded_ip
+    server(
+      itsi_rb: lambda do
+        rate_limit \
+          requests: 1,
+          seconds: 60,
+          trusted_proxies: {
+            "127.0.0.1" => { header: { name: "X-Forwarded-For" } }
+          }
+        get("/ip") { |r| r.ok "ok" }
+      end
+    ) do
+      # First IP: allowed
+      res1 = get_resp("/ip", { "X-Forwarded-For" => "198.51.100.1" })
+      assert_equal "200", res1.code
+
+      # Second hit from same client IP: blocked
+      res2 = get_resp("/ip", { "X-Forwarded-For" => "198.51.100.1" })
+      assert_equal "429", res2.code
+
+      # Third hit from *different* IP: allowed
+      res3 = get_resp("/ip", { "X-Forwarded-For" => "198.51.100.2" })
+      assert_equal "200", res3.code
+    end
+  end
+
+  # 9. Untrusted proxy: forwarded header is ignored
+  def test_untrusted_proxy_ignores_forwarded_ip
+    server(
+      itsi_rb: lambda do
+        rate_limit \
+          requests: 1,
+          seconds: 60,
+          trusted_proxies: {
+            "10.0.0.1" => { header: { name: "X-Forwarded-For" } }
+          }
+        get("/untrusted") { |r| r.ok "ok" }
+      end
+    ) do
+      # Even though header says different IP, it’s ignored (127.0.0.1 is used)
+      res1 = get_resp("/untrusted", { "X-Forwarded-For" => "198.51.100.1" })
+      assert_equal "200", res1.code
+
+      # Still treated as same client (127.0.0.1), so next request is blocked
+      res2 = get_resp("/untrusted", { "X-Forwarded-For" => "198.51.100.2" })
+      assert_equal "429", res2.code
+    end
+  end
 end

@@ -1,6 +1,7 @@
 ---
 title: Secrets Management
 type: docs
+next: utilities/
 ---
 
 You can use Itsi to generate secrets for use within [JWT](/middleware/auth_jwt) middleware.

@@ -42,6 +42,7 @@ impl ItsiServer {
 
     #[instrument(skip(self))]
     pub fn start(&self) -> Result<()> {
+        self.config.lock().server_params.read().setup_listeners()?;
         let result = if self.config.lock().server_params.read().silence {
             run_silently(|| self.build_and_run_strategy())
         } else {

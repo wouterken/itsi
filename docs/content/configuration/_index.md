@@ -3,7 +3,7 @@ title: Configuration
 type: docs
 weight: 3
 next: options/
-prev: getting_started/logging
+prev: getting_started/
 ---
 
 ## Itsi.rb

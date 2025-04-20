@@ -3,14 +3,16 @@ title: HTTP Request
 url: /middleware/http_request
 ---
 
-An [endpoint](/middleware/endpoint), always accepts a  `request` object as the first paramter.
+An [endpoint](/middleware/endpoint), always accepts a  `request` object as the first parameter.
 E.g.
 
 ```ruby {filename=Itsi.rb}
 get "/" do |req|
-
 end
 ```
+
+
+end
 
 | Method           | Description                                                                 |
 |------------------|-----------------------------------------------------------------------------|

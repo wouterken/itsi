@@ -48,13 +48,14 @@ def server(app: nil, protocol: "http", bind: free_bind(protocol), itsi_rb: nil, 
 
   sync.pop
   uri = URI(bind)
-  Timeout.timeout(timeout) do
+  # Timeout.timeout(timeout) do
     RequestContext.new(uri, self).instance_exec(uri, &blk)
-  end
+  # end
 rescue StandardError => e
   puts e
-  puts e.message
-  puts e.backtrace.join("\n")
+  # puts e.message
+  # puts e.backtrace.join("\n")
+  raise
 ensure
   Itsi::Server.stop_background_threads if cleanup
 end

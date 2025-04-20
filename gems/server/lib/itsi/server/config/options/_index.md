@@ -1,7 +1,7 @@
 ---
 title: Options
 type: docs
-next: /options/server/lib/itsi/server/config/options/workers/
+next: middleware/
 url: /options
 prev: configuration/
 cascade:

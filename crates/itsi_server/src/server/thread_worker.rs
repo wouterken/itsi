@@ -1,4 +1,5 @@
 use async_channel::Sender;
+use itsi_error::ItsiError;
 use itsi_rb_helpers::{
     call_with_gvl, call_without_gvl, create_ruby_thread, kill_threads, HeapValue,
 };
@@ -198,6 +199,9 @@ impl ThreadWorker {
                         self_ref.accept_loop(params, name, receiver, terminated);
                     }
                 })
+                .ok_or_else(|| {
+                    ItsiError::InternalServerError("Failed to create Ruby thread".to_owned())
+                })?
                 .into(),
             );
             Ok::<(), magnus::Error>(())

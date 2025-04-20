@@ -23,13 +23,14 @@ module Itsi
       def initialize(service)
         @service = service
         @service_class = service.class
-        @service_class.rpc_descs.transform_keys! do |k|
+        @rpc_descs = @service_class.rpc_descs.transform_keys do |k|
           k.to_s.gsub(/([a-z])([A-Z])/, "\\1_\\2").downcase.to_sym
         end
       end
 
       def handle_request(active_call)
-        unless (active_call.rpc_desc = service_class.rpc_descs[active_call.method_name])
+        puts "Handling active call"
+        unless (active_call.rpc_desc = @rpc_descs[active_call.method_name])
           active_call.stream.write("\n")
           active_call.send_status(13, "Method not found")
           active_call.close
@@ -85,14 +86,20 @@ module Itsi
 
       def handle_server_streaming(active_call)
         message = active_call.remote_read
-        service.send(active_call.method_name, message, active_call) do |response|
+        result = service.send(active_call.method_name, message, active_call) do |response|
           active_call.remote_send(response)
+        end
+        if result.kind_of?(Enumerator)
+          result.each { |response| active_call.remote_send(response) }
         end
       end
 
       def handle_bidi_streaming(active_call)
-        service.send(active_call.method_name, active_call.each_remote_read, active_call) do |response|
+        result = service.send(active_call.method_name, active_call.each_remote_read, active_call) do |response|
           active_call.remote_send(response)
+        end
+        if result.kind_of?(Enumerator)
+          result.each { |response| active_call.remote_send(response) }
         end
       end
     end

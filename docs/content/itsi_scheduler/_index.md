@@ -4,6 +4,8 @@ type: docs
 weight: 4
 sidebar:
   exclude: true
+prev: utilities/
+next: acknowledgements/
 ---
 <img src="itsi-scheduler-100.png"  width="80px" style="display: block; margin-left: auto; margin-right: auto;">
 

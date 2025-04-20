@@ -49,6 +49,7 @@ fn receive_signal(signum: i32, _: sighandler_t) {
 pub fn reset_signal_handlers() -> bool {
     SIGINT_COUNT.store(0, std::sync::atomic::Ordering::SeqCst);
     SHUTDOWN_REQUESTED.store(false, std::sync::atomic::Ordering::SeqCst);
+
     unsafe {
         libc::signal(libc::SIGTERM, receive_signal as usize);
         libc::signal(libc::SIGINT, receive_signal as usize);

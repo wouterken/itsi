@@ -26,7 +26,10 @@ use std::{
     os::fd::{AsRawFd, OwnedFd, RawFd},
     path::PathBuf,
     str::FromStr,
-    sync::{Arc, OnceLock},
+    sync::{
+        atomic::{AtomicBool, Ordering::Relaxed},
+        Arc, OnceLock,
+    },
     time::Duration,
 };
 use tracing::{debug, error};
@@ -73,6 +76,9 @@ pub struct ServerParams {
     pub(crate) listeners: Mutex<Vec<Listener>>,
     listener_info: Mutex<HashMap<String, i32>>,
     pub itsi_server_token_preference: ItsiServerTokenPreference,
+    pub preloaded: AtomicBool,
+    socket_opts: SocketOpts,
+    preexisting_listeners: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -95,6 +101,7 @@ impl FromStr for ItsiServerTokenPreference {
     type Err = ItsiError;
 }
 
+#[derive(Debug, Clone)]
 pub struct SocketOpts {
     pub reuse_address: bool,
     pub reuse_port: bool,
@@ -105,6 +112,9 @@ pub struct SocketOpts {
 
 impl ServerParams {
     pub fn preload_ruby(self: &Arc<Self>) -> Result<()> {
+        if self.preloaded.load(Relaxed) {
+            return Ok(());
+        }
         call_with_gvl(|ruby| -> Result<()> {
             if self
                 .scheduler_class
@@ -133,6 +143,7 @@ impl ServerParams {
             })?;
             Ok(())
         })?;
+        self.preloaded.store(true, Relaxed);
         Ok(())
     }
 
@@ -258,50 +269,9 @@ impl ServerParams {
             nodelay,
             recv_buffer_size,
         };
-        let listeners = if let Some(preexisting_listeners) =
-            rb_param_hash.delete::<_, Option<String>>("listeners")?
-        {
-            let bind_to_fd_map: HashMap<String, i32> = serde_json::from_str(&preexisting_listeners)
-                .map_err(|e| {
-                    magnus::Error::new(
-                        magnus::exception::standard_error(),
-                        format!("Invalid listener info: {}", e),
-                    )
-                })?;
+        let preexisting_listeners = rb_param_hash.delete::<_, Option<String>>("listeners")?;
 
-            binds
-                .iter()
-                .cloned()
-                .map(|bind| {
-                    if let Some(fd) = bind_to_fd_map.get(&bind.listener_address_string()) {
-                        Listener::inherit_fd(bind, *fd, &socket_opts)
-                    } else {
-                        Listener::build(bind, &socket_opts)
-                    }
-                })
-                .collect::<std::result::Result<Vec<Listener>, _>>()?
-                .into_iter()
-                .collect::<Vec<_>>()
-        } else {
-            binds
-                .iter()
-                .cloned()
-                .map(|b| Listener::build(b, &socket_opts))
-                .collect::<std::result::Result<Vec<Listener>, _>>()?
-                .into_iter()
-                .collect::<Vec<_>>()
-        };
-
-        let listener_info = listeners
-            .iter()
-            .map(|listener| {
-                listener.handover().map_err(|e| {
-                    magnus::Error::new(magnus::exception::runtime_error(), e.to_string())
-                })
-            })
-            .collect::<Result<HashMap<String, i32>>>()?;
-
-        Ok(ServerParams {
+        let params = ServerParams {
             workers,
             worker_memory_limit,
             silence,
@@ -320,11 +290,63 @@ impl ServerParams {
             oob_gc_responses_threshold,
             binds,
             itsi_server_token_preference,
-            listener_info: Mutex::new(listener_info),
-            listeners: Mutex::new(listeners),
+            socket_opts,
+            preexisting_listeners,
+            listener_info: Mutex::new(HashMap::new()),
+            listeners: Mutex::new(Vec::new()),
             middleware_loader: middleware_loader.into(),
             middleware: OnceLock::new(),
-        })
+            preloaded: AtomicBool::new(false),
+        };
+
+        Ok(params)
+    }
+
+    pub fn setup_listeners(&self) -> Result<()> {
+        let listeners = if let Some(preexisting_listeners) = self.preexisting_listeners.as_ref() {
+            let bind_to_fd_map: HashMap<String, i32> = serde_json::from_str(preexisting_listeners)
+                .map_err(|e| {
+                    magnus::Error::new(
+                        magnus::exception::standard_error(),
+                        format!("Invalid listener info: {}", e),
+                    )
+                })?;
+
+            self.binds
+                .iter()
+                .cloned()
+                .map(|bind| {
+                    if let Some(fd) = bind_to_fd_map.get(&bind.listener_address_string()) {
+                        Listener::inherit_fd(bind, *fd, &self.socket_opts)
+                    } else {
+                        Listener::build(bind, &self.socket_opts)
+                    }
+                })
+                .collect::<std::result::Result<Vec<Listener>, _>>()?
+                .into_iter()
+                .collect::<Vec<_>>()
+        } else {
+            self.binds
+                .iter()
+                .cloned()
+                .map(|b| Listener::build(b, &self.socket_opts))
+                .collect::<std::result::Result<Vec<Listener>, _>>()?
+                .into_iter()
+                .collect::<Vec<_>>()
+        };
+
+        let listener_info = listeners
+            .iter()
+            .map(|listener| {
+                listener.handover().map_err(|e| {
+                    magnus::Error::new(magnus::exception::runtime_error(), e.to_string())
+                })
+            })
+            .collect::<Result<HashMap<String, i32>>>()?;
+
+        *self.listener_info.lock() = listener_info;
+        *self.listeners.lock() = listeners;
+        Ok(())
     }
 }
 

@@ -116,7 +116,10 @@ module Itsi
         headers ||= {}
         headers["Content-Type"] ||= "text/plain"
       end
+
       response.respond(status: status, headers: headers, body: body, hijack: hijack, &blk)
+
+
     end
 
     def hijack
@@ -175,14 +178,22 @@ module Itsi
       else
         yield validated
       end
-
-    rescue StandardError => e
-      Itsi.log_error e.message
-      puts e.backtrace
+    rescue ValidationError => e
       if response.json?
         respond(json: {error: e.message}, status: 400)
       else
         respond(e.message, 400)
+      end
+    rescue StandardError => e
+      Itsi.log_error e.message
+      puts e.backtrace
+
+      # Unexpected error.
+      # Don't reveal potential sensitive information to client.
+      if response.json?
+        respond(json: {error: "Internal Server Error"}, status: 500)
+      else
+        respond("Internal Server Error", 500)
       end
     ensure
       clean_temp_files(params)

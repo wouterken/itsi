@@ -30,7 +30,7 @@ intrusion_protection \
   error_response: "forbidden"
 ```
 
-### Using Known‑Paths Helpers
+### Using `KnownPaths` Helpers
 
 Itsi provides a `KnownPaths` module with many pre‑assembled lists of common attack targets taken from [FuzzDB](https://blog.mozilla.org/security/2013/08/16/introducing-fuzzdb/) (e.g. typical login or backup file locations). Each helper returns an `Array<String>` you can pass directly:
 
@@ -74,6 +74,8 @@ in a REPL or see the raw input files [here](https://github.com/wouterken/itsi/tr
   Backend for counters and ban state.
 - **error_response** (String or detailed ErrorResponse)
   Response returned on detection or if IP is already banned (default: `forbidden`).
+- **trusted_proxies** (Hash<String,Hash>)
+  Map of trusted proxy IP addresses to their forwarded header configuration.
 
 ## How It Works
 
@@ -89,3 +91,34 @@ in a REPL or see the raw input files [here](https://github.com/wouterken/itsi/tr
    - Otherwise, allow the request to proceed.
 
 Banned IPs are automatically un‑banned after the specified TTL.
+
+## Trusted Proxies
+
+By default, an intrusion protection middleware uses the IP address from the underlying socket (remote_addr). However, if your server is behind a reverse proxy, all requests will appear to come from the proxy’s IP address. This can break IP-based rules or cause rate-limiting to group all users together.
+
+To address this, you can declare trusted proxies and instruct the server to extract the original client IP from forwarded headers only if the request came from one of these proxies.
+
+
+### Configuring trusted_proxies
+
+To trust one or more upstream proxies, provide a trusted_proxies map in the middleware configuration.
+E.g.
+```ruby {filename=Itsi.rb}
+intrusion_protection \
+  banned_url_patterns: [
+    "/admin/login",         # brute‑force login attempts
+    /\.php$/               # any PHP‑extension request
+  ],
+  banned_header_patterns: {
+    "User-Agent" => [
+      "sqlmap",             # SQL injection scanner
+      "curl"                # script‑based probing
+    ]
+  },
+  banned_time_seconds: 300, # ban for 5 minutes
+  store_config: "in_memory",# or { redis: { connection_url: "redis://…" } }
+  error_response: "forbidden",
+  trusted_proxies: {
+    "192.168.1.1" => { header: { name: "X-Forwarded-For" } }
+  }
+```

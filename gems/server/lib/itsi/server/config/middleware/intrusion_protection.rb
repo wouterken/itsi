@@ -4,6 +4,7 @@ module Itsi
       class IntrusionProtection < Middleware
 
         require_relative "rate_limit_store"
+        require_relative "token_source"
 
         insert_text <<~SNIPPET
         intrusion_protection \\
@@ -24,7 +25,8 @@ module Itsi
             banned_time_seconds: Type(Float).default(300),
             store_config: (Required() & Or(Enum(["in_memory"]), Type(RateLimitStore))).default("in_memory"),
             error_response: Type(ErrorResponseDef).default("forbidden"),
-            combine: Bool().default(true)
+            combine: Bool().default(true),
+            trusted_proxies: (Hash(Type(String), Type(TokenSource)) & Required()).default({})
           }
         end
 

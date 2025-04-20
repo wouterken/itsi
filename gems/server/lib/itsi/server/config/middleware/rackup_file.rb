@@ -20,7 +20,7 @@ module Itsi
           }
         end
 
-        def initialize(location, app, params={})
+        def initialize(location, app, **params)
           super(location, params)
           raise "Rackup file must be a string" unless app.is_a?(String)
           @app = Itsi::Server::RackInterface.for(app)

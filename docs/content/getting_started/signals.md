@@ -2,7 +2,7 @@
 title: Signals
 type: docs
 weight: 5
-next: /secrets_management
+next: /configuration
 
 ---
 
