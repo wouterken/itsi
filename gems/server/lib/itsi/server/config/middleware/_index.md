@@ -1,7 +1,7 @@
 ---
 title: Middleware
 type: docs
-next: faqs/
+next: allow_list/
 url: /middleware
 prev: options/
 cascade:
@@ -23,7 +23,7 @@ and apply these on a *location-by-location* basis.
 * File types
 * Host/port/scheme.
 
-E.g.
+For example:
 
 ```ruby
 location "/admin/*" do

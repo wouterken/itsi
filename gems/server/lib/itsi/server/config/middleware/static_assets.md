@@ -40,7 +40,7 @@ static_assets root_dir: "./"
 
 ## Not Found Behavior
 The static assets middleware supports many configuration options when a file is not found.
-* **`fallthrough`**: The request is simply *not* handled by this middleware and is instead served by the next middleware in the chain. The option is given as a string. E.g.
+* **`fallthrough`**: The request is *not* handled by this middleware and is instead served by the next middleware in the chain. The option is given as a string. E.g.
 ```ruby
 error_response: "fallthrough"
 ```

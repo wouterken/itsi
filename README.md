@@ -50,7 +50,7 @@ Want to serve static files? Go to a directory containing static files and run:
 itsi static
 ```
 
-Want to run and configure a reverse proxy, API Gateway, Static file server, gRPC server, inline endpoints or any combination of these? You'll need to learn a bit more about Itsi's configuration API and DSL.
+Want to run and configure a reverse proxy, API Gateway, static file server, gRPC server, inline endpoints or any combination of these? You'll need to learn a bit more about Itsi's configuration API and DSL.
 
 Run:
 ```

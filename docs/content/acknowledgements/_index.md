@@ -25,7 +25,7 @@ this website with minimal effort.
 
 
 ## Inspiration
-* [Puma](https://puma.io/) is a long-standing industry heavy-weight and the current leading choice of Web Server in the Ruby ecosystem.
+* [Puma](https://puma.io/) is a long-standing industry heavyweight and the current leading choice of web server in the Ruby ecosystem.
 It's mature, stable and rock solid. Many features and interfaces of Itsi have been inspired by Puma.
 
 * [NGINX](https://nginx.org/) is a popular open-source web server and reverse proxy server.

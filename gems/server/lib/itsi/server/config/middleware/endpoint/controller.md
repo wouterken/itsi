@@ -1,6 +1,7 @@
 ---
 title: Controller
 url: /middleware/controller
+prev: endpoint/
 ---
 
 
@@ -13,7 +14,7 @@ controller UserController.new
 get "", :index
 ```
 
-The default controller scope is simply the parent `Itsi.rb` config file.
+The default controller scope is the parent `Itsi.rb` config file.
 However you can use the `controller` middleware to explicitly set a controller scope per [location](/middleware/location) block. All named endpoints will then be satisfied by the current controller.
 
 {{< callout >}}

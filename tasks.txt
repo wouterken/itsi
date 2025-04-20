@@ -1,90 +1,8 @@
-- Verify watch feature
-Feature complete! Polish and Release (At Lake):
--- Feature breakdown. Per repeat the following list
---- 1. General Code Review
---- 2. Unit Tests
---- 3. Add Debug logging
---- 4. Migrate to new config DSL (Fuzz it!)
---- 5. Finish Documentation (Ensure links in list work)
---- 6. Ensure looks good in middleware
-
-WIP:
-- compression[DONE]
-- CORS[DONE]
-- ETag[DONE]
-- Cache Control[DONE]
-- Location [DONE]
-- Redirect [DONE]
-- Reverse Proxy[DONE]
-- Static File Server [DONE]
-- Binds[DONE]
-- Auto reload config[DONE]
-- Auth (ALL) [DONE]
-- Repeatable (Docs,CodeReview,Tests,DebugLogging,ConfigDSL,Middleware print)
-- Rate Limiting [DONE]
-- Allow + Deny Lists [DONE]
-- Intrusion Protection [DONE]
-- Slow HTTP opts [DONE]
-- CSP Reporting (Test + Complete) [DONE]
-- Memory limits [DONE]
-- OOB gRPC [DONE]
-- Preload [DONE]
-- Stream body[Done], Shutdown_timeout[Done], pin_worker_cores[Done], multithreaded_reactor[Done], reuseaddr/port/nodelay
-- Opts: listen_backlog, recv_buffer_size
-- log_level, log_target, log_target_filters, log_format
-- Req/resp headers
-
---- 12. Static Response
---- 15. Hooks
---- 18. include
---- 5. Scheduler threads
---- 3. Run + Rackfile
---- 4. gRPC (+ REST) + Reflection
---- 9. Endpoints
---- Fix X-Forwarded-For treatment inside all IP address sensitive layers
-
--- Go on unwrap hunt
--- Author Final default Itsi-file
--- Add notes on: PGGSSENCMODE="disable" and OBJC_DISABLE_INITIALIZE_FORK_SAFETY=
--- GPT Sanity Check everything
--- Fill in Changelog.md date
--- Retest in fresh linux environment
-
-- Feature List:
--- HTTP
--- HTTP2
--- TLS
--- Websockets
--- Headers (Replace is equal to remove plus append)
--- Hijack
--- Callable
--- Streaming Bodies
--- Rate Limiter
--- Auth JWT/Basic/API
--- gRPC Server (Plug in existing Ruby gRPC handlers)
--- File Watcher and auto-reloading
--- Allow/Deny lists
--- Cache control
--- compression
--- CORS
--- CSP Reporting
--- etag
--- Intrusion Protection
--- Proxy
--- Header changes (also support append, replace, remove)
--- Endpoint
--- Rackup
--- Rack inline
--- Static assets
--- Redirect (HTTP to HTTPS!)
--- Logging
--- Cluster
--- Single
--- Graceful and Hot Restart
--- Streaming body
--- Unix Sockets
--- Support for running high-performance mini-apps, written and served directly from the singular Itsi.rb configuration file.
--- Well documented complete with LSP support.
+- Manually Retest in Fresh linux environment (Get CI working)
+- Verify performance is still good
+- GPT and Self Sanity Check everything (And use ChatGPT to Author Final default Itsi-file)
+- Fill in Changelog.md date and release!
+- Add way to opt non Itsi.rb files into LSP
 
 Later:
 - OTel
@@ -93,19 +11,17 @@ Later:
 - First class Rackless Websockets
 - Print out warning if we can detect that a location block will never be hit.
 - Built in obs Dashboard + Stats
-- Support UDP
-- Support unix socket proxy
 - WASM pluggable middleware
+- Support UDP Proxy
+- Support Unix Socket Proxy
 - gRPC proxying
-
--- Stretch goals:
-  - HTTP-01 Autocert
-  - H3
-  - OpenAPI gen
-  - Finish Single acceptor mode (Optional)
-    - Introduce Option
-    - Finish Unix implementation
-    - Kill a single worker (impact)
-    - Clean shutdown and restart while in single acceptor mode
-    - Fix Hang
-    - Introduce Socket Options
+- HTTP-01 Autocert
+- H3
+- OpenAPI gen
+- Finish Single acceptor mode (Optional)
+  - Introduce Option
+  - Finish Unix implementation
+  - Very single worker shutdown (impact)
+  - Clean shutdown and restart while in single acceptor mode
+  - Fix Hang
+  - Introduce Socket Options

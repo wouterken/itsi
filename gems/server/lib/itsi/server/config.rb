@@ -210,7 +210,7 @@ module Itsi
           elsif File.exist?("config/#{ITSI_DEFAULT_CONFIG_FILE}")
             "config/#{ITSI_DEFAULT_CONFIG_FILE}"
           end
-        # Options simply pass through unless we've specified a config file
+        # Options pass through unless we've specified a config file
         return unless File.exist?(config_file_path.to_s)
 
         config_file_path

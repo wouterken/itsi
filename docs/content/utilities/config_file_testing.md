@@ -12,6 +12,6 @@ itsi test
 ```
 
 ```bash
-# Test config file at default location.
+# Test config file at custom path.
 itsi test -C ./path/to/alternative.rb
 ```

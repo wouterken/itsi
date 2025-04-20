@@ -14,13 +14,13 @@ If you're ready to get stuck in and learn all about what Itsi has to offer, use
 
 
 ## Out-of-the-box
-If you prefer a more gradual introduction, Itsi provides several "out-of-the box" capabilities that you can take immediate advantage of immediately, *without* needing to create a dedicated configuration file.
+If you prefer a more gradual introduction, Itsi provides several out-of-the box capabilities that you can take advantage of immediately, *without* needing to create a dedicated configuration file.
 
 
 
 ## Run Rack Applications
 Itsi will automatically host your Rack application if you launch it in a directory with a `config.ru` file.
-This means, it's a drop in server replacement (and potentially a free performance boost) for your favourite `Rails`, `Hanami`, or `Sinatra` applications.
+This means, it's a drop-in server replacement (and potentially a free performance boost) for your favorite `Rails`, `Hanami`, or `Sinatra` applications.
 
 To get started just run
 ```ruby
@@ -34,7 +34,7 @@ There's also a Rails adapter allowing you to add it to your Gemfile and launch i
 rails server -U itsi
 ```
 {{< callout type="info" >}}
-  Note that `rails server -U itsi` runs Itsi with a intentionally minimal footprint, specifically for development purposes. To take full advantage of Itsi's concurrency features,
+  Note that `rails server -U itsi` runs Itsi with an intentionally minimal footprint, specifically for development purposes. To take full advantage of Itsi's concurrency features,
 it's advised you tweak these inside a dedicated `Itsi.rb` file.
   {{< /callout >}}
 

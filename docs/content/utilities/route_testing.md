@@ -21,7 +21,7 @@ Middleware: • log_requests(before: I am th..., after: [{reque...)
            • static_assets(path: ./)
 ```
 
-You can also print out **all** currently configured routes in your itsifile using
+You can also print out **all** currently configured routes in your `Itsi.rb` using
 ```bash
 itsi routes
 ```

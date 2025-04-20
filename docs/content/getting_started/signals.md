@@ -27,7 +27,7 @@ Itsi responds to several Unix signals for process control. These signals are use
 
 ## CLI Convenience Commands
 
-In addition to sending the above signals through native controls, you can also use the `itsi` executable as a convenient short-cut for sending signals.
+In addition to sending the above signals through native controls, you can also use the `itsi` executable as a convenient shortcut for sending signals.
 These will work so long as the command is run inside the same directory from which Itsi was started (as this is the directory within which the `pid` file is located).
 
 - `itsi stop`: Sends `SIGINT` to initiate a graceful shutdown.

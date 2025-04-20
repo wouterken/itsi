@@ -1,6 +1,7 @@
 ---
 title: Deny List
 url: /middleware/deny_list
+next: endpoint/
 ---
 The **deny_list** middleware restricts access to only those clients whose IP address matches one a set of approved patterns. All other requests receive a configurable forbidden response.
 

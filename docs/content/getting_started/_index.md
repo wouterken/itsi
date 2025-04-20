@@ -51,7 +51,7 @@ Install Ruby
   {{< /callout >}}
 
   {{< /tab >}}
-  {{< tab >}}**Windows**: Itsi currently doesn't support native Windows builds, but it runs great on [https://learn.microsoft.com/en-us/windows/wsl/install](WSL).
+  {{< tab >}}**Windows**: Itsi currently doesn't support native Windows builds, but it runs well on [https://learn.microsoft.com/en-us/windows/wsl/install](WSL).
 
   Follow the linked instructions to Install a linux distribution like Ubuntu or Debian and then follow the instructions in the Linux tab.
   {{< /tab >}}

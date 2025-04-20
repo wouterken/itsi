@@ -1,6 +1,7 @@
 ---
 title: Error Response
 url: /middleware/error_response
+prev: schemas/
 ---
 
 All of the below middlewares allow error responses to be customized (though will select a sane default if left unspecified).
@@ -27,7 +28,7 @@ The following built-in types are available:
 * `gateway_timeout` (504)
 
 ## Reuse a built-in type
-To reuse a built-in type you can simply provide a string option for the `error_response` property.
+To reuse a built-in type you can provide a string option for the `error_response` property.
 E.g.
 ```ruby
 auth_api_key .. other options.., error_response: 'forbidden'

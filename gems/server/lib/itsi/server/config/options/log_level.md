@@ -29,13 +29,6 @@ ITSI_LOG=warn # Set global log level
 ITSI_LOG=info,middleware=debug # Set global log level, and override for all targets starting with middleware::*.
 ```
 
-
 ```bash
 ITSI_LOG=warn,middleware::auth_jwt=debug,middleware=info #
 ```
-
-
-
-
-## ANSI Escape codes.
-By default Itsi tries to determine whether or not to use ANSI escape codes based on the output [target](/options/log_target). If you need to override this behavior, you can set the `ITSI_LOG_ANSI` environment variable to `true` or `false`.

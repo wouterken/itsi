@@ -50,7 +50,7 @@ Pick and choose **just** the features that make sense for you.
 
 {{% details title="Redirects" closed="true" %}}
 * Simple redirect functionality (all of `permanent`, `temporary`, `found`, `moved_permanently`)
-* HTTP to HTTPs Redirects
+* HTTP to HTTPS Redirects
 * Dynamic URL Rewriting
 * See <a target="_blank" href="/middleware/redirect">redirect</a>
 {{% /details %}}
@@ -94,7 +94,7 @@ Efficiently serves static assets with proper content types and caching headers.
 
 {{% details title="LSP and shell completion support" closed="true" %}}
 * The bundled RubyLSP addon provides rich inline documentation and hover support when editing `Itsi.rb` files.
-* Shell completion support (just add `eval "$(itsi --install-completions)"` to the bottom of your shell init file)
+* Shell completion support (add `eval "$(itsi --install-completions)"` to the bottom of your shell init file)
 * See <a target="_blank" href="/getting_started/local_development">local_development</a>.
 {{% /details %}}
 

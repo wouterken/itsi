@@ -1,6 +1,8 @@
 ---
 title: Endpoint
 url: /middleware/endpoint
+prev: deny_list/
+next: controller/
 ---
 
 The **endpoint** middleware allows you to define an ultra light-weight, inline, Ruby endpoint.

@@ -6,21 +6,19 @@ weight: 3
 ---
 
 {{< callout>}}
-  Itsi provides several optional niceties to enhance your local development experience.
-This document is non-essential reading, but worth covering if you're trying Itsi in earnest and want a substantially better
-local development experience!
-  {{< /callout >}}
+This document is not required reading, but it can significantly improve your local development experience with Itsi.
+{{< /callout >}}
 
 ## Ruby LSP Add-on
 Itsi's [RubyLSP](https://shopify.github.io/ruby-lsp/) add-on allows you to see the full documentation of all of Itsi's [`options`](/options) and [`middleware`](/middleware) directly
-inside your editor. It also gives you easy to use auto-completion and snippets for lightning fast changes to `Itsi.rb` configuration files.
+inside your editor. It also gives you easy-to-use auto-completion and snippets for lightning fast changes to `Itsi.rb` configuration files.
 You don't need to install the RubyLSP add-on to use Itsi, if both Itsi and RubyLSP are installed and activated in the same project, RubyLSP will automatically
 discover and load the addon.
 
 <img src="/ruby-lsp.png" alt="asd" width="700px" style="display: block; margin-left: auto; margin-right: auto;">
 
 ## Live Config Reloading
-Just add `auto_reload_config!` to your `Itsi.rb` configuration file and Itsi will automatically hot reload its config with every change you make.
+Add `auto_reload_config!` to your `Itsi.rb` configuration file and Itsi will automatically hot reload its config with every change you make.
 Concerned about errors? Itsi will validate your config first before it tries to apply it. If there are errors, Itsi will provide detailed logs and safely continue with the existing config.
 
 ### File Watcher
@@ -58,7 +56,7 @@ Middleware: • log_requests(before: I am th..., after: [{reque...)
 ```
 ## Test Config
 Itsi allows you to validate your configuration without having to run the application.
-Simply use
+
 ```bash
 itsi test
 ```
@@ -72,7 +70,7 @@ itsi test -C /path/to/Itsi.rb
 
 ## Shell Completions
 Itsi can also help you install shell completions, which are useful if you find yourself using the `itsi` executable a lot and forgetting the commands.
-Just add the bottom to your `~/.bashrc` or `~/.zshrc` file:
+Add the following line to the bottom of your ~/.bashrc or ~/.zshrc file:
 
 ```bash
 eval "$(itsi --install-completions)"
@@ -97,6 +95,6 @@ To mitigate these issues, consider the following environment variables:
 *	`OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES`: Disables the Objective-C runtime’s fork safety checks. Use with caution, as it may mask underlying issues . ￼ ￼
 *	`PGGSSENCMODE=disable`: Disables GSSAPI encryption in PostgreSQL, which can cause issues in forked processes .
 
-Itsi includes a mechanism to automatically re-execute itself with the necessary environment variables set when running on macOS, effectively performing the above work-arounds for you.
+Itsi includes a mechanism to automatically re-execute itself with the necessary environment variables set when running on macOS, effectively performing the above workarounds for you.
 
 If you prefer to manage these settings yourself, you can disable this behavior by setting the `ITSI_DISABLE_AUTO_DISABLE_DARWIN_FORK_SAFETY_WARNINGS` environment variable:

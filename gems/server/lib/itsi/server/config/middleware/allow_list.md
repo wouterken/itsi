@@ -2,7 +2,7 @@
 title: Allow List
 url: /middleware/allow_list
 ---
-The **allow_list** middleware restricts access to only those clients whose IP address matches one a set of approved patterns. All other requests receive a configurable forbidden response.
+The **allow_list** middleware restricts access to only those clients whose IP address matches one of a set of approved patterns. All other requests receive a configurable forbidden response.
 
 ## Configuration
 

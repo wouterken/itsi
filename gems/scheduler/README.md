@@ -9,13 +9,12 @@ sidebar:
 
 `Itsi Scheduler` is an implementation of a Ruby [Fiber Scheduler](https://docs.ruby-lang.org/en/3.2/Fiber/Scheduler.html).
 
-When combined with Itsi Server, you can write endpoints that look and feel exactly like regular synchronous Ruby code,
-but behind the scenes, the scheduler will transparently yield and resume concurrent request fibers, to prevent threads from blocking and greatly increase throughput for IO heavy workloads.
+When combined with Itsi Server, you can write endpoints that look just like regular synchronous Ruby code. Behind the scenes, the scheduler will transparently pause and resume fibers to prevent threads from blocking, greatly increasing throughput for I/O-heavy workloads
 
-If you're purely after a light-weight, yet efficient Ruby scheduler,
+If you're purely after a lightweight, yet efficient Ruby scheduler,
 you can use Itsi Scheduler as a standalone scheduler for any Ruby application.
 
-Just use `Fiber.set_scheduler` to set an instance `Itsi::Scheduler` as a scheduler to opt in to this IO weaving behaviour
+Just use `Fiber.set_scheduler` to set an instance `Itsi::Scheduler` as a scheduler to opt in to this IO weaving behavior
 *automatically* for all blocking IO.
 
 ### Primer on Fiber Schedulers
@@ -29,7 +28,7 @@ This behind the scenes magic allows Ruby to provide async IO (just like we find 
 that synchronous and asynchronous code is identical! (I.e. Ruby's functions are [colorless](https://journal.stuffwithstuff.com/2015/02/01/what-color-is-your-function/))
 
 ## Getting Started
-To install and use Itsi Scheduler follow the below instructions:
+To install and use Itsi Scheduler follow the instructions below:
 
 
 ### 1 - Install Itsi Scheduler

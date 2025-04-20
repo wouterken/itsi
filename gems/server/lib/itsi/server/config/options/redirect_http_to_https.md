@@ -8,7 +8,7 @@ This simple option installs a location block to redirect all HTTP traffic to HTT
 redirect_http_to_https!
 ```
 
-It is simply an alias for:
+It is an alias for:
 ```ruby
 location protocols: [:http] do
   redirect \

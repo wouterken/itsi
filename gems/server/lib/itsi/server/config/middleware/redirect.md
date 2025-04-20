@@ -32,7 +32,7 @@ location protocols: [:http] do
     type: "moved_permanently"
 end
 ```
-> A shorthand for the above exists, simply call `redirect_http_to_https!`. Note that this is simply
+> A shorthand for the above exists, call `redirect_http_to_https!`. Note that this is
 an alias for the above, and as such is subject to ordinary [location](/middleware/location) resolution rules.
 To make sure this rule takes precedence, place it above other locations in the `Itsi.rb` file.
 

@@ -19,7 +19,7 @@ Itsi supports common signals such as SIGINT and SIGTERM for graceful termination
 K8s and Docker swarm.
 
 {{< callout type="warn" >}}
-If you're planning to use Itsi for a high throughput application in K8s, read [this article](https://github.com/puma/puma/blob/master/docs/kubernetes.md) about running
+If you're planning to use Itsi for a high-throughput application in K8s, read [this article](https://github.com/puma/puma/blob/master/docs/kubernetes.md) about running
 Puma in Kubernetes. The same advice applies to Itsi.
 {{< /callout >}}
 

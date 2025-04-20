@@ -1,6 +1,7 @@
 ---
 title: Schemas
 url: /middleware/endpoint/schemas
+next: error_response/
 ---
 
 Endpoints also support basic schema enforcement for both request and and response bodies. Endpoint **Schemas** are simply plain-old Ruby hashes, which map named keys to allowed types.
