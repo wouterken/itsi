@@ -44,7 +44,9 @@ module Itsi
       fiber = Fiber.current
       token = Scheduler.resume_token
       readiness = register_io_wait(io.fileno, events, duration, token)
-      readiness || block(nil, duration, fiber, token)
+      readiness ||= block(nil, duration, fiber, token)
+      clear_timer(token)
+      readiness
     end
 
     def unblock(_blocker, fiber)

@@ -1,10 +1,14 @@
+(Once internet better)
+- Fix self-signed cert on Linux
+- Verify daemonization linux
+
+
+- Clean shutdown issue (io_party self-ref no fiber, and io-party with fiber)
 - Manually Retest in Fresh linux environment (Get CI working)
-- Verify performance is still good
-- GPT and Self Sanity Check everything (And use ChatGPT to Author Final default Itsi-file)
-- Fill in Changelog.md date and release!
-- Add way to opt non Itsi.rb files into LSP
+
 
 Later:
+- Add way to opt non Itsi.rb files into LSP
 - OTel
 - Even faster Hash creation for Rack
 - Image resizer

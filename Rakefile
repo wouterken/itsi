@@ -95,7 +95,7 @@ end
     %i[hanami roda async rack rack_lint rails sinatra].each do |sandbox|
       namespace sandbox do
         task :serve do |args|
-          system("(cd sandbox/itsi_sandbox_#{sandbox} && bundle exec #{server} #{ARGV[2..]&.join(' ')} )")
+          system("(cd tmp/sandbox/itsi_sandbox_#{sandbox} && bundle exec #{server} #{ARGV[2..]&.join(' ')} )")
         rescue Interrupt
           # Suppress the stacktrace and message for Interrupt
         end

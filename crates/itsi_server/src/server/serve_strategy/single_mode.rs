@@ -308,7 +308,15 @@ impl SingleMode {
                           }
                         }
                     }
-                    while let Some(_res) = acceptor_task_set.join_next().await {}
+
+                    let deadline = Instant::now()
+                        + Duration::from_secs_f64(self_ref.server_config.server_params.read().shutdown_timeout);
+                    tokio::select! {
+                        _ = async {
+                            while let Some(_res) = acceptor_task_set.join_next().await {}
+                        } => {},
+                        _ = tokio::time::sleep_until(tokio::time::Instant::from_std(deadline)) => {},
+                    }
                 });
 
               }

@@ -115,6 +115,11 @@ impl ItsiScheduler {
             self.timers.lock().push(timer_entry);
         }
     }
+
+    pub fn clear_timer(&self, token: usize) {
+        self.timers.lock().retain(|timer| timer.token.0 != token);
+    }
+
     pub fn has_pending_io(&self) -> bool {
         !self.timers.lock().is_empty() || !self.io_waiters.lock().is_empty()
     }

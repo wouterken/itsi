@@ -2,8 +2,9 @@ use derive_more::Debug;
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use magnus::error::Result;
 use nix::unistd::{close, fork, pipe, read};
-use notify::{event::ModifyKind, EventKind, RecommendedWatcher};
+use notify::event::ModifyKind;
 use notify::{Event, RecursiveMode, Watcher};
+use notify::{EventKind, RecommendedWatcher};
 use std::path::Path;
 use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
@@ -155,18 +156,13 @@ pub fn watch_groups(pattern_groups: Vec<(String, Vec<Vec<String>>)>) -> Result<O
         for res in rx {
             match res {
                 Ok(event) => {
-                    if !matches!(event.kind, EventKind::Modify(ModifyKind::Metadata(_))) {
+                    if !matches!(event.kind, EventKind::Modify(ModifyKind::Data(_))) {
                         continue;
                     }
                     let now = Instant::now();
-                    debug!("Watch event fired for {:?}", event.paths);
                     for group in &mut groups {
                         for path in event.paths.iter() {
                             if let Ok(rel_path) = path.strip_prefix(&group.base_dir) {
-                                debug!(
-                                    "Testing relative path: {:?} against {:?}",
-                                    rel_path, group.pattern
-                                );
                                 if group.glob_set.is_match(rel_path)
                                     || rel_path.to_str().is_some_and(|s| s == group.pattern)
                                 {

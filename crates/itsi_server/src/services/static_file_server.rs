@@ -115,23 +115,26 @@ struct CacheEntry {
 }
 
 impl CacheEntry {
-    pub fn suggest_content_for(&self, supported_encodings: &[HeaderValue]) -> (Arc<Bytes>, &str) {
+    pub fn suggest_content_for(
+        &self,
+        supported_encodings: &[HeaderValue],
+    ) -> (Arc<Bytes>, Option<&str>) {
         for encoding_header in supported_encodings {
             if let Ok(header_value) = encoding_header.to_str() {
                 for header_value in header_value.split(",").map(|hv| hv.trim()) {
                     for algo in header_value.split(";").map(|hv| hv.trim()) {
                         match algo {
                             "zstd" if self.zstd_encoded.is_some() => {
-                                return (self.zstd_encoded.clone().unwrap(), "zstd")
+                                return (self.zstd_encoded.clone().unwrap(), Some("zstd"))
                             }
                             "gzip" if self.gzip_encoded.is_some() => {
-                                return (self.gzip_encoded.clone().unwrap(), "gzip")
+                                return (self.gzip_encoded.clone().unwrap(), Some("gzip"))
                             }
                             "br" if self.br_encoded.is_some() => {
-                                return (self.br_encoded.clone().unwrap(), "br")
+                                return (self.br_encoded.clone().unwrap(), Some("br"))
                             }
                             "deflate" if self.deflate_encoded.is_some() => {
-                                return (self.deflate_encoded.clone().unwrap(), "deflate")
+                                return (self.deflate_encoded.clone().unwrap(), Some("deflate"))
                             }
                             _ => {}
                         }
@@ -139,7 +142,7 @@ impl CacheEntry {
                 }
             }
         }
-        (self.content.clone(), "identity")
+        (self.content.clone(), None)
     }
 }
 
@@ -875,7 +878,7 @@ impl StaticFileServer {
             let body = build_ok_body(content);
             build_file_response(
                 status,
-                Some(encoding),
+                encoding,
                 Some(&cache_entry.etag),
                 get_mime_type(path),
                 content_length as usize,

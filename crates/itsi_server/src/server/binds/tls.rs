@@ -3,8 +3,10 @@ use itsi_acme::{AcmeAcceptor, AcmeConfig, AcmeState};
 use itsi_error::Result;
 use itsi_tracing::info;
 use locked_dir_cache::LockedDirCache;
+use rcgen::ExtendedKeyUsagePurpose;
 use rcgen::{
-    BasicConstraints, CertificateParams, DistinguishedName, DnType, IsCa, KeyPair, SanType,
+    BasicConstraints, CertificateParams, DistinguishedName, DnType, IsCa, KeyPair, KeyUsagePurpose,
+    SanType,
 };
 use rustls::{
     pki_types::{CertificateDer, PrivateKeyDer},
@@ -228,13 +230,14 @@ pub fn generate_ca_signed_cert(
         .push(DnType::CommonName, domains[0].clone());
 
     ee_params.use_authority_key_identifier_extension = true;
+    ee_params.extended_key_usages = vec![ExtendedKeyUsagePurpose::ServerAuth];
 
     let ee_cert = ee_params.signed_by(&ee_key, &ca_cert, &ca_kp).unwrap();
     let ee_cert_der = ee_cert.der().to_vec();
     let ee_cert = CertificateDer::from(ee_cert_der);
-    let ca_cert = CertificateDer::from(ca_cert.der().to_vec());
+
     Ok((
-        vec![ee_cert, ca_cert],
+        vec![ee_cert],
         PrivateKeyDer::try_from(ee_key.serialize_der()).unwrap(),
     ))
 }
@@ -253,12 +256,17 @@ fn get_or_create_local_dev_ca() -> Result<(String, String)> {
 
         Ok((key_pem, cert_pem))
     } else {
-        let subject_alt_names = vec!["dev.itsi.fyi".to_string(), "localhost".to_string()];
+        let subject_alt_names = vec!["ca.itsi.fyi".to_string(), "localhost".to_string()];
         let mut params = CertificateParams::new(subject_alt_names)?;
         let mut distinguished_name = DistinguishedName::new();
-        distinguished_name.push(DnType::CommonName, "Itsi Development CA");
+        distinguished_name.push(DnType::CommonName, "ca.itsi.fyi");
         params.distinguished_name = distinguished_name;
         params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
+        params.key_usages = vec![
+            KeyUsagePurpose::KeyCertSign,
+            KeyUsagePurpose::CrlSign,
+            KeyUsagePurpose::DigitalSignature, // useful for OCSP/CRL signing
+        ];
         let key_pair = KeyPair::generate()?;
         let cert = params.self_signed(&key_pair)?;
 

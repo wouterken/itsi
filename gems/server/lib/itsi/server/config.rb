@@ -41,10 +41,9 @@ module Itsi
           elsif args[:static]
             DSL.evaluate do
               location "/" do
-                allow_list allowed_patterns: ['127.0.0.1']
                 rate_limit key: 'address', store_config: 'in_memory', requests: 2, seconds: 5
                 etag type: 'strong', algorithm: 'md5', min_body_size: 1024 * 1024
-                compress min_size: 1024 * 1024, level: 'fastest', algorithms: %w[zstd gzip brotli deflate], mime_types: %w[all], compress_streams: true
+                compress min_size: 1024 * 1024, level: 'fastest', algorithms: %w[zstd gzip br deflate], mime_types: %w[all], compress_streams: true
                 log_requests before: { level: "INFO", format: "[{request_id}] {method} {path_and_query} - {addr} " }, after: { level: "INFO", format: "[{request_id}] └─ {status} in {response_time}" }
                 static_assets \
                   relative_path: true,
@@ -95,7 +94,8 @@ module Itsi
           Bundler.require(preload)
         end
 
-        if itsifile_config[:daemonize]
+        if itsifile_config[:daemonize] && !@daemonized
+          @daemonized = true
           Itsi.log_info("Itsi is running in the background. Writing pid to #{Itsi::Server::Config.pid_file_path}")
           Itsi.log_info("To stop Itsi, run 'itsi stop' from this directory.")
           Process.daemon(true, false)

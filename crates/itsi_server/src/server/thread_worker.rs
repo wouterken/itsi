@@ -160,7 +160,7 @@ impl ThreadWorker {
     pub fn poll_shutdown(&self, deadline: Instant) -> bool {
         if let Some(thread) = self.thread.read().deref() {
             if Instant::now() > deadline {
-                warn!("Worker shutdown timed out. Killing thread {:?}", thread);
+                debug!("Worker shutdown timed out. Killing thread {:?}", thread);
                 self.terminated.store(true, Ordering::SeqCst);
                 kill_threads(vec![thread.as_value()]);
             }

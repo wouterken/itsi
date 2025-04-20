@@ -76,7 +76,8 @@ module Itsi
         def build!
           params = @params
           app = { preloader: -> { params[:handler] }, nonblocking: @params[:nonblocking] }
-          if @params[:paths].empty? || @params[:http_methods].empty?
+
+          if @params[:paths] == [""] && @params[:http_methods].empty?
             location.middleware[:app] = app
             location.location("*") do
               @middleware[:app] = app

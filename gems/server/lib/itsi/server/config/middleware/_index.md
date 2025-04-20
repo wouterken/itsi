@@ -38,7 +38,7 @@ location "/admin/*" do
     compress \
       min_size: 1024 * 1024,
       level: 'fastest',
-      algorithms: %w[zstd gzip brotli deflate],
+      algorithms: %w[zstd gzip br deflate],
       mime_types: %w[all],
       compress_streams: true
     # ...
