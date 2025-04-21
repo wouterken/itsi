@@ -8,9 +8,9 @@ This option determines whether the Nagle's algorithm is disabled, allowing small
 
 ## Configuration
 ```ruby {filename=Itsi.rb}
-reuse_address true
+nodelay true
 ```
 
 ```ruby {filename=Itsi.rb}
-reuse_address false
+nodelay false
 ```
