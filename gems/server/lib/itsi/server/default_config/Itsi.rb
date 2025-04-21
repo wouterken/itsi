@@ -73,7 +73,7 @@ worker_memory_limit 1024 * 1024 * 1024
 
 # You can provide an optional block of code to run, when a worker hits its memory threshold (Use this to send yourself an alert,
 # write metrics to disk etc. etc.)
-after_memory_threshold_reached do |pid|
+after_memory_limit_reached do |pid|
   puts "Worker #{pid} has reached its memory threshold and will restart"
 end
 
@@ -102,6 +102,6 @@ oob_gc_responses_threshold 512
 log_level :info
 
 # Log Format
-# Set this to be either :ansi or :json. If you leave it blank Itsi will try
+# Set this to be either :plain or :json. If you leave it blank Itsi will try
 # and auto-detect the format based on the TTY environment.
-log_format :auto
+log_format :plain

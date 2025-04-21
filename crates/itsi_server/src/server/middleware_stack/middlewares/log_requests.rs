@@ -42,11 +42,11 @@ pub enum LogMiddlewareLevel {
 impl LogMiddlewareLevel {
     pub fn log(&self, message: String) {
         match self {
-            LogMiddlewareLevel::Trace => trace!(message),
-            LogMiddlewareLevel::Debug => debug!(message),
-            LogMiddlewareLevel::Info => info!(message),
-            LogMiddlewareLevel::Warn => warn!(message),
-            LogMiddlewareLevel::Error => error!(message),
+            LogMiddlewareLevel::Trace => trace!(target: "middleware::log_requests", message),
+            LogMiddlewareLevel::Debug => debug!(target: "middleware::log_requests", message),
+            LogMiddlewareLevel::Info => info!(target: "middleware::log_requests", message),
+            LogMiddlewareLevel::Warn => warn!(target: "middleware::log_requests", message),
+            LogMiddlewareLevel::Error => error!(target: "middleware::log_requests", message),
         }
     }
 }

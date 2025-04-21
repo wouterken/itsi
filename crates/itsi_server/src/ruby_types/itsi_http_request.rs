@@ -89,6 +89,7 @@ impl ItsiHttpRequest {
         self.content_type_str() == "application/json"
     }
 
+    #[allow(unexpected_cfgs)]
     pub fn url_params(&self) -> magnus::error::Result<RHash> {
         let captures = self
             .context
@@ -97,7 +98,19 @@ impl ItsiHttpRequest {
             .and_then(|re| re.captures(self.parts.uri.path()));
         if let Some(caps) = &captures {
             let re = self.context.matching_pattern.as_ref().unwrap();
-            let params = RHash::with_capacity(caps.len());
+            let params = {
+                // when building against Ruby ≥ 3.2...
+                #[cfg(ruby_gte_3_2)]
+                {
+                    RHash::with_capacity(caps.len())
+                }
+
+                // when building against Ruby < 3.2...
+                #[cfg(not(ruby_gte_3_2))]
+                {
+                    RHash::new()
+                }
+            };
             for (i, group_name) in re.capture_names().enumerate().skip(1) {
                 if let Some(name) = group_name {
                     if let Some(m) = caps.get(i) {

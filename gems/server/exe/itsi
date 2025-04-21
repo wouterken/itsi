@@ -152,6 +152,11 @@ parser = OptionParser.new do |opts|
   opts.on("-dDIR", "--dir=DIR", "(For use with secret) Save keys/secret to DIR instead of printing") do |d|
     options[:save_dir] = d
   end
+
+  opts.on("-v", "--version", "Show version") do
+    puts "Itsi version #{Itsi::Server::VERSION}"
+    exit(0)
+  end
 end
 
 if ENV['COMP_LINE'] || ARGV.include?('--completion')

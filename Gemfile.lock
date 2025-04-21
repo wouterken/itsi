@@ -1,20 +1,20 @@
 PATH
   remote: .
   specs:
-    itsi (0.2.1)
-      itsi-scheduler (~> 0.2.1)
-      itsi-server (~> 0.2.1)
+    itsi (0.2.2)
+      itsi-scheduler (~> 0.2.2)
+      itsi-server (~> 0.2.2)
 
 PATH
   remote: gems/scheduler
   specs:
-    itsi-scheduler (0.2.1)
+    itsi-scheduler (0.2.2)
       rb_sys (~> 0.9.91)
 
 PATH
   remote: gems/server
   specs:
-    itsi-server (0.2.1)
+    itsi-server (0.2.2)
       json (~> 2)
       rack (>= 1.6)
       rb_sys (~> 0.9.91)

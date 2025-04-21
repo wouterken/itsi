@@ -1,13 +1,5 @@
-(Once internet better)
-- Fix self-signed cert on Linux
-- Verify daemonization linux
-
-
-- Clean shutdown issue (io_party self-ref no fiber, and io-party with fiber)
-- Manually Retest in Fresh linux environment (Get CI working)
-
-
-Later:
+Tasks:
+- Static ruby build
 - Add way to opt non Itsi.rb files into LSP
 - OTel
 - Even faster Hash creation for Rack

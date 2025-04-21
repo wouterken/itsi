@@ -18,6 +18,8 @@ It is an absolutely essential component of Itsi.
 Tokio is a fast and featureful asynchronous runtime for Rust.
 It is the backbone of *all* asynchronous IO in Itsi.
 
+* [rb-sys](https://github.com/oxidize-rb/rb-sys) and [magnus](https://github.com/matsadler/magnus), two essential libraries for building Ruby extensions in Rust.
+
 * and many more [essential](https://github.com/wouterken/itsi/blob/main/crates/itsi_server/Cargo.toml) Rust crates!
 
 * [hugo](https://gohugo.io/) and [hextra](https://imfing.github.io/hextra/) - generating *this very page* and allowing me to put together
