@@ -1,6 +1,5 @@
 return unless defined?(::Rackup::Handler) || defined?(Rack::Handler)
 
-
 module Rack
   module Handler
     module Itsi

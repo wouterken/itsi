@@ -1,7 +1,6 @@
 module Itsi
   class Server
     module RackInterface
-
       # Builds a handler proc that is compatible with Rack applications.
       def self.for(app)
         require "rack"

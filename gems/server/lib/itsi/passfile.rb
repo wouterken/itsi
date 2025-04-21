@@ -1,8 +1,7 @@
 module Itsi
   class Server
-
     module Passfile
-      require 'io/console'
+      require "io/console"
 
       module_function
 
@@ -18,7 +17,7 @@ module Itsi
             line.chomp!
             next if line.empty?
 
-            user, pass = line.split(':', 2)
+            user, pass = line.split(":", 2)
             creds[user] = pass
           end
         end
@@ -26,14 +25,14 @@ module Itsi
       end
 
       def save(creds, filename)
-        File.open(filename, 'w', 0o600) do |f|
+        File.open(filename, "w", 0o600) do |f|
           creds.each do |u, p|
             f.puts "#{u}:#{p}"
           end
         end
       end
 
-      def echo(filename, algorithm)
+      def echo(_, algorithm)
         print "Enter username: "
         username = $stdin.gets.chomp
 
@@ -56,6 +55,7 @@ module Itsi
 
       def add(filename, algorithm)
         return unless (creds = load(filename))
+
         print "Enter username: "
         username = $stdin.gets.chomp
 
@@ -98,11 +98,11 @@ module Itsi
       def list(filename)
         puts "Current credentials in '#{filename}':"
         return unless (creds = load(filename))
+
         creds.each do |u, p|
           puts "#{u}:#{p}"
         end
       end
-
     end
   end
 end

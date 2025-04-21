@@ -1,15 +1,17 @@
 # frozen_string_literal: true
-require 'forwardable'
+
+require "forwardable"
 require "stringio"
 require "socket"
 
 module Itsi
-
   class HttpResponse
-
-    def respond _body=nil, _status=200, _header=nil, status: _status, headers: _header, body: _body, hijack: false, &blk
-
-      self.status = status.kind_of?(Symbol) ? HTTP_STATUS_NAME_TO_CODE_MAP.fetch(status) : status.to_i
+    def respond(
+      _body = nil, _status = 200, _header = nil, # rubocop:disable Lint/UnderscorePrefixedVariableName
+      status: _status, headers: _header, body: _body,
+      hijack: false
+    )
+      self.status = status.is_a?(Symbol) ? HTTP_STATUS_NAME_TO_CODE_MAP.fetch(status) : status.to_i
 
       body = body.to_s unless body.is_a?(String)
 
@@ -33,9 +35,9 @@ module Itsi
 
         # If you hijack the connection, you are responsible for closing it.
         # Otherwise, the response will be closed automatically.
-        self.close unless hijack
+        close unless hijack
       else
-        self.close
+        close
       end
     end
   end

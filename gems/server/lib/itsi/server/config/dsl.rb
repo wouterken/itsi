@@ -9,7 +9,7 @@ module Itsi
         attr_reader :parent, :children, :middleware, :controller, :routes, :http_methods, :protocols,
                     :hosts, :ports, :extensions, :content_types, :accepts, :options
 
-        def self.evaluate(config = Itsi::Server::Config.config_file_path, &blk)
+        def self.evaluate(config = Itsi::Server::Config.config_file_path, &blk) # rubocop:disable Metrics/MethodLength
           config = new(routes: ["/"]) do
             if blk
               instance_exec(&blk)
@@ -17,14 +17,14 @@ module Itsi
               code = IO.read(config)
               instance_eval(code, config.to_s, 1)
             end
-            location("*"){}
+            location("*") {}
           end
           [config.options, config.errors]
-        rescue Exception => e
+        rescue Exception => e # rubocop:disable Lint/RescueException
           [{}, [[e, e.backtrace[0]]]]
         end
 
-        def initialize(
+        def initialize( # rubocop:disable Metrics/AbcSize,Metrics/MethodLength,Metrics/PerceivedComplexity,Metrics/CyclomaticComplexity
           parent = nil,
           routes: [],
           methods: [],
@@ -59,7 +59,7 @@ module Itsi
               @middleware[:app][:app_proc] = @middleware[:app]&.[](:preloader)&.call || DEFAULT_APP[]
               if errors.any?
                 error = errors.first.first
-                error.set_backtrace(error.backtrace.drop_while{|r| r =~ /itsi\/server\/config/ })
+                error.set_backtrace(error.backtrace.drop_while { |r| r =~ %r{itsi/server/config} })
                 raise error
               end
               flatten_routes
@@ -78,7 +78,7 @@ module Itsi
           option_name = option.option_name
           define_method(option_name) do |*args, **kwargs, &blk|
             option.new(self, *args, **kwargs, &blk).build!
-          rescue => e
+          rescue StandardError => e
             @errors << [e, caller[1]]
           end
         end
@@ -89,7 +89,7 @@ module Itsi
             middleware.new(self, *args, **kwargs, &blk).build!
           rescue Config::Endpoint::InvalidHandlerException => e
             @errors << [e, "#{e.backtrace[0]}:in #{e.message}"]
-          rescue => e
+          rescue StandardError => e
             @errors << [e, caller[1]]
           end
         end
@@ -99,7 +99,7 @@ module Itsi
           @grpc_reflected_services.concat(handlers)
 
           location("grpc.reflection.v1alpha.ServerReflection/ServerReflectionInfo",
-                    "grpc.reflection.v1.ServerReflection/ServerReflectionInfo") do
+                   "grpc.reflection.v1.ServerReflection/ServerReflectionInfo") do
             @middleware[:app] = { preloader: lambda {
               Itsi::Server::GrpcInterface.reflection_for(handlers)
             }, request_type: "grpc" }
@@ -141,7 +141,7 @@ module Itsi
             when Regexp
               seg.source
             else
-              parts = seg.split('/')
+              parts = seg.split("/")
               parts.map do |part|
                 case part
                 when /^:([A-Za-z_]\w*)(?:\(([^)]*)\))?$/
@@ -184,11 +184,11 @@ module Itsi
 
           chain.each do |n|
             n.middleware.each do |k, v|
-              if v[:combine]
-                merged[k] = ([merged[k] || []] + [v]).flatten
-              else
-                merged[k] = v
-              end
+              merged[k] = if v[:combine]
+                            ([merged[k] || []] + [v]).flatten
+                          else
+                            v
+                          end
             end
           end
           deep_stringify_keys(merged)

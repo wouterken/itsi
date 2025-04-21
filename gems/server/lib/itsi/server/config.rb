@@ -41,15 +41,18 @@ module Itsi
           elsif args[:static]
             DSL.evaluate do
               location "/" do
-                rate_limit key: 'address', store_config: 'in_memory', requests: 2, seconds: 5
-                etag type: 'strong', algorithm: 'md5', min_body_size: 1024 * 1024
-                compress min_size: 1024 * 1024, level: 'fastest', algorithms: %w[zstd gzip br deflate], mime_types: %w[all], compress_streams: true
-                log_requests before: { level: "INFO", format: "[{request_id}] {method} {path_and_query} - {addr} " }, after: { level: "INFO", format: "[{request_id}] └─ {status} in {response_time}" }
+                rate_limit key: "address", store_config: "in_memory", requests: 2, seconds: 5
+                etag type: "strong", algorithm: "md5", min_body_size: 1024 * 1024
+                compress min_size: 1024 * 1024, level: "fastest", algorithms: %w[zstd gzip br deflate],
+                         mime_types: %w[all], compress_streams: true
+                log_requests before: { level: "INFO", format: "[{request_id}] {method} {path_and_query} - {addr} " },
+                             after: { level: "INFO",
+                                      format: "[{request_id}] └─ {status} in {response_time}" }
                 static_assets \
                   relative_path: true,
                   allowed_extensions: [],
-                  root_dir: '.',
-                  not_found_behavior: {error: 'not_found'},
+                  root_dir: ".",
+                  not_found_behavior: { error: "not_found" },
                   auto_index: true,
                   try_html_extension: true,
                   max_file_size_in_memory: 1024 * 1024, # 1MB
@@ -57,7 +60,7 @@ module Itsi
                   file_check_interval: 1,
                   serve_hidden_files: false,
                   headers: {
-                    'X-Content-Type-Options' => 'nosniff'
+                    "X-Content-Type-Options" => "nosniff"
                   }
               end
             end
@@ -69,7 +72,7 @@ module Itsi
               rackup_file args.fetch(:rackup_file, "./config.ru")
             end
           else
-            DSL.evaluate{}
+            DSL.evaluate {}
           end
 
         itsifile_config.transform_keys!(&:to_sym)
@@ -107,7 +110,13 @@ module Itsi
           worker_memory_limit: args.fetch(:worker_memory_limit) { itsifile_config.fetch(:worker_memory_limit, nil) },
           silence: args.fetch(:silence) { itsifile_config.fetch(:silence, false) },
           shutdown_timeout: args.fetch(:shutdown_timeout) { itsifile_config.fetch(:shutdown_timeout, 5) },
-          hooks: args[:hooks] && itsifile_config[:hooks] ? args[:hooks].merge(itsifile_config[:hooks]) : itsifile_config.fetch(:hooks, args[:hooks]),
+          hooks: if args[:hooks] && itsifile_config[:hooks]
+                   args[:hooks].merge(itsifile_config[:hooks])
+                 else
+                   itsifile_config.fetch(
+                     :hooks, args[:hooks]
+                   )
+                 end,
           preload: !!preload,
           request_timeout: itsifile_config.fetch(:request_timeout, nil),
           header_read_timeout: args.fetch(:header_read_timeout) { itsifile_config.fetch(:header_read_timeout, nil) },
@@ -132,53 +141,55 @@ module Itsi
           listeners: args.fetch(:listeners) { nil },
           reuse_address: itsifile_config.fetch(:reuse_address, true),
           reuse_port: itsifile_config.fetch(:reuse_port, true),
-          listen_backlog: itsifile_config.fetch(:listen_backlog, 1024 ),
+          listen_backlog: itsifile_config.fetch(:listen_backlog, 1024),
           nodelay: itsifile_config.fetch(:nodelay, true),
           recv_buffer_size: itsifile_config.fetch(:recv_buffer_size, 262_144)
         }.transform_keys(&:to_s)
 
         error_lines = errors.flat_map do |(error, message)|
-            location =  message[/(.*?)\:in/,1]
-            file, lineno = location.split(":")
-            lineno = lineno.to_i
-            err_message = error.kind_of?(NoMethodError) ? error.detailed_message : error.message
-            file_lines = IO.readlines(file)
-            info_lines = if error.kind_of?(SyntaxError)
+          location = message[/(.*?):in/, 1]
+          file, lineno = location.split(":")
+          lineno = lineno.to_i
+          err_message = error.is_a?(NoMethodError) ? error.detailed_message : error.message
+          file_lines = IO.readlines(file)
+          info_lines = \
+            if error.is_a?(SyntaxError)
               []
             else
-              ([lineno-2, 0].max...[file_lines.length, lineno.succ.succ].min).map do |currline|
-                if currline == lineno-1
+
+              ([lineno - 2, 0].max...[file_lines.length, lineno.succ.succ].min).map do |currline|
+                if currline == lineno - 1
                   line = file_lines[currline][0...-1]
                   padding = line[/^\s+/]&.length || 0
 
                   [
                     " \e[31m#{currline.succ.to_s.rjust(3)} | #{line}\e[0m",
-                    "     | #{' ' * padding}\e[33m^^^\e[0m "
+                    "     | #{" " * padding}\e[33m^^^\e[0m "
                   ]
                 else
                   " #{currline.succ.to_s.rjust(3)} | #{file_lines[currline][0...-1]}"
                 end
               end.flatten
             end
-            [
-              err_message,
-              "   --> #{File.expand_path(file)}:#{lineno}",
-              *info_lines
-            ]
-          end
+          [
+            err_message,
+            "   --> #{File.expand_path(file)}:#{lineno}",
+            *info_lines
+          ]
+        end
 
-        return srv_config, error_lines
-      rescue
+        [srv_config, error_lines]
+      rescue StandardError
         Itsi.log_error e.message
         puts e.backtrace
       end
 
       def self.test!(cli_params)
-        _, errors = build_config(cli_params, Itsi::Server::Config.config_file_path(cli_params[:config_file]))
+        config, errors = build_config(cli_params, Itsi::Server::Config.config_file_path(cli_params[:config_file]))
         unless errors.any?
           begin
-            _["middleware_loader"][]
-          rescue Exception => e
+            config["middleware_loader"][]
+          rescue Exception => e # rubocop:disable Lint/RescueException
             errors = [e]
           end
         end
@@ -233,56 +244,56 @@ module Itsi
 
         default_config = IO.read("#{__dir__}/default_config/Itsi.rb")
 
-        if File.exist?("./config.ru")
-          default_config << <<~RUBY
-          # You can mount several Ruby apps as either
-          # 1. rackup files
-          # 2. inline rack apps
-          # 3. inline Ruby endpoints
-          #
-          # 1. rackup_file
-          rackup_file "./config.ru"
-          #
-          # 2. inline rack app
-          # require 'rack'
-          # run(Rack::Builder.app do
-          #   use Rack::CommonLogger
-          #   run ->(env) { [200, { 'content-type' => 'text/plain' }, ['OK']] }
-          # end)
-          #
-          # 3. Endpoints
-          # endpoint "/" do |req|
-          #   req.ok "Hello from Itsi"
-          # end
-          RUBY
-        else
-          default_config << <<~RUBY
-            # You can mount several Ruby apps as either
-            # 1. rackup files
-            # 2. inline rack apps
-            # 3. inline Ruby endpoints
-            #
-            # 1. rackup_file
-            # Use `rackup_file` to specify the Rack app file name.
-            #
-            # 2. inline rack app
-            # require 'rack'
-            # run(Rack::Builder.app do
-            #   use Rack::CommonLogger
-            #   run ->(env) { [200, { 'content-type' => 'text/plain' }, ['OK']] }
-            # end)
-            #
-            # 3. Endpoint
-            endpoint "/" do |req|
-              req.ok "Hello from Itsi"
-            end
-          RUBY
-        end
+        default_config << \
+          if File.exist?("./config.ru")
+            <<~RUBY
+              # You can mount several Ruby apps as either
+              # 1. rackup files
+              # 2. inline rack apps
+              # 3. inline Ruby endpoints
+              #
+              # 1. rackup_file
+              rackup_file "./config.ru"
+              #
+              # 2. inline rack app
+              # require 'rack'
+              # run(Rack::Builder.app do
+              #   use Rack::CommonLogger
+              #   run ->(env) { [200, { 'content-type' => 'text/plain' }, ['OK']] }
+              # end)
+              #
+              # 3. Endpoints
+              # endpoint "/" do |req|
+              #   req.ok "Hello from Itsi"
+              # end
+            RUBY
+          else
+            <<~RUBY
+              # You can mount several Ruby apps as either
+              # 1. rackup files
+              # 2. inline rack apps
+              # 3. inline Ruby endpoints
+              #
+              # 1. rackup_file
+              # Use `rackup_file` to specify the Rack app file name.
+              #
+              # 2. inline rack app
+              # require 'rack'
+              # run(Rack::Builder.app do
+              #   use Rack::CommonLogger
+              #   run ->(env) { [200, { 'content-type' => 'text/plain' }, ['OK']] }
+              # end)
+              #
+              # 3. Endpoint
+              endpoint "/" do |req|
+                req.ok "Hello from Itsi"
+              end
+            RUBY
+          end
 
         File.open(ITSI_DEFAULT_CONFIG_FILE, "w") do |file|
           file.write(default_config)
         end
-
       end
     end
   end

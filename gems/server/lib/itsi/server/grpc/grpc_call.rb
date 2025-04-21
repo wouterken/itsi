@@ -7,11 +7,11 @@ module Itsi
     attr_accessor :rpc_desc
 
     def input_stream?
-      @input_stream ||= @rpc_desc&.input&.is_a?(GRPC::RpcDesc::Stream) || false
+      @input_stream ||= @rpc_desc&.input.is_a?(GRPC::RpcDesc::Stream) || false
     end
 
     def output_stream?
-      @output_stream ||= @rpc_desc&.output&.is_a?(GRPC::RpcDesc::Stream) || false
+      @output_stream ||= @rpc_desc&.output.is_a?(GRPC::RpcDesc::Stream) || false
     end
 
     def input_type
@@ -64,7 +64,7 @@ module Itsi
       return nil if first_char.nil?
 
       # Step 2: Process objects until we hit the end of the JSON stream or array.
-      loop do
+      loop do # rubocop:disable Lint/UnreachableLoop,Metrics/BlockLength
         # Skip any whitespace or commas preceding an object.
         char = nil
         loop do
@@ -88,7 +88,6 @@ module Itsi
           return nil if ch.nil? # premature end of stream
 
           buffer << ch
-
 
           if in_string
             if escape
@@ -120,7 +119,7 @@ module Itsi
     def remote_read
       if content_type == "application/json"
         if input_stream?
-          if next_item = parse_from_json_stream(reader)
+          if (next_item = parse_from_json_stream(reader))
             input_type.decode_json(next_item)
           end
         else

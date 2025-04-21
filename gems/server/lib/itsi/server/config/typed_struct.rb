@@ -1,5 +1,7 @@
-require 'date'
-require 'time'
+# frozen_string_literal: true
+
+require "date"
+require "time"
 
 module Itsi
   class Server
@@ -10,25 +12,19 @@ module Itsi
 
         def self.new(defaults = nil, &defaults_blk)
           defaults = TypedStruct.module_eval(&defaults_blk) if defaults_blk
-          unless defaults.is_a?(Hash)
-            return defaults
-          end
+          return defaults unless defaults.is_a?(Hash)
+
           defaults.transform_values! { _1.is_a?(Validation) ? _1.default(nil) : _1 }
           Struct.new(*defaults.keys, keyword_init: true) do
             define_method(:initialize) do |*input, validate: true, **raw_input|
+              raise "─ Invalid input to #{self}: #{input.last}" if input.last && !input.last.is_a?(Hash)
 
-              if input.last && !input.last.is_a?(Hash)
-                raise "─ Invalid input to #{self}: #{input.last}"
-              end
-              raw_input.transform_keys!{|k| k.to_s.downcase.to_sym }
-              raw_input.merge!(input.pop.transform_keys!{|k| k.to_s.downcase.to_sym}) if input.last.is_a?(Hash)
+              raw_input.transform_keys! { |k| k.to_s.downcase.to_sym }
+              raw_input.merge!(input.pop.transform_keys! { |k| k.to_s.downcase.to_sym }) if input.last.is_a?(Hash)
 
               excess_keys = raw_input.keys - defaults.keys
 
-              if excess_keys.any?
-                raise "─ Unsupported keys #{excess_keys}"
-
-              end
+              raise "─ Unsupported keys #{excess_keys}" if excess_keys.any?
 
               initial_values = defaults.each_with_object({}) do |(k, default_config), inputs|
                 value = raw_input.key?(k) ? raw_input[k] : default_config[VALUE].dup
@@ -106,9 +102,7 @@ module Itsi
 
           def &(other)
             tail = self
-            while tail.next
-              tail = tail.next
-            end
+            tail = tail.next while tail.next
             tail.next = other
             self
           end
@@ -148,10 +142,14 @@ module Itsi
                       elsif validation.eql?(::Date) then Date.parse(value.to_s)
                       elsif validation.eql?(Float) then Float(value)
                       elsif validation.eql?(Integer) then Integer(value)
-                      elsif validation.eql?(Proc) then
+                      elsif validation.eql?(Proc)
                         raise ArgumentError, "Invalid #{validation} value: #{value.inspect}" unless value.is_a?(Proc)
                       elsif validation.eql?(String) || validation.eql?(Symbol)
-                        raise ArgumentError, "Invalid #{validation} value: #{value.inspect}" unless value.is_a?(String) || value.is_a?(Symbol)
+                        unless value.is_a?(String) || value.is_a?(Symbol)
+                          raise ArgumentError,
+                                "Invalid #{validation} value: #{value.inspect}"
+                        end
+
                         if validation.eql?(String)
                           value.to_s
                         elsif validation.eql?(Symbol)
@@ -178,33 +176,32 @@ module Itsi
         {
           Bool: Validation.new(:Bool, [[true, false]]),
           Required: Validation.new(:Required, ->(value) { !value.nil? }),
-          Or: ->(*validations){
-            Validation.new(:Or, ->(v){
-
+          Or: lambda { |*validations|
+            Validation.new(:Or, lambda { |v|
               return true if v.nil?
+
               errs = []
               validations.each do |validation|
-                begin
-                  v = validation.validate!(v)
-                  return v
-                rescue StandardError => e
-                  errs << e.message
-                end
+                v = validation.validate!(v)
+                return v
+              rescue StandardError => e
+                errs << e.message
               end
               raise StandardError.new("─ Validation failed (None match:) \n  └#{errs.join("\n  └")}")
             })
           },
-          Range: ->(input_range) {
+          Range: lambda { |input_range|
             Validation.new(:Range, [input_range])
           },
           Length: lambda { |input_length|
             Validation.new(:Length, ->(value) { input_length === value.length })
           },
-          Hash: ->(key_type, value_type) {
-            Validation.new(:Hash, ->(v){
-              return true if v.nil?
-              raise StandardError.new("Expected hash got #{v.class}") unless v.is_a?(Hash)
-              v.map do |k, v|
+          Hash: lambda { |key_type, value_type|
+            Validation.new(:Hash, lambda { |hash|
+              return true if hash.nil?
+              raise StandardError.new("Expected hash got #{hash.class}") unless hash.is_a?(Hash)
+
+              hash.map do |k, v|
                 [
                   key_type.validate!(k),
                   value_type.validate!(v)
@@ -213,7 +210,7 @@ module Itsi
             })
           },
           Type: ->(input_type) { Validation.new(:Type, input_type) },
-          Enum: ->(allowed_values) { Validation.new(:Enum, [allowed_values.map{|v| v.kind_of?(Symbol) ? v.to_s : v}]) },
+          Enum: ->(allowed_values) { Validation.new(:Enum, [allowed_values.map { |v| v.is_a?(Symbol) ? v.to_s : v }]) },
           Array: lambda { |*value_validations|
             Validation.new(:Array, [::Array, lambda { |value|
               return true unless value

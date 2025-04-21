@@ -27,7 +27,6 @@ module Itsi
     extend RouteTester
 
     class << self
-
       def running?
         @running && !@running.empty?
       end
@@ -62,7 +61,7 @@ module Itsi
           server
         end
         background ? [server, Thread.new(&run)] : run[]
-      rescue Exception => e
+      rescue Exception => e # rubocop:disable Lint/RescueException
         Itsi.log_error e.message
         raise e
       end
@@ -72,7 +71,8 @@ module Itsi
       end
 
       def stop
-        return unless pid = get_pid
+        return unless (pid = get_pid)
+
         Process.kill(:INT, pid)
         i = 0
         while i < 10
@@ -96,7 +96,7 @@ module Itsi
         File.write(Itsi::Server::Config.pid_file_path, Process.pid)
       end
 
-      def get_pid(warn=true)
+      def get_pid(warn = true)
         pid = File.read(Itsi::Server::Config.pid_file_path).to_i
         if Process.kill(0, pid)
           pid
@@ -110,7 +110,7 @@ module Itsi
       end
 
       def test
-        Itsi::Server::Config.test!(cli_params = {})
+        Itsi::Server::Config.test!({})
       end
 
       def init
@@ -118,25 +118,25 @@ module Itsi
       end
 
       def reload
-        return unless pid = get_pid
+        return unless (pid = get_pid)
 
         Process.kill(:HUP, pid)
       end
 
       def restart
-        return unless pid = get_pid
+        return unless (pid = get_pid)
 
         Process.kill(:USR1, pid)
       end
 
       def passfile(options, subcmd)
         filename = options[:passfile]
-        unless filename || subcmd == 'echo'
+        unless filename || subcmd == "echo"
           puts "Error: passfile not set. Use --passfile option to provide a path to a file containing hashed credentials."
           puts "This file contains hashed credentials and should not be included in source control without additional protection."
           exit(1)
         end
-        algorithm = options.fetch(:algorithm, 'sha256')
+        algorithm = options.fetch(:algorithm, "sha256")
 
         unless %w[sha256 sha512 bcrypt argon2 none].include?(algorithm)
           puts "Invalid algorithm"
@@ -144,9 +144,9 @@ module Itsi
         end
 
         case subcmd
-        when 'add', 'echo'
+        when "add", "echo"
           Passfile.send(subcmd, filename, algorithm)
-        when 'remove', 'list'
+        when "remove", "list"
           Passfile.send(subcmd, filename)
         else
           puts "Valid subcommands are: add | remove | list"
@@ -165,6 +165,7 @@ module Itsi
           new_name = "#{base}_#{i}#{ext}"
           candidate = File.join(dir, new_name)
           return candidate unless File.exist?(candidate)
+
           i += 1
         end
       end
@@ -189,11 +190,11 @@ module Itsi
 
         case alg
         when /^HS(\d+)$/
-          bits = $1.to_i
+          bits = ::Regexp.last_match(1).to_i
           bytes = bits / 8
           key = SecureRandom.random_bytes(bytes)
           pem = Base64.strict_encode64(key)
-          content =  "=== HMAC #{bits}-bit Secret (base64) ===\n#{pem}\n"
+          content = "=== HMAC #{bits}-bit Secret (base64) ===\n#{pem}\n"
           save_or_print("hmac_#{bits}_secret.txt", content, options)
 
         when /^RS/, /^PS/
@@ -215,32 +216,33 @@ module Itsi
           save_or_print("ecdsa_public.pem",  "=== ECDSA Public Key ===\n#{pub}", options)
 
         else
-          STDERR.puts "Unsupported algorithm: #{alg}"
+          warn "Unsupported algorithm: #{alg}"
           exit 1
         end
       end
 
-
       def add_worker
-        return unless pid = get_pid
+        return unless (pid = get_pid)
 
         Process.kill(:TTIN, pid)
       end
 
       def remove_worker
-        return unless pid = get_pid
+        return unless (pid = get_pid)
 
         Process.kill(:TTOU, pid)
       end
 
       def status
-        return unless pid = get_pid
+        return unless (pid = get_pid)
+
         Itsi.log_info("Itsi running on #{pid}")
         Process.kill(:USR2, pid)
       end
 
       def load_route_middleware_stack(cli_params)
-        middleware, errors = Config.build_config(cli_params, Itsi::Server::Config.config_file_path(cli_params[:config_file_path]))
+        middleware, errors = Config.build_config(cli_params,
+                                                 Itsi::Server::Config.config_file_path(cli_params[:config_file_path]))
         if errors.any?
           puts errors
           []
@@ -271,7 +273,6 @@ module Itsi
       end
 
       alias serve start
-
     end
   end
 end

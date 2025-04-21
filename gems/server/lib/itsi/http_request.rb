@@ -3,7 +3,7 @@
 require "stringio"
 require "socket"
 require "uri"
-require_relative 'http_request/response_status_shortcodes'
+require_relative "http_request/response_status_shortcodes"
 
 module Itsi
   class HttpRequest
@@ -22,7 +22,7 @@ module Itsi
                   end
       [header, rack_form]
     end.to_h.tap do |hm|
-      hm.default_proc = proc { |hsh, key| "HTTP_#{key.upcase.gsub(/-/, "_")}" }
+      hm.default_proc = proc { |_, key| "HTTP_#{key.upcase.gsub(/-/, "_")}" }
     end
 
     def to_rack_env
@@ -78,7 +78,7 @@ module Itsi
     end
 
     def respond(
-      _body = nil, _status = 200, _headers = nil,
+      _body = nil, _status = 200, _headers = nil, # rubocop:disable Lint/UnderscorePrefixedVariableName
       json: nil,
       html: nil,
       text: nil,
@@ -90,13 +90,12 @@ module Itsi
       body: _body,
       &blk
     )
-
       if json
         if as
           begin
             validate!(json, as: as)
           rescue ValidationError => e
-            json = {type: 'error', message: "Validation Error: #{e.message}"}
+            json = { type: "error", message: "Validation Error: #{e.message}" }
             status = 400
           end
         end
@@ -118,15 +117,13 @@ module Itsi
       end
 
       response.respond(status: status, headers: headers, body: body, hijack: hijack, &blk)
-
-
     end
 
     def hijack
       self.hijacked = true
       UNIXSocket.pair.yield_self do |(server_sock, app_sock)|
         server_sock.autoclose = false
-        self.response.hijack(server_sock.fileno)
+        response.hijack(server_sock.fileno)
         server_sock.sync = true
         app_sock.sync = true
         app_sock
@@ -150,37 +147,37 @@ module Itsi
       as ? apply_schema!(params, as) : params
     end
 
-    def params(schema=nil)
-      params = case
-      when url_encoded? then URI.decode_www_form(build_input_io.read).to_h
-      when json? then JSON.parse(build_input_io.read)
-      when multipart?
-        Rack::Multipart::Parser.parse(
-          build_input_io,
-          content_length,
-          content_type,
-          Rack::Multipart::Parser::TEMPFILE_FACTORY,
-          Rack::Multipart::Parser::BUFSIZE,
-          Rack::Utils.default_query_parser
-        ).params
-      else
-        {}
-      end
+    def params(schema = nil)
+      params = if url_encoded?
+                 URI.decode_www_form(build_input_io.read).to_h
+               elsif json?
+                 JSON.parse(build_input_io.read)
+               elsif multipart?
+                 Rack::Multipart::Parser.parse(
+                   build_input_io,
+                   content_length,
+                   content_type,
+                   Rack::Multipart::Parser::TEMPFILE_FACTORY,
+                   Rack::Multipart::Parser::BUFSIZE,
+                   Rack::Utils.default_query_parser
+                 ).params
+               else
+                 {}
+               end
 
       params.merge!(query_params).merge!(url_params)
       validated = schema ? apply_schema!(params, schema) : params
-      unless block_given?
-        if multipart?
-          raise "#params must take a block for multipart requests"
-        else
-          return validated
-        end
-      else
+      if block_given?
         yield validated
+      else
+        raise "#params must take a block for multipart requests" if multipart?
+
+        validated
+
       end
     rescue ValidationError => e
       if response.json?
-        respond(json: {error: e.message}, status: 400)
+        respond(json: { error: e.message }, status: 400)
       else
         respond(e.message, 400)
       end
@@ -191,7 +188,7 @@ module Itsi
       # Unexpected error.
       # Don't reveal potential sensitive information to client.
       if response.json?
-        respond(json: {error: "Internal Server Error"}, status: 500)
+        respond(json: { error: "Internal Server Error" }, status: 500)
       else
         respond("Internal Server Error", 500)
       end
@@ -205,7 +202,7 @@ module Itsi
         if params.key?(:tempfile)
           params[:tempfile].unlink
         else
-        params.each_value { |v| clean_temp_files(v) }
+          params.each_value { |v| clean_temp_files(v) }
         end
       when Array then params.each { |v| clean_temp_files(v) }
       end

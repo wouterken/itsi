@@ -29,7 +29,6 @@ module Itsi
       end
 
       def handle_request(active_call)
-        puts "Handling active call"
         unless (active_call.rpc_desc = @rpc_descs[active_call.method_name])
           active_call.stream.write("\n")
           active_call.send_status(13, "Method not found")
@@ -89,18 +88,18 @@ module Itsi
         result = service.send(active_call.method_name, message, active_call) do |response|
           active_call.remote_send(response)
         end
-        if result.kind_of?(Enumerator)
-          result.each { |response| active_call.remote_send(response) }
-        end
+        return unless result.is_a?(Enumerator)
+
+        result.each { |response| active_call.remote_send(response) }
       end
 
       def handle_bidi_streaming(active_call)
         result = service.send(active_call.method_name, active_call.each_remote_read, active_call) do |response|
           active_call.remote_send(response)
         end
-        if result.kind_of?(Enumerator)
-          result.each { |response| active_call.remote_send(response) }
-        end
+        return unless result.is_a?(Enumerator)
+
+        result.each { |response| active_call.remote_send(response) }
       end
     end
   end

@@ -11,7 +11,7 @@ DEFAULT_APP = lambda {
         [
           { "Content-Type" => "application/json" },
           [{ "message" => "You're running on Itsi!", "rack_env" => env,
-              "version" => Itsi::Server::VERSION }.to_json]
+             "version" => Itsi::Server::VERSION }.to_json]
         ]
       else
         [
