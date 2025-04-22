@@ -88,7 +88,7 @@ module Itsi
             Itsi.log_debug("Preloading middleware and default rack app")
             preloaded_middleware = middleware_loader.call
             middleware_loader = -> { preloaded_middleware }
-          rescue StandardError => e
+          rescue Exception => e # rubocop:disable Lint/RescueException
             errors << [e, e.backtrace[0]]
           end
         # If we're just preloading a specific gem group, we'll do that here too
@@ -146,7 +146,34 @@ module Itsi
           recv_buffer_size: itsifile_config.fetch(:recv_buffer_size, 262_144)
         }.transform_keys(&:to_s)
 
-        error_lines = errors.flat_map do |(error, message)|
+        [srv_config, errors_to_error_lines(errors)]
+      rescue StandardError
+        Itsi.log_error e.message
+        puts e.backtrace
+      end
+
+      def self.test!(cli_params)
+        config, errors = build_config(cli_params, Itsi::Server::Config.config_file_path(cli_params[:config_file]))
+        unless errors.any?
+          begin
+            config["middleware_loader"][]
+          rescue Exception => e # rubocop:disable Lint/RescueException
+            errors = [e]
+          end
+        end
+
+        if errors.any?
+          Itsi.log_error("Config file is invalid")
+          puts errors
+        else
+          Itsi.log_info("Config file is valid")
+        end
+      end
+
+      def self.errors_to_error_lines(errors)
+        return unless errors
+
+        errors.flat_map do |(error, message)|
           location = message[/(.*?):in/, 1]
           file, lineno = location.split(":")
           lineno = lineno.to_i
@@ -176,29 +203,6 @@ module Itsi
             "   --> #{File.expand_path(file)}:#{lineno}",
             *info_lines
           ]
-        end
-
-        [srv_config, error_lines]
-      rescue StandardError
-        Itsi.log_error e.message
-        puts e.backtrace
-      end
-
-      def self.test!(cli_params)
-        config, errors = build_config(cli_params, Itsi::Server::Config.config_file_path(cli_params[:config_file]))
-        unless errors.any?
-          begin
-            config["middleware_loader"][]
-          rescue Exception => e # rubocop:disable Lint/RescueException
-            errors = [e]
-          end
-        end
-
-        if errors.any?
-          Itsi.log_error("Config file is invalid")
-          puts errors
-        else
-          Itsi.log_info("Config file is valid")
         end
       end
 

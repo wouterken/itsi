@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 ENV["ITSI_LOG"] = "off"
 
 require "minitest/reporters"
@@ -8,14 +9,13 @@ require "socket"
 require "net/http"
 require "minitest/autorun"
 
-
 Minitest::Reporters.use! Minitest::Reporters::SpecReporter.new
 
-def free_bind(protocol="http", unix_socket: false)
+def free_bind(protocol = "http", unix_socket: false)
   if unix_socket
     socket_path = "/tmp/itsi_socket_#{Process.pid}_#{rand(1000)}.sock"
     UNIXServer.new(socket_path).close
-    protocol == 'https' ? "tls://#{socket_path}" : "unix://#{socket_path}"
+    protocol == "https" ? "tls://#{socket_path}" : "unix://#{socket_path}"
   else
     server = TCPServer.new("0.0.0.0", 0)
     port = server.addr[1]
@@ -23,7 +23,6 @@ def free_bind(protocol="http", unix_socket: false)
     "#{protocol}://0.0.0.0:#{port}"
   end
 end
-
 
 def server(app: nil, protocol: "http", bind: free_bind(protocol), itsi_rb: nil, cleanup: true, timeout: 5, &blk)
   itsi_rb ||= lambda do
@@ -49,7 +48,7 @@ def server(app: nil, protocol: "http", bind: free_bind(protocol), itsi_rb: nil, 
   sync.pop
   uri = URI(bind)
   # Timeout.timeout(timeout) do
-    RequestContext.new(uri, self).instance_exec(uri, &blk)
+  RequestContext.new(uri, self).instance_exec(uri, &blk)
   # end
 rescue StandardError => e
   puts e
@@ -60,9 +59,9 @@ ensure
   Itsi::Server.stop_background_threads if cleanup
 end
 
-require 'net/http'
-require 'net_http_unix'
-require 'uri'
+require "net/http"
+require "net_http_unix"
+require "uri"
 
 class RequestContext
   def initialize(uri, binding)
@@ -74,7 +73,7 @@ class RequestContext
     @binding.send(method_name, *args, &block)
   end
 
-  def post(path, data="", headers = {})
+  def post(path, data = "", headers = {})
     client.post(uri_for(path), data, headers)
   end
 
@@ -101,7 +100,7 @@ class RequestContext
     client.request(request)
   end
 
-  def put(path, data="", headers = {})
+  def put(path, data = "", headers = {})
     request = Net::HTTP::Put.new(uri_for(path))
     request.body = data
     headers.each { |k, v| request[k] = v }
@@ -114,7 +113,7 @@ class RequestContext
     client.request(request)
   end
 
-  def patch(path, data="", headers = {})
+  def patch(path, data = "", headers = {})
     request = Net::HTTP::Patch.new(uri_for(path))
     request.body = data
     client.request(request)
@@ -127,21 +126,23 @@ class RequestContext
       read_timeout: 1,
       open_timeout: 1
     }
-    if @uri.scheme == 'unix'
+    if @uri.scheme == "unix"
       NetX::HTTPUnix.new(
         @uri.to_s,
-        **opts)
+        **opts
+      )
     else
       Net::HTTP.start(
         @uri.host,
         @uri.port,
-        use_ssl: @uri.scheme == 'https',
-        **opts)
+        use_ssl: @uri.scheme == "https",
+        **opts
+      )
     end
   end
 
   def uri_for(path)
-    if @uri.scheme == 'unix'
+    if @uri.scheme == "unix"
       URI::HTTP.build(path: path, host: "localhost")
     else
       URI.join(@uri.to_s, path)

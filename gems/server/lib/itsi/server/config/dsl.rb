@@ -57,12 +57,7 @@ module Itsi
               @options[:middleware_loaders].each(&:call)
               @middleware[:app] ||= {}
               @middleware[:app][:app_proc] = @middleware[:app]&.[](:preloader)&.call || DEFAULT_APP[]
-              if errors.any?
-                error = errors.first.first
-                error.set_backtrace(error.backtrace.drop_while { |r| r =~ %r{itsi/server/config} })
-                raise error
-              end
-              flatten_routes
+              [flatten_routes, Config.errors_to_error_lines(errors)]
             end
           }
 
@@ -78,7 +73,7 @@ module Itsi
           option_name = option.option_name
           define_method(option_name) do |*args, **kwargs, &blk|
             option.new(self, *args, **kwargs, &blk).build!
-          rescue StandardError => e
+          rescue Exception => e # rubocop:disable Lint/RescueException
             @errors << [e, caller[1]]
           end
         end
@@ -89,7 +84,7 @@ module Itsi
             middleware.new(self, *args, **kwargs, &blk).build!
           rescue Config::Endpoint::InvalidHandlerException => e
             @errors << [e, "#{e.backtrace[0]}:in #{e.message}"]
-          rescue StandardError => e
+          rescue Exception => e # rubocop:disable Lint/RescueException
             @errors << [e, caller[1]]
           end
         end

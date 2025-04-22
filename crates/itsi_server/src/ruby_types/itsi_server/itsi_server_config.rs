@@ -14,7 +14,7 @@ use magnus::{
     block::Proc,
     error::Result,
     value::{LazyId, ReprValue},
-    RArray, RHash, Ruby, Symbol, Value,
+    RArray, RHash, Ruby, Symbol, TryConvert, Value,
 };
 use nix::{
     fcntl::{fcntl, FcntlArg, FdFlag},
@@ -124,9 +124,17 @@ impl ServerParams {
                 debug!("Loading Itsi Scheduler");
                 ruby.require("itsi/scheduler")?;
             }
-            let routes_raw = self
+            let result_pair = self
                 .middleware_loader
-                .call::<_, Option<Value>>(())
+                .call::<(), RArray>(())
+                .inspect_err(|e| {
+                    eprintln!("Error loading middleware: {:?}", e);
+                    if let Some(err_value) = e.value() {
+                        print_rb_backtrace(err_value);
+                    }
+                })?;
+            let routes_raw = result_pair
+                .entry::<Option<Value>>(0)
                 .inspect_err(|e| {
                     eprintln!("Error loading middleware: {:?}", e);
                     if let Some(err_value) = e.value() {
@@ -134,6 +142,21 @@ impl ServerParams {
                     }
                 })?
                 .map(|mw| mw.into());
+            let error_lines = result_pair.entry::<Option<RArray>>(1).inspect_err(|e| {
+                eprintln!("Error loading middleware: {:?}", e);
+                if let Some(err_value) = e.value() {
+                    print_rb_backtrace(err_value);
+                }
+            })?;
+            if error_lines.is_some_and(|r| !r.is_empty()) {
+                let errors: Vec<String> =
+                    Vec::<String>::try_convert(error_lines.unwrap().as_value())?;
+                ItsiServerConfig::print_config_errors(errors);
+                return Err(magnus::Error::new(
+                    magnus::exception::runtime_error(),
+                    "Failed to set middleware",
+                ));
+            }
             let middleware = MiddlewareSet::new(routes_raw)?;
             self.middleware.set(middleware).map_err(|_| {
                 magnus::Error::new(

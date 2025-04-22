@@ -2,7 +2,7 @@
 type: docs
 ---
 # Itsi
-<img src="itsi-server-100.png" alt="asd" width="80px" style="display: block; margin-left: auto; margin-right: auto;">
+<img src="itsi-server-100.png" alt="image itsi" width="80px" style="display: block; margin-left: auto; margin-right: auto;">
 
 > The Serious Web Server, for Serious People
 

@@ -34,6 +34,19 @@ E.g.
 auth_api_key .. other options.., error_response: 'forbidden'
 ```
 
+## Example of built-in response
+### HTML
+  {{< card  title="Built-in error page" image="/error_page.jpg" subtitle="Default Itsi Error Page." method="Resize" options="10x q80 webp" >}}
+### JSON
+```json
+{
+  "error": "Too Many Requests",
+  "message": "Too many requests within a limited time frame.",
+  "code": 429,
+  "status": "error"
+}
+```
+
 ## Override the error response
 You may instead wish to completely override the error response. You can provide a status code, and a message in up to three
 formats: plain-text, JSON, or HTML (at least one must be provided). Itsi will serve the appropriate type based on the `Accept` header of the incoming request, or fall back to the default if the requested type is not available.

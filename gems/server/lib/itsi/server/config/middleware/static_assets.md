@@ -20,6 +20,46 @@ It can auto-index directories for simple directory listings.
 static_assets root_dir: "./"
 ```
 
+### Directory Index
+#### HTML
+
+  {{< card link="/" title="Static File Server" image="/directory_listing.jpg" subtitle="Static File Listing, Powered by Itsi." method="Resize" options="500x q80 webp" >}}
+
+#### JSON
+Directory indexes also support responding in JSON format. E.g.
+
+`curl -H "Accept: application/json" http://0.0.0.0`
+
+```json
+{
+  "directory": ".",
+  "items": [
+    {
+      "is_dir": false,
+      "modified": "2025-04-22 04:21:43",
+      "name": "Gemfile",
+      "path": "Gemfile",
+      "size": "42 B"
+    },
+    {
+      "is_dir": false,
+      "modified": "2025-04-22 04:21:48",
+      "name": "Gemfile.lock",
+      "path": "Gemfile%2Elock",
+      "size": "463 B"
+    },
+    {
+      "is_dir": false,
+      "modified": "2025-04-22 02:46:45",
+      "name": "Itsi.rb",
+      "path": "Itsi%2Erb",
+      "size": "80 B"
+    }
+  ],
+  "title": "Directory listing for ."
+}
+```
+
 ## Configuration Options
 
 

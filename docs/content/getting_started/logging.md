@@ -11,8 +11,7 @@ Itsi has a very configurable logging system. You can configure logging use the `
 For basic logging needs, set a global log-level using the `ITSI_LOG` environment variable (to one of `trace`, `debug`, `info`, `warn`, `error`)
 
 ## Fine-grained control
-
-For fine-grained, configuration-based control read through how to use the following options and middleware:
+Itsi supports fine-grained config-based control of logging behavior, which can be changed at runtime **without downtime**. To utilize these functions, read the documentation for the following options and middleware:
 
 ### Options
 * [`log_level`](/options/log_level)

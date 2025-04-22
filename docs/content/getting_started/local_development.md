@@ -15,7 +15,7 @@ inside your editor. It also gives you easy-to-use auto-completion and snippets f
 You don't need to install the RubyLSP add-on to use Itsi, if both Itsi and RubyLSP are installed and activated in the same project, RubyLSP will automatically
 discover and load the addon.
 
-<img src="/ruby-lsp.png" alt="asd" width="700px" style="display: block; margin-left: auto; margin-right: auto;">
+<img src="/ruby-lsp.png" alt="image itsi" width="700px" style="display: block; margin-left: auto; margin-right: auto;">
 
 ## Live Config Reloading
 Add `auto_reload_config!` to your `Itsi.rb` configuration file and Itsi will automatically hot reload its config with every change you make.
@@ -66,7 +66,14 @@ You can optionally provide an explicit config file path using
 itsi test -C /path/to/Itsi.rb
 ```
 
-
+Itsi will print informative error message if config validation fails. E.g.
+```bash
+─ algorithms: ─ `Enum` validation failed. Invalid ["zstd", "gzip", "deflate", "br"] value: "brotli"
+   --> /Users/pico/Development/itsi/sandbox/itsi_file/Itsi.rb:2
+   1 | location '/br' do
+   2 |   compress algorithms: ['brotli'], min_size: 0, compress_streams: true, mime_types: ['all'], level: 'fastest'
+     |   ^^^
+```
 
 ## Shell Completions
 Itsi can also help you install shell completions, which are useful if you find yourself using the `itsi` executable a lot and forgetting the commands.

@@ -63,7 +63,6 @@ module Itsi
         background ? [server, Thread.new(&run)] : run[]
       rescue Exception => e # rubocop:disable Lint/RescueException
         Itsi.log_error e.message
-        raise e
       end
 
       def static(cli_params)

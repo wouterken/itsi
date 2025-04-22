@@ -8,7 +8,6 @@ next: /configuration
 
 Itsi responds to several Unix signals for process control. These signals are used to gracefully shut down, reload configuration, adjust worker pools, or emit internal lifecycle events.
 
-
 ---
 
 ## Signal Types
