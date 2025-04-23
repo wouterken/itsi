@@ -46,7 +46,7 @@ module Itsi
       "HTTP_VERSION" => "",
       "itsi.request" => "",
       "itsi.response" => "",
-      "rack.version" => [nil],
+      "rack.version" => nil,
       "rack.url_scheme" => "",
       "rack.input" => "",
       "rack.hijack" => "",
@@ -69,7 +69,7 @@ module Itsi
       env["HTTP_VERSION"] = env["SERVER_PROTOCOL"] = version
       env["itsi.request"] = self
       env["itsi.response"] = response
-      env["rack.version"][0] = version
+      env["rack.version"] = [version]
       env["rack.url_scheme"] = scheme
       env["rack.input"] = build_input_io
       env["rack.hijack"] = method(:hijack)
