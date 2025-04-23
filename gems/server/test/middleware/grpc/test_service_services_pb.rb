@@ -6,7 +6,7 @@ require_relative 'test_service_pb'
 
 module Test
   module TestService
-    # A service with one of each RPC type  [oai_citation_attribution:0‡Википедия — свободная энциклопедия](https://ru.wikipedia.org/wiki/GRPC?utm_source=chatgpt.com)
+
     class Service
 
       include ::GRPC::GenericService

@@ -9,13 +9,13 @@ The Reverse Proxy middleware enables reverse proxying by forwarding incoming HTT
 
 ```ruby
 proxy \
-  to: "http://backend.example.com/api{path}{query}", \
-  backends: ["127.0.0.1:3001", "127.0.0.1:3002"], \
-  backend_priority: "round_robin", \
-  headers: { "X-Forwarded-For" => { rewrite: "{addr}" } }, \
-  verify_ssl: false, \
-  timeout: 30, \
-  tls_sni: true, \
+  to: "http://backend.example.com/api{path}{query}",
+  backends: ["127.0.0.1:3001", "127.0.0.1:3002"],
+  backend_priority: "round_robin",
+  headers: { "X-Forwarded-For" => { rewrite: "{addr}" } },
+  verify_ssl: false,
+  timeout: 30,
+  tls_sni: true,
   error_response: "bad_gateway"
 ```
 ## Options

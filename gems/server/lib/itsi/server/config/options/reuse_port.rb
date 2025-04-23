@@ -10,7 +10,7 @@ module Itsi
         detail "Configures whether the server should set the reuse_port option on the underlying socket."
 
         schema do
-          (Bool() & Required()).default(true)
+          (Bool() & Required()).default(false)
         end
 
       end

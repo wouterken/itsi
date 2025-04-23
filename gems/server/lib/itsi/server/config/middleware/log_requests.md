@@ -21,7 +21,7 @@ log_requests \
 ```
 
 
-The log statement can populated with several different placeholders.
+The log statement can populated with several different placeholders, using [String Rewrite](/middleware/string_rewrite) functionality.
 Available values are:
 
 ### `before` Format String
@@ -45,6 +45,8 @@ Available values are:
 * `addr` - The client's IP address
 * `response_time` - The response time in milliseconds
 * `<Header-Name>`: Any existing response header. For example `{Content-Type}` or `{Set-Cookie}` will be replaced with its current value.
+
+See [String Rewrite](/middleware/string_rewrite) for more advanced string manipulation options.
 
 
 ### Path Attributes

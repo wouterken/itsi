@@ -662,7 +662,7 @@ impl StaticFileServer {
         let range_length = end - start + 1;
         let limited_reader = tokio::io::AsyncReadExt::take(file, range_length);
         let path_clone = path.clone();
-        let stream = ReaderStream::new(limited_reader)
+        let stream = ReaderStream::with_capacity(limited_reader, 64 * 1024)
             .map_ok(Frame::data)
             .map_err(move |e| {
                 warn!("Error streaming file {}: {}", path_clone.display(), e);
@@ -681,7 +681,7 @@ impl StaticFileServer {
         match File::open(&path).await {
             Ok(file) => {
                 let path_clone = path.clone();
-                let stream = ReaderStream::new(file)
+                let stream = ReaderStream::with_capacity(file, 64 * 1024)
                     .map_ok(Frame::data)
                     .map_err(move |e| {
                         warn!("Error streaming file {}: {}", path_clone.display(), e);

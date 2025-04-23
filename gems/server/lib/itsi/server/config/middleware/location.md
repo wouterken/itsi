@@ -48,7 +48,7 @@ end
 ```ruby {filename="Itsi.rb"}
 # Match on non-route options.
 # Redirect http requests to https requests
-location protocols: ["http"]
+location schemes: ["http"]
   redirect type: :permanent, to: "https://{host}{path_and_query}"
 end
 ```
@@ -101,7 +101,7 @@ Pass these to the location block using keyword arguments, e.g.
 
 ```ruby
 # Redirect all http JSON requests to use https exclusively.
-location protocols: ["http"], content_types: ["application/json"]
+location schemes: ["http"], content_types: ["application/json"]
   redirect type: :permanent, to: "https://{host}{path_and_query}"
 end
 ```

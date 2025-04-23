@@ -13,7 +13,6 @@ Under the covers it:
 3. Automatically enables `gRPC` reflection (so client like `evans`, `grpcurl` or `Postman` can discover your service endpoints without needing access to raw `.proto` files).
 4. Supports optional per‑call compression (`none`, `deflate`, `gzip`) and a non‑blocking execution mode.
 
----
 
 ## Usage
 
@@ -97,8 +96,7 @@ require_relative 'echo_service_impl'
 
 bind "https://localhost:3000"
 grpc EchoServiceImpl.new,
-      nonblocking: false,
-      compression: 'gzip' do
+      nonblocking: false do
   # Nested middleware still works:
   response_headers additions: { 'X-Service' => ['Echo'] }
 end

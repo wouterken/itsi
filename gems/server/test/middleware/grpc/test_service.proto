@@ -2,7 +2,6 @@ syntax = "proto3";
 
 package test;
 
-// A service with one of each RPC type  [oai_citation_attribution:0‡Википедия — свободная энциклопедия](https://ru.wikipedia.org/wiki/GRPC?utm_source=chatgpt.com)
 service TestService {
   // Unary RPC
   rpc UnaryEcho (EchoRequest) returns (EchoResponse) {}
