@@ -25,56 +25,73 @@ module Itsi
       hm.default_proc = proc { |_, key| "HTTP_#{key.upcase.gsub(/-/, "_")}" }
     end
 
+    RACK_ENV_TEMPLATE = {
+      "SERVER_SOFTWARE" => "Itsi",
+      "rack.errors" => $stderr,
+      "rack.multithread" => true,
+      "rack.multiprocess" => true,
+      "rack.run_once" => false,
+      "rack.hijack?" => true,
+      "rack.multipart.buffer_size" => 16_384,
+      "SCRIPT_NAME" => "",
+      "REQUEST_METHOD" => "",
+      "PATH_INFO" => "",
+      "REQUEST_PATH" => "",
+      "QUERY_STRING" => "",
+      "REMOTE_ADDR" => "",
+      "SERVER_PORT" => "",
+      "SERVER_NAME" => "",
+      "SERVER_PROTOCOL" => "",
+      "HTTP_HOST" => "",
+      "HTTP_VERSION" => "",
+      "itsi.request" => "",
+      "itsi.response" => "",
+      "rack.version" => [nil],
+      "rack.url_scheme" => "",
+      "rack.input" => "",
+      "rack.hijack" => "",
+      "CONTENT_TYPE" => nil,
+      "CONTENT_LENGTH" => nil
+    }.freeze
+
     def to_rack_env
       path = self.path
       host = self.host
       version = self.version
-
-      {
-        "SERVER_SOFTWARE" => "Itsi",
-        "SCRIPT_NAME" => script_name,
-        "REQUEST_METHOD" => request_method,
-        "PATH_INFO" => path,
-        "REQUEST_PATH" => path,
-        "QUERY_STRING" => query_string,
-        "REMOTE_ADDR" => remote_addr,
-        "SERVER_PORT" => port.to_s,
-        "SERVER_NAME" => host,
-        "SERVER_PROTOCOL" => version,
-        "HTTP_HOST" => host,
-        "HTTP_VERSION" => version,
-        "itsi.request" => self,
-        "itsi.response" => response,
-        "rack.version" => [version],
-        "rack.url_scheme" => scheme,
-        "rack.input" => build_input_io,
-        "rack.errors" => $stderr,
-        "rack.multithread" => true,
-        "rack.multiprocess" => true,
-        "rack.run_once" => false,
-        "rack.hijack?" => true,
-        "rack.multipart.buffer_size" => 16_384,
-        "rack.hijack" => method(:hijack)
-      }.tap do |r|
-        headers.each do |(k, v)|
-          r[case k
-            when "content-type" then "CONTENT_TYPE"
-            when "content-length" then "CONTENT_LENGTH"
-            when "accept" then "HTTP_ACCEPT"
-            when "accept-encoding" then "HTTP_ACCEPT_ENCODING"
-            when "accept-language" then "HTTP_ACCEPT_LANGUAGE"
-            when "user-agent" then "HTTP_USER_AGENT"
-            when "referer" then "HTTP_REFERER"
-            when "origin" then "HTTP_ORIGIN"
-            when "cookie" then "HTTP_COOKIE"
-            when "authorization" then "HTTP_AUTHORIZATION"
-            when "x-forwarded-for" then "HTTP_X_FORWARDED_FOR"
-            when "x-forwarded-proto" then "HTTP_X_FORWARDED_PROTO"
-            else RACK_HEADER_MAP[k]
-            end
-          ] = v
-        end
+      env = RACK_ENV_TEMPLATE.dup
+      env["SCRIPT_NAME"] = script_name
+      env["REQUEST_METHOD"] = request_method
+      env["REQUEST_PATH"] = env["PATH_INFO"] = path
+      env["QUERY_STRING"] = query_string
+      env["REMOTE_ADDR"] = remote_addr
+      env["SERVER_PORT"] = port.to_s
+      env["HTTP_HOST"] = env["SERVER_NAME"] = host
+      env["HTTP_VERSION"] = env["SERVER_PROTOCOL"] = version
+      env["itsi.request"] = self
+      env["itsi.response"] = response
+      env["rack.version"][0] = version
+      env["rack.url_scheme"] = scheme
+      env["rack.input"] = build_input_io
+      env["rack.hijack"] = method(:hijack)
+      headers.each do |(k, v)|
+        env[case k
+          when "content-type" then "CONTENT_TYPE"
+          when "content-length" then "CONTENT_LENGTH"
+          when "accept" then "HTTP_ACCEPT"
+          when "accept-encoding" then "HTTP_ACCEPT_ENCODING"
+          when "accept-language" then "HTTP_ACCEPT_LANGUAGE"
+          when "user-agent" then "HTTP_USER_AGENT"
+          when "referer" then "HTTP_REFERER"
+          when "origin" then "HTTP_ORIGIN"
+          when "cookie" then "HTTP_COOKIE"
+          when "authorization" then "HTTP_AUTHORIZATION"
+          when "x-forwarded-for" then "HTTP_X_FORWARDED_FOR"
+          when "x-forwarded-proto" then "HTTP_X_FORWARDED_PROTO"
+          else RACK_HEADER_MAP[k]
+          end
+        ] = v
       end
+      env
     end
 
     def respond(
