@@ -18,6 +18,11 @@ class TestLogRequests < Minitest::Test
         get_resp("/foo?bar=baz")
       end
     end
+    server(
+      itsi_rb: lambda do
+        log_level :error
+      end
+    ){}
 
     # should emit something like "[a1b2c3] BEFORE GET /foo?bar=baz"
     assert_match(%r{\[[0-9a-f]+\] BEFORE GET /foo\?bar=baz}, stdout)
@@ -39,10 +44,17 @@ class TestLogRequests < Minitest::Test
       ) do
         get_resp("/foo")
       end
+
+      server(
+        itsi_rb: lambda do
+          log_level :error
+        end
+      ){}
+
     end
 
     # should emit something like "[d4e5f6] AFTER 200 in 1.234ms"
-    assert_match(/\[[0-9a-f]+\] AFTER 200 in \d+\.\d+ms/, stdout)
+    assert_match(/\[[0-9a-f]+\] AFTER 200 in \d+(?:\.\d+)?.?s/, stdout)
   end
 
   # 3. custom log‑level is honored

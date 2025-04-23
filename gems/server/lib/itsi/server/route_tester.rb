@@ -4,7 +4,7 @@ module Itsi
     module RouteTester
       require "set"
       require "strscan"
-      require "debug"
+
       def format_mw(mw)
         mw_name, mw_args = mw
         case mw_name

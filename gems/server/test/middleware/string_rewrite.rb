@@ -109,4 +109,58 @@ class TestStringRewrite < Minitest::Test
       assert_equal "https://example.com/{unknown}", res["Location"]
     end
   end
+
+  def test_strip_prefix
+    server(
+      itsi_rb: lambda do
+        redirect to: "https://example.com{path|strip_prefix:/rails}", type: "temporary"
+        get("/rails/foo") { |r| r.ok }
+      end
+    ) do
+      res = get_resp("/rails/foo")
+      assert_equal "307", res.code
+      assert_equal "https://example.com/foo", res["Location"]
+    end
+  end
+
+  def test_strip_suffix
+    server(
+      itsi_rb: lambda do
+        redirect to: "{path_and_query|strip_suffix:.json}", type: "found"
+        get("/data.json") { |r| r.ok }
+      end
+    ) do
+      res = get_resp("/data.json")
+      assert_equal "302", res.code
+      # .json is removed from end of "/data.json"
+      assert_equal "/data", res["Location"]
+    end
+  end
+
+  def test_replace
+    server(
+      itsi_rb: lambda do
+        redirect to: "https://{host|replace:localhost,api.example.com}", type: "permanent"
+        get("/foo") { |r| r.ok }
+      end
+    ) do
+      res = get_resp("/foo")
+      assert_equal "308", res.code
+      assert_equal "https://api.example.com", res["Location"]
+    end
+  end
+
+  def test_chain_modifiers
+    server(
+      itsi_rb: lambda do
+        redirect to: "https://example.com{path|strip_prefix:/v1|replace:api,service}", type: "temporary"
+        get("/v1/api/users") { |r| r.ok }
+      end
+    ) do
+      res = get_resp("/v1/api/users")
+      assert_equal "307", res.code
+      # after strip_prefix: "/api/users", then replace "api"→"service"
+      assert_equal "https://example.com/service/users", res["Location"]
+    end
+  end
 end

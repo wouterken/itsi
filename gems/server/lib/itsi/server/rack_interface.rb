@@ -7,7 +7,7 @@ module Itsi
         if app.is_a?(String)
           dir = File.expand_path(File.dirname(app))
           Dir.chdir(dir) do
-            loaded_app = ::Rack::Builder.parse_file(app)
+            loaded_app = ::Rack::Builder.parse_file(File.basename(app))
             app = loaded_app.is_a?(Array) ? loaded_app.first : loaded_app
           end
         end

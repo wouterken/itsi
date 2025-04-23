@@ -3,7 +3,7 @@ module Itsi
     module Config
       class Include < Option
 
-        insert_text "include \"${1|other_file.rb|}\" # Include another file to be loaded within the current configuration"
+        insert_text "include \"${1|other_file|}\" # Include another file to be loaded within the current configuration"
 
         detail "Include another file to be loaded within the current configuration"
 

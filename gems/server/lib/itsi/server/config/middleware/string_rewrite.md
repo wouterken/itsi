@@ -13,6 +13,20 @@ The String Rewrite mechanism is used when configuring Itsi for
 
 It allows you to create dynamic strings from a template by combining literal text with placeholders. Placeholders (denoted using curly braces: `{}`) are replaced at runtime with data derived from the HTTP request, response, or context.
 
+Modifiers can be appended after a pipe | to transform the substituted value.
+
+## Modifiers
+
+After a placeholder name, add |<modifier>:<arg> (or for replace, |replace:<from>,<to>). Available modifiers:
+
+`strip_prefix:<text>` If the substituted value starts with <text>, remove that prefix.
+
+`strip_suffix:<text>` If the substituted value ends with <text>, remove that suffix.
+
+`replace:<from>,<to>` Replace all occurrences of <from> in the substituted value with <to>.
+
+Modifiers are applied in the order they appear. You can chain multiple modifiers by repeating the |<modifier>:<arg> syntax (e.g. `{path|strip_prefix:/rails|replace:old,new}`).
+
 ### Rewriting a Request
 
 The following placeholders are supported:

@@ -84,10 +84,6 @@ module Itsi
             end
           else
             @params[:paths] << "" if @params[:paths].empty?
-            @params[:paths] = @params[:paths].flat_map do |p|
-              stripped_trailing = p[/(.*)\/?$/, 1]
-              [stripped_trailing, stripped_trailing + "/"]
-            end.uniq
             location.location(*@params[:paths], methods: @params[:http_methods]) do
               @middleware[:app] = app
             end

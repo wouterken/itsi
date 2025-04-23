@@ -51,6 +51,10 @@ pub static ROOT_STATIC_FILE_SERVER: LazyLock<StaticFileServer> = LazyLock::new(|
         not_found_behavior: NotFoundBehavior::Error(ErrorResponse::not_found()),
         serve_hidden_files: false,
         allowed_extensions: vec!["html".to_string(), "css".to_string(), "js".to_string()],
+        miss_cache: Cache::builder()
+            .max_capacity(1000)
+            .time_to_live(Duration::from_secs(1))
+            .build(),
     })
     .unwrap()
 });
@@ -85,6 +89,7 @@ pub struct StaticFileServerConfig {
     pub headers: Option<HashMap<String, String>>,
     pub serve_hidden_files: bool,
     pub allowed_extensions: Vec<String>,
+    pub miss_cache: Cache<String, NotFoundBehavior>,
 }
 
 #[derive(Debug, Clone)]
@@ -389,6 +394,29 @@ impl StaticFileServer {
         abs_path: &str,
         accept: ResponseFormat,
     ) -> std::result::Result<ResolvedAsset, NotFoundBehavior> {
+        let ext_opt = Path::new(key)
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|s| s.to_lowercase());
+
+        // If the allowed list is non-empty, enforce membership
+        if !self.allowed_extensions.is_empty() {
+            match ext_opt {
+                Some(ref ext)
+                    if self
+                        .allowed_extensions
+                        .iter()
+                        .any(|ae| ae.eq_ignore_ascii_case(ext)) => {}
+                None if self.config.try_html_extension => {}
+                _ => {
+                    return Err(self.config.not_found_behavior.clone());
+                }
+            }
+        }
+
+        if let Some(cached_nf) = self.miss_cache.get(key) {
+            return Err(cached_nf.clone());
+        }
         // First check if we have a cached mapping for this key
         if let Some(path) = self.key_to_path.lock().await.get(key) {
             // Check if the cached entry is still valid
@@ -449,7 +477,6 @@ impl StaticFileServer {
 
         let mut full_path = self.config.root_dir.clone();
         full_path.push(normalized_path);
-        debug!("Resolving path {:?}", full_path);
         // Check if path exists and is a file
         match tokio::fs::metadata(&full_path).await {
             Ok(metadata) => {
@@ -561,7 +588,6 @@ impl StaticFileServer {
             }
             Err(_) => {
                 // Path doesn't exist, try with .html extension if configured
-                debug!("Path doesn't exist");
                 if self.config.try_html_extension {
                     let mut html_path = full_path.clone();
                     html_path.set_extension("html");
@@ -592,7 +618,9 @@ impl StaticFileServer {
         }
 
         // If we get here, we couldn't resolve the key to a file
-        Err(self.config.not_found_behavior.clone())
+        let nf = self.config.not_found_behavior.clone();
+        self.miss_cache.insert(key.to_string(), nf.clone());
+        Err(nf)
     }
 
     async fn stream_file_range(

@@ -75,11 +75,15 @@ module Itsi
             @params[:allowed_extensions] << ""
           end
 
-          @params[:base_path] = "^(?<base_path>#{location.paths_from_parent}).*$"
-          params = @params
-          location.location("*", extensions: @params[:allowed_extensions]) do
-            @middleware[:static_assets] = params
+          if @params[:allowed_extensions].any? && @params[:auto_index]
+            @params[:allowed_extensions] |= ["html"]
+            @params[:allowed_extensions] |= [""]
           end
+
+          @params[:base_path] = "^(?<base_path>#{location.paths_from_parent.gsub(/\.\*\)$/,")")}).*$"
+          params = @params
+
+          location.middleware[:static_assets] = params
         end
       end
     end

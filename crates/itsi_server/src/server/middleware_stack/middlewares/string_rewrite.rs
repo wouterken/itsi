@@ -50,6 +50,35 @@ pub fn parse_template(template: &str) -> Vec<Segment> {
 }
 
 impl StringRewrite {
+    /// Apply a single modifier of the form `op:arg` (or for replace `op:from,to`)
+    #[inline]
+    fn apply_modifier(s: &mut String, mod_str: &str) {
+        if let Some((op, arg)) = mod_str.split_once(':') {
+            match op {
+                "strip_prefix" => {
+                    if s.starts_with(arg) {
+                        let _ = s.drain(..arg.len());
+                    }
+                }
+                "strip_suffix" => {
+                    if s.ends_with(arg) {
+                        let len = s.len();
+                        let start = len.saturating_sub(arg.len());
+                        let _ = s.drain(start..);
+                    }
+                }
+                "replace" => {
+                    if let Some((from, to)) = arg.split_once(',') {
+                        if s.contains(from) {
+                            *s = s.replace(from, to);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
     pub fn rewrite_request(&self, req: &HttpRequest, context: &HttpRequestContext) -> String {
         let segments = self
             .segments
@@ -63,9 +92,17 @@ impl StringRewrite {
 
         for segment in segments {
             match segment {
-                Segment::Literal(text) => result.push_str(text),
-                Segment::Placeholder(placeholder) => {
-                    let replacement = match placeholder.as_str() {
+                Segment::Literal(text) => {
+                    result.push_str(text);
+                }
+                Segment::Placeholder(raw) => {
+                    // split into key and optional modifier
+                    let mut parts = raw.split('|');
+                    let key = parts.next().unwrap();
+                    let modifiers = parts; // zero o
+
+                    // 1) lookup the raw replacement
+                    let mut replacement = match key {
                         "request_id" => context.short_request_id(),
                         "request_id_full" => context.request_id(),
                         "method" => req.method().as_str().to_string(),
@@ -76,13 +113,13 @@ impl StringRewrite {
                             .uri()
                             .path_and_query()
                             .map(|pq| pq.to_string())
-                            .unwrap_or("".to_string()),
+                            .unwrap_or_default(),
                         "query" => {
-                            let query = req.uri().query().unwrap_or("").to_string();
-                            if query.is_empty() {
-                                query
+                            let q = req.uri().query().unwrap_or("");
+                            if q.is_empty() {
+                                "".to_string()
                             } else {
-                                format!("?{}", query)
+                                format!("?{}", q)
                             }
                         }
                         "port" => req
@@ -91,31 +128,34 @@ impl StringRewrite {
                             .map(|p| p.to_string())
                             .unwrap_or_else(|| "80".to_string()),
                         "start_time" => {
-                            if let Some(start_time) = context.start_time() {
-                                start_time.format("%Y-%m-%d:%H:%M:%S:%3f").to_string()
+                            if let Some(ts) = context.start_time() {
+                                ts.format("%Y-%m-%d:%H:%M:%S:%3f").to_string()
                             } else {
                                 "N/A".to_string()
                             }
                         }
                         other => {
-                            if let Some(header_val) = req.headers().get(other) {
-                                if let Ok(s) = header_val.to_str() {
-                                    s.to_string()
-                                } else {
-                                    "".to_string()
-                                }
-                            } else if let Some(caps) = &captures {
-                                if let Some(m) = caps.name(other) {
-                                    m.as_str().to_string()
-                                } else {
-                                    // Fallback: leave the placeholder as is.
-                                    format!("{{{}}}", other)
-                                }
-                            } else {
+                            // headers first
+                            if let Some(hv) = req.headers().get(other) {
+                                hv.to_str().unwrap_or("").to_string()
+                            }
+                            // then any regex‐capture
+                            else if let Some(caps) = &captures {
+                                caps.name(other)
+                                    .map(|m| m.as_str().to_string())
+                                    .unwrap_or_else(|| format!("{{{}}}", other))
+                            }
+                            // fallback: leave placeholder intact
+                            else {
                                 format!("{{{}}}", other)
                             }
                         }
                     };
+
+                    for m in modifiers {
+                        Self::apply_modifier(&mut replacement, m);
+                    }
+
                     result.push_str(&replacement);
                 }
             }
@@ -132,37 +172,42 @@ impl StringRewrite {
         let mut result = String::with_capacity(self.template_string.len());
         for segment in segments {
             match segment {
-                Segment::Literal(text) => result.push_str(text),
-                Segment::Placeholder(placeholder) => {
-                    let replacement = match placeholder.as_str() {
+                Segment::Literal(text) => {
+                    result.push_str(text);
+                }
+                Segment::Placeholder(raw) => {
+                    let mut parts = raw.split('|');
+                    let key = parts.next().unwrap();
+                    let modifiers = parts; // zero o
+
+                    let mut replacement = match key {
                         "request_id" => context.short_request_id(),
                         "request_id_full" => context.request_id(),
                         "status" => resp.status().as_str().to_string(),
                         "addr" => context.addr.to_owned(),
                         "response_time" => {
-                            if let Some(response_time) = context.get_response_time() {
-                                if let Some(microseconds) = response_time.num_microseconds() {
-                                    format!("{:.3}ms", microseconds as f64 / 1000.0)
-                                } else {
-                                    format!("{}ms", response_time.num_milliseconds())
-                                }
+                            let dur = context.get_response_time();
+                            let micros = dur.as_micros();
+                            if micros < 1_000 {
+                                format!("{}µs", micros)
                             } else {
-                                "-".to_string()
+                                let ms = dur.as_secs_f64() * 1_000.0;
+                                format!("{:.3}ms", ms)
                             }
                         }
                         other => {
-                            // Try pulling from response headers first
-                            if let Some(val) = resp.headers().get(other) {
-                                if let Ok(s) = val.to_str() {
-                                    s.to_string()
-                                } else {
-                                    "".to_string()
-                                }
+                            if let Some(hv) = resp.headers().get(other) {
+                                hv.to_str().unwrap_or("").to_string()
                             } else {
                                 format!("{{{}}}", other)
                             }
                         }
                     };
+
+                    for m in modifiers {
+                        Self::apply_modifier(&mut replacement, m);
+                    }
+
                     result.push_str(&replacement);
                 }
             }

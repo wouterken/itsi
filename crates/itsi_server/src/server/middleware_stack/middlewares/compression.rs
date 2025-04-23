@@ -1,5 +1,6 @@
 use crate::{
-    server::http_message_types::HttpResponse, services::itsi_http_service::HttpRequestContext,
+    server::http_message_types::{HttpRequest, HttpResponse},
+    services::itsi_http_service::HttpRequestContext,
 };
 
 use super::{
@@ -13,6 +14,7 @@ use async_compression::{
 };
 use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
+use either::Either;
 use futures::TryStreamExt;
 use http::{
     header::{GetAll, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE},
@@ -20,6 +22,7 @@ use http::{
 };
 use http_body_util::{combinators::BoxBody, BodyExt, Full, StreamBody};
 use hyper::body::{Body, Frame};
+use magnus::error::Result;
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
 use tokio::io::{AsyncRead, AsyncReadExt, BufReader};
@@ -151,6 +154,15 @@ fn update_content_encoding(parts: &mut http::response::Parts, new_encoding: Head
 
 #[async_trait]
 impl MiddlewareLayer for Compression {
+    async fn before(
+        &self,
+        req: HttpRequest,
+        context: &mut HttpRequestContext,
+    ) -> Result<Either<HttpRequest, HttpResponse>> {
+        context.set_supported_encoding_set(&req);
+        Ok(Either::Left(req))
+    }
+
     /// We'll apply compression on the response, where appropriate.
     /// This is if:
     /// * The response body is larger than the minimum size.
@@ -207,16 +219,21 @@ impl MiddlewareLayer for Compression {
             }
         }
 
-        let compression_method = match find_first_supported(
-            &context.supported_encoding_set,
-            self.algorithms.iter().map(|algo| algo.as_str()),
-        ) {
-            Some("gzip") => CompressionAlgorithm::Gzip,
-            Some("br") => CompressionAlgorithm::Brotli,
-            Some("deflate") => CompressionAlgorithm::Deflate,
-            Some("zstd") => CompressionAlgorithm::Zstd,
-            _ => CompressionAlgorithm::Identity,
-        };
+        let compression_method =
+            if let Some(supported_encoding_set) = context.supported_encoding_set() {
+                match find_first_supported(
+                    supported_encoding_set,
+                    self.algorithms.iter().map(|algo| algo.as_str()),
+                ) {
+                    Some("gzip") => CompressionAlgorithm::Gzip,
+                    Some("br") => CompressionAlgorithm::Brotli,
+                    Some("deflate") => CompressionAlgorithm::Deflate,
+                    Some("zstd") => CompressionAlgorithm::Zstd,
+                    _ => CompressionAlgorithm::Identity,
+                }
+            } else {
+                CompressionAlgorithm::Identity
+            };
 
         debug!(
             target: "middleware::compress",

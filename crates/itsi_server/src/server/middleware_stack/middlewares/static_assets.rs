@@ -12,10 +12,11 @@ use async_trait::async_trait;
 use either::Either;
 use http::{
     header::{IF_MODIFIED_SINCE, RANGE},
-    HeaderMap, Method,
+    HeaderMap, HeaderValue, Method,
 };
 use itsi_error::ItsiError;
 use magnus::error::Result;
+use moka::sync::Cache;
 use regex::Regex;
 use serde::Deserialize;
 use std::{collections::HashMap, path::PathBuf, sync::OnceLock, time::Duration};
@@ -75,6 +76,10 @@ impl MiddlewareLayer for StaticAssets {
                 recheck_interval: Duration::from_secs(self.file_check_interval),
                 serve_hidden_files: self.serve_hidden_files,
                 allowed_extensions: self.allowed_extensions.clone(),
+                miss_cache: Cache::builder()
+                    .max_capacity(self.max_files_in_memory)
+                    .time_to_live(Duration::from_secs(self.file_check_interval))
+                    .build(),
             })?)
             .map_err(ItsiError::new)?;
         Ok(())
@@ -90,6 +95,8 @@ impl MiddlewareLayer for StaticAssets {
             debug!(target: "middleware::static_assets", "Refusing to handle non-GET/HEAD request");
             return Ok(Either::Left(req));
         }
+
+        context.set_supported_encoding_set(&req);
         let abs_path = req.uri().path();
         let rel_path = if !self.relative_path {
             abs_path.trim_start_matches("/")
@@ -123,6 +130,10 @@ impl MiddlewareLayer for StaticAssets {
 
         // Let the file server handle everything
         let file_server = self.file_server.get().unwrap();
+        let encodings: &[HeaderValue] = context
+            .supported_encoding_set()
+            .map(Vec::as_slice)
+            .unwrap_or(&[] as &[HeaderValue]);
         let response = file_server
             .serve(
                 &req,
@@ -131,9 +142,10 @@ impl MiddlewareLayer for StaticAssets {
                 serve_range,
                 if_modified_since,
                 is_head_request,
-                &context.supported_encoding_set,
+                encodings,
             )
             .await;
+
         if response.is_none() {
             Ok(Either::Left(req))
         } else {

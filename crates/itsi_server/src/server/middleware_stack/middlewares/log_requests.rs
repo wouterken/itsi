@@ -62,7 +62,7 @@ impl MiddlewareLayer for LogRequests {
         req: HttpRequest,
         context: &mut HttpRequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
-        context.track_start_time();
+        context.init_logging_params();
         if let Some(LogConfig { level, format }) = self.before.as_ref() {
             level.log(format.rewrite_request(&req, context));
         }

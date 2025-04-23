@@ -262,7 +262,7 @@ module Itsi
       end
 
       def routes(cli_params = {})
-        load_route_middleware_stack(cli_params).each do |stack|
+        load_route_middleware_stack(cli_params).first.each do |stack|
           routes = explode_route_pattern(stack["route"].source)
           routes.each do |route|
             print_route(route, stack)

@@ -133,6 +133,7 @@ class TestStaticAssets < Minitest::Test
       end
     end
   end
+
   def test_relative_path_true
     Dir.mktmpdir do |dir|
       # Create file "test.txt" in root_dir.
@@ -141,18 +142,19 @@ class TestStaticAssets < Minitest::Test
       File.write(file_path, "relative true")
       server(
         itsi_rb: lambda do
-          location "foo/bar/baz" do
+          location "foo/bar/baz/*" do
             static_assets \
               root_dir: "#{dir}",
               not_found_behavior: "fallthrough",
               allowed_extensions: ["txt"],
               relative_path: true
 
-            get("/foo/bar/baz/test.txt") { |r| r.ok "fallback" }
+            get("/test.txt") { |r| r.not_found }
           end
         end
       ) do
         res = get_resp("/foo/bar/baz/test.txt")
+
         assert_equal "200", res.code, "Expected 200 OK with relative_path: true"
         assert_equal "relative true", res.body
       end
@@ -169,14 +171,14 @@ class TestStaticAssets < Minitest::Test
       server(
         itsi_rb: lambda do
 
-          location "/foo/bar/baz/" do
+          location "/foo/bar/baz/*" do
             static_assets \
               root_dir: "#{dir}",
               not_found_behavior: "fallthrough",
               allowed_extensions: ["txt"],
               relative_path: false
 
-            get("/foo/bar/baz/test.txt") { |r| r.ok "fallback" }
+            get("/test.txt") { |r| r.ok "fallback" }
           end
         end
       ) do

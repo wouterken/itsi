@@ -1,14 +1,15 @@
 use crate::default_responses::{NOT_FOUND_RESPONSE, TIMEOUT_RESPONSE};
 use crate::ruby_types::itsi_server::itsi_server_config::{ItsiServerTokenPreference, ServerParams};
 use crate::server::binds::listener::ListenerInfo;
-use crate::server::http_message_types::{ConversionExt, HttpResponse, RequestExt, ResponseFormat};
+use crate::server::http_message_types::{
+    ConversionExt, HttpRequest, HttpResponse, RequestExt, ResponseFormat,
+};
 use crate::server::lifecycle_event::LifecycleEvent;
 use crate::server::middleware_stack::MiddlewareLayer;
 use crate::server::request_job::RequestJob;
 use crate::server::serve_strategy::single_mode::RunningPhase;
 use crate::server::signal::send_lifecycle_event;
-use chrono;
-use chrono::Local;
+use chrono::{self, DateTime, Local};
 use either::Either;
 use http::header::ACCEPT_ENCODING;
 use http::{HeaderValue, Request};
@@ -18,6 +19,7 @@ use itsi_error::ItsiError;
 use regex::Regex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
+use std::time::{Duration, Instant};
 use tracing::error;
 
 use std::{future::Future, ops::Deref, pin::Pin, sync::Arc};
@@ -68,17 +70,16 @@ impl Deref for RequestContextInner {
 }
 
 pub struct RequestContextInner {
-    pub request_id: u128,
+    pub request_id: u64,
     pub service: ItsiHttpService,
     pub accept: ResponseFormat,
     pub matching_pattern: Option<Arc<Regex>>,
     pub origin: OnceLock<Option<String>>,
     pub response_format: OnceLock<ResponseFormat>,
-    pub start_time: chrono::DateTime<chrono::Utc>,
-    pub request: Option<Arc<Request<Incoming>>>,
-    pub request_start_time: OnceLock<chrono::DateTime<Local>>,
+    pub request_start_time: OnceLock<DateTime<Local>>,
+    pub start_instant: Instant,
     pub if_none_match: OnceLock<Option<String>>,
-    pub supported_encoding_set: Vec<HeaderValue>,
+    pub supported_encoding_set: OnceLock<Vec<HeaderValue>>,
     pub is_ruby_request: Arc<AtomicBool>,
 }
 
@@ -87,25 +88,36 @@ impl HttpRequestContext {
         service: ItsiHttpService,
         matching_pattern: Option<Arc<Regex>>,
         accept: ResponseFormat,
-        supported_encoding_set: Vec<HeaderValue>,
         is_ruby_request: Arc<AtomicBool>,
     ) -> Self {
         HttpRequestContext {
             inner: Arc::new(RequestContextInner {
-                request_id: rand::random::<u128>(),
+                request_id: rand::random::<u64>(),
                 service,
                 matching_pattern,
                 accept,
                 origin: OnceLock::new(),
                 response_format: OnceLock::new(),
-                start_time: chrono::Utc::now(),
-                request: None,
                 request_start_time: OnceLock::new(),
+                start_instant: Instant::now(),
                 if_none_match: OnceLock::new(),
-                supported_encoding_set,
+                supported_encoding_set: OnceLock::new(),
                 is_ruby_request,
             }),
         }
+    }
+
+    pub fn set_supported_encoding_set(&self, req: &HttpRequest) {
+        let supported_encoding_set = req
+            .headers()
+            .get_all(ACCEPT_ENCODING)
+            .into_iter()
+            .cloned()
+            .collect::<Vec<_>>();
+        self.inner
+            .supported_encoding_set
+            .set(supported_encoding_set)
+            .unwrap();
     }
 
     pub fn set_origin(&self, origin: Option<String>) {
@@ -121,28 +133,29 @@ impl HttpRequestContext {
     }
 
     pub fn short_request_id(&self) -> String {
-        format!("{:016x}", self.inner.request_id & 0xffff_ffff_ffff_ffff)
+        format!("{:08x}", self.inner.request_id & 0xffff_ffff)
     }
 
     pub fn request_id(&self) -> String {
-        format!("{:016x}", self.inner.request_id)
+        format!("{:08x}", self.inner.request_id)
     }
 
-    pub fn track_start_time(&self) {
+    pub fn init_logging_params(&self) {
         self.inner
             .request_start_time
             .get_or_init(chrono::Local::now);
     }
 
-    pub fn start_time(&self) -> Option<chrono::DateTime<Local>> {
+    pub fn start_instant(&self) -> Instant {
+        self.inner.start_instant
+    }
+
+    pub fn start_time(&self) -> Option<DateTime<Local>> {
         self.inner.request_start_time.get().cloned()
     }
 
-    pub fn get_response_time(&self) -> Option<chrono::TimeDelta> {
-        self.inner
-            .request_start_time
-            .get()
-            .map(|instant| Local::now() - instant)
+    pub fn get_response_time(&self) -> Duration {
+        self.inner.start_instant.elapsed()
     }
 
     pub fn set_response_format(&self, format: ResponseFormat) {
@@ -151,6 +164,10 @@ impl HttpRequestContext {
 
     pub fn response_format(&self) -> &ResponseFormat {
         self.inner.response_format.get().unwrap()
+    }
+
+    pub fn supported_encoding_set(&self) -> Option<&Vec<HeaderValue>> {
+        self.inner.supported_encoding_set.get()
     }
 }
 
@@ -170,12 +187,7 @@ impl Service<Request<Incoming>> for ItsiHttpService {
         let accept: ResponseFormat = req.accept().into();
         let accept_clone = accept.clone();
         let is_single_mode = self.server_params.workers == 1;
-        let supported_encoding_set = req
-            .headers()
-            .get_all(ACCEPT_ENCODING)
-            .into_iter()
-            .cloned()
-            .collect::<Vec<_>>();
+
         let request_timeout = self.server_params.request_timeout;
         let is_ruby_request = Arc::new(AtomicBool::new(false));
         let irr_clone = is_ruby_request.clone();
@@ -187,7 +199,6 @@ impl Service<Request<Incoming>> for ItsiHttpService {
                 self_clone,
                 matching_pattern,
                 accept_clone.clone(),
-                supported_encoding_set,
                 irr_clone,
             );
             let mut depth = 0;
@@ -229,8 +240,8 @@ impl Service<Request<Incoming>> for ItsiHttpService {
             Ok(resp)
         };
 
-        Box::pin(async move {
-            if let Some(timeout_duration) = request_timeout {
+        if let Some(timeout_duration) = request_timeout {
+            Box::pin(async move {
                 match timeout(timeout_duration, service_future).await {
                     Ok(result) => result,
                     Err(_) => {
@@ -249,9 +260,9 @@ impl Service<Request<Incoming>> for ItsiHttpService {
                         Ok(TIMEOUT_RESPONSE.to_http_response(accept).await)
                     }
                 }
-            } else {
-                service_future.await
-            }
-        })
+            })
+        } else {
+            Box::pin(service_future)
+        }
     }
 }

@@ -84,11 +84,11 @@ task :build_all do
 end
 
 task :test_env_up do
-  system('terraform -chdir=sandbox/deploy apply')
+  system('terraform -chdir=tmp/sandbox/deploy apply')
 end
 
 task :test_env_down do
-  system('terraform -chdir=sandbox/deploy destroy')
+  system('terraform -chdir=tmp/sandbox/deploy destroy')
 end
 %i[itsi puma iodine falcon unicorn].each do |server|
   namespace server do

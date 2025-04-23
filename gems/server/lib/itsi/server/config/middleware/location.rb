@@ -27,7 +27,7 @@ module Itsi
         end
 
         attr_accessor :location, :routes, :block, :protocols, :hosts, :ports,
-          :extensions, :content_types, :accepts, :block
+          :extensions, :content_types, :accepts
 
         def initialize(location,
           *routes,
@@ -56,13 +56,13 @@ module Itsi
             block: block
           }).to_h
           @routes = params[:routes].empty? ? ["*"] : params[:routes]
-          @methods = params[:methods]
-          @protocols = params[:protocols] | params[:schemes]
-          @hosts = params[:hosts]
-          @ports = params[:ports]
-          @extensions = params[:extensions]
-          @content_types = params[:content_types]
-          @accepts = params[:accepts]
+          @methods = params[:methods].map { |s| s.is_a?(Regexp) ? s : s.to_s }
+          @protocols = (params[:protocols] | params[:schemes]).map { |s| s.is_a?(Regexp) ? s : s.to_s }
+          @hosts = params[:hosts].map { |s| s.is_a?(Regexp) ? s : s.to_s }
+          @ports = params[:ports].map { |s| s.is_a?(Regexp) ? s : s.to_s }
+          @extensions = params[:extensions].map { |s| s.is_a?(Regexp) ? s : s.to_s }
+          @content_types = params[:content_types].map { |s| s.is_a?(Regexp) ? s : s.to_s }
+          @accepts = params[:accepts].map { |s| s.is_a?(Regexp) ? s : s.to_s }
           @block = block
         end
 
@@ -70,27 +70,31 @@ module Itsi
           @methods
         end
 
+        def intersect(a, b)
+          return b if a.empty?
+          return a if b.empty?
+          a & b
+        end
+
         def build!
           build_child = lambda {
-            location.children << DSL.new(
+            child = DSL.new(
               location,
               routes: routes,
-              methods: Array(http_methods) | location.http_methods,
-              protocols: Array(protocols) | location.protocols,
-              hosts: Array(hosts) | location.hosts,
-              ports: Array(ports) | location.ports,
-              extensions: Array(extensions) | location.extensions,
-              content_types: Array(content_types) | location.content_types,
-              accepts: Array(accepts) | location.accepts,
+              methods: intersect(http_methods, location.http_methods),
+              protocols: intersect(protocols, location.protocols),
+              hosts: intersect(hosts, location.hosts),
+              ports: intersect(ports, location.ports),
+              extensions: intersect(extensions, location.extensions),
+              content_types: intersect(content_types, location.content_types),
+              accepts: intersect(accepts, location.accepts),
               controller: location.controller,
               &block
             )
+            child.options[:nested_locations].each(&:call)
+            location.children << child
           }
-          if location.parent.nil?
-            location.options[:middleware_loaders] << build_child
-          else
-            build_child[]
-          end
+          location.options[:nested_locations] << build_child
         end
 
       end

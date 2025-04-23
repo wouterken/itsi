@@ -33,7 +33,7 @@ use reqwest::{
     Body, Client, Url,
 };
 use serde::Deserialize;
-use tracing::{debug, info};
+use tracing::debug;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Proxy {
@@ -324,7 +324,6 @@ impl MiddlewareLayer for Proxy {
                 .unwrap_or("")
         });
 
-        info!("Extracted host str is {}", host_str);
         let req_info = RequestInfo {
             method: req.method().clone(),
             headers: req_headers.clone(),

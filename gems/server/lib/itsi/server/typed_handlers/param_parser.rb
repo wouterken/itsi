@@ -143,6 +143,31 @@ module Itsi
         # Fixed keys are converted to symbols, and regex-matched keys remain as strings.
         # The current location in the params is tracked as an array of path segments.
         def apply_schema!(params, schema, path = [])
+          # Support top-level array schema: homogeneous arrays.
+          if schema.is_a?(Array)
+            # Only allow homogeneous array types
+            unless schema.size == 1
+              raise ValidationError.new(["Schema Array must contain exactly one type. Got #{schema.size}"])
+            end
+            expected_type = schema.first
+            # Expect params to be an Array
+            unless params.is_a?(Array)
+              raise ValidationError.new(["Expected Array at #{format_path(path)}, got #{params.class}"])
+            end
+            errors = []
+            params.each_with_index do |_, idx|
+              err = cast_value!(params, idx, expected_type, path + [idx])
+              errors << err if err
+            end
+            raise ValidationError.new(errors) unless errors.empty?
+            return params
+          end
+
+          # Ensure schema is a Hash
+          unless schema.is_a?(Hash)
+            raise ValidationError.new(["Unsupported schema type: #{schema.class} at #{format_path(path)}"])
+          end
+
           errors = []
           processed = processed_schema(schema)
           fixed_schema = processed[0]

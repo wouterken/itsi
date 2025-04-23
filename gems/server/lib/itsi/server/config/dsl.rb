@@ -52,9 +52,9 @@ module Itsi
           @accepts = accepts.map { |s| s.is_a?(Regexp) ? s : s.to_s }
 
           @options = {
-            middleware_loaders: [],
+            nested_locations: [],
             middleware_loader: lambda do
-              @options[:middleware_loaders].each(&:call)
+              @options[:nested_locations].each(&:call)
               @middleware[:app] ||= {}
               @middleware[:app][:app_proc] = @middleware[:app]&.[](:preloader)&.call || DEFAULT_APP[]
               [flatten_routes, Config.errors_to_error_lines(errors)]
