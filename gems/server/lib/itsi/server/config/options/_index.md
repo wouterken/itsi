@@ -18,20 +18,24 @@ For the best development experience, be sure to use [RubyLSP](https://shopify.gi
 
 ```ruby {filename="Itsi.rb"}
 workers 2
+
 threads 2
-scheduler_threads 3
 
 fiber_scheduler true
 
-rate_limiter requests: 100, seconds: 10
+auth_basic realm: "Restricted Area", credentials_file: "./credentials.txt"
 
-auth_basic realm: "Restricted Area", credentials_file: "credentials.txt"
+auto_reload_config! # Auto-reload the server configuration each time it changes.
 
-location "/app" do
+location "/app*" do
+  rate_limit requests: 3, seconds: 5
+  rackup_file "config.ru"
+end
+
+location "/inline*" do
   get "/" do |req|
     req.ok "Hello, World!"
   end
 end
-
 ```
 {{< /details >}}

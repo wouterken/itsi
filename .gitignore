@@ -21,3 +21,4 @@ sandbox
 gems/scheduler/ext
 gems/server/ext
 .env*
+examples/spa/node_modules/

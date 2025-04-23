@@ -1,0 +1,161 @@
+/*
+ * This is a manifest file that'll be compiled into application.css.
+ *
+ * With Propshaft, assets are served efficiently without preprocessing steps. You can still include
+ * application-wide styles in this file, but keep in mind that CSS precedence will follow the standard
+ * cascading order, meaning styles declared later in the document or manifest will override earlier ones,
+ * depending on specificity.
+ *
+ * Consider organizing styles into separate files for maintainability.
+ */
+/* === Variables & Base === */
+/* === RESET & BASE === */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family:
+    "Inter",
+    system-ui,
+    -apple-system,
+    sans-serif;
+  line-height: 1.6;
+  color: #333;
+  background: #f4f6f8;
+}
+
+/* === LAYOUT GRID === */
+.container {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+/* === NAVBAR === */
+.navbar {
+  background: #fff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+.navbar .brand {
+  font-weight: 600;
+  font-size: 1.25rem;
+}
+.navbar .nav-links a {
+  margin-left: 1rem;
+  font-weight: 500;
+  color: #555;
+}
+.navbar .nav-links a:hover {
+  color: #000;
+}
+
+/* === CARDS === */
+.card {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  padding: 2rem;
+  margin-bottom: 2rem;
+}
+
+/* === BUTTONS === */
+.btn {
+  display: inline-block;
+  font-weight: 500;
+  text-decoration: none;
+  text-align: center;
+  padding: 0.2rem 1.2rem;
+  border-radius: 6px;
+  transition:
+    background 0.2s,
+    box-shadow 0.2s,
+    transform 0.1s;
+  margin: 2px;
+}
+.btn-primary {
+  background: #2f8fed;
+  color: #fff;
+}
+.btn-primary:hover {
+  background: #256ec2;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  transform: translateY(-1px);
+}
+.btn-secondary {
+  background: #e0e4e8;
+  color: #333;
+}
+.btn-secondary:hover {
+  background: #c5c9cc;
+}
+
+/* === TABLE === */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+}
+.table thead {
+  background: #f0f2f5;
+}
+.table th,
+.table td {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  border-bottom: 1px solid #e0e2e5;
+}
+.table tbody tr:hover {
+  background: #fafbfd;
+}
+
+/* === FORMS === */
+.form-group {
+  margin-bottom: 1.5rem;
+}
+.form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+}
+.form-control {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #ccd0d5;
+  border-radius: 6px;
+  font: inherit;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
+}
+.form-control:focus {
+  border-color: #2f8fed;
+  box-shadow: 0 0 0 3px rgba(47, 142, 237, 0.2);
+  outline: none;
+}
+
+/* === FLASH MESSAGES === */
+.flash {
+  padding: 1rem 1.5rem;
+  border-radius: 6px;
+  margin-bottom: 2rem;
+  font-weight: 500;
+}
+.flash.notice {
+  background: #e6f7ff;
+  color: #3178c6;
+}
+.flash.alert {
+  background: #ffebe8;
+  color: #c62828;
+  border: 1px solid #f2a9a4;
+}

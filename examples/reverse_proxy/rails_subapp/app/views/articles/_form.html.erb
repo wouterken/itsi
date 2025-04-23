@@ -1,0 +1,30 @@
+<div class="card">
+  <h2><%= article.new_record? ? "New Article" : "Edit Article" %></h2>
+  <%= form_with(model: article, local: true) do |f| %>
+    <% if article.errors.any? %>
+      <div class="flash alert">
+        <%= pluralize(article.errors.count, "error") %> prevented saving:
+        <ul>
+          <% article.errors.full_messages.each do |m| %>
+            <li><%= m %></li>
+          <% end %>
+        </ul>
+      </div>
+    <% end %>
+
+    <div class="form-group">
+      <%= f.label :title %>
+      <%= f.text_field :title, class: "form-control" %>
+    </div>
+
+    <div class="form-group">
+      <%= f.label :body %>
+      <%= f.text_area :body, rows: 6, class: "form-control" %>
+    </div>
+
+    <div class="d-flex gap-2">
+      <%= f.submit class: "btn btn-primary" %>
+      <%= link_to "Back", articles_path, class: "btn btn-secondary" %>
+    </div>
+  <% end %>
+</div>

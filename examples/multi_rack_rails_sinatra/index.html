@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Rack App Dashboard</title>
+    <!-- Load a nicer font -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg-start: #0f2027;
+        --bg-end:   #203a43;
+        --primary:  #00d2ff;
+        --accent:   #3a7bd5;
+        --text:     #f0f4f8;
+        --card-bg:  rgba(255, 255, 255, 0.05);
+      }
+
+      *, *::before, *::after {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Poppins", sans-serif;
+        background: linear-gradient(135deg, var(--bg-start), var(--bg-end));
+        color: var(--text);
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 2rem;
+      }
+
+      .dashboard {
+        text-align: center;
+        max-width: 400px;
+        width: 100%;
+      }
+
+      .dashboard header {
+        margin-bottom: 2rem;
+      }
+
+      .dashboard h1 {
+        font-size: 1.75rem;
+        font-weight: 700;
+        margin: 0;
+        line-height: 1.2;
+      }
+
+      .links {
+        display: grid;
+        gap: 1rem;
+      }
+
+      .app-link {
+        display: block;
+        padding: 1rem 1.5rem;
+        font-weight: 500;
+        text-decoration: none;
+        color: var(--text);
+        background: var(--card-bg);
+        border: 2px solid transparent;
+        border-radius: 0.5rem;
+        position: relative;
+        overflow: hidden;
+        transition: border-color 0.3s ease, transform 0.3s ease;
+      }
+
+      .app-link::before {
+        content: "";
+        position: absolute;
+        top: 0; left: -100%;
+        width: 200%; height: 100%;
+        background: linear-gradient(
+          90deg,
+          transparent,
+          rgba(255,255,255,0.1),
+          transparent
+        );
+        transform: skewX(-20deg);
+        transition: left 0.5s ease;
+      }
+
+      .app-link:hover {
+        border-color: var(--primary);
+        transform: translateY(-3px);
+      }
+
+      .app-link:hover::before {
+        left: 100%;
+      }
+
+      .app-link span {
+        display: inline-block;
+        position: relative;
+        z-index: 1;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="dashboard">
+      <header>
+        <h1>Rack App Dashboard</h1>
+      </header>
+      <div class="links">
+        <a href="/rails" class="app-link">
+          <span>🚂 Rails App</span>
+        </a>
+        <a href="/sinatra" class="app-link">
+          <span🎩> Sinatra App</span>
+        </a>
+      </div>
+    </div>
+  </body>
+</html>

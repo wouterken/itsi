@@ -63,9 +63,9 @@ module Itsi
           root_dir = @params[:root_dir] || "."
 
           if !File.exist?(root_dir)
-            warn "Warning: static_assets root_dir '#{root_dir}' does not exist!"
+            raise "Warning: static_assets root_dir '#{root_dir}' does not exist!"
           elsif !File.directory?(root_dir)
-            warn "Warning: static_assets root_dir '#{root_dir}' is not a directory!"
+            raise "Warning: static_assets root_dir '#{root_dir}' is not a directory!"
           end
 
           @params[:relative_path] = true unless @params.key?(:relative_path)

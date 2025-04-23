@@ -159,7 +159,6 @@ where
             eprintln!("Thread killed");
             break;
         }
-        eprintln!("Killing thread {:?}", thr.as_value());
         thr.funcall::<_, _, Value>("terminate", ())
             .expect("Failed to kill thread");
     }

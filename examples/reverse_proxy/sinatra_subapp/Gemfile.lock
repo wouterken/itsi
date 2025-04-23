@@ -1,0 +1,46 @@
+PATH
+  remote: ../../../gems/server
+  specs:
+    itsi-server (0.2.4)
+      json (~> 2)
+      rack (>= 1.6)
+      rb_sys (~> 0.9.91)
+
+GEM
+  specs:
+    base64 (0.2.0)
+    json (2.10.2)
+    logger (1.7.0)
+    mustermann (3.0.3)
+      ruby2_keywords (~> 0.0.1)
+    rack (3.1.13)
+    rack-protection (4.1.1)
+      base64 (>= 0.1.0)
+      logger (>= 1.6.0)
+      rack (>= 3.0.0, < 4)
+    rack-session (2.1.0)
+      base64 (>= 0.1.0)
+      rack (>= 3.0.0)
+    rake-compiler-dock (1.9.1)
+    rb_sys (0.9.111)
+      rake-compiler-dock (= 1.9.1)
+    ruby2_keywords (0.0.5)
+    sinatra (4.1.1)
+      logger (>= 1.6.0)
+      mustermann (~> 3.0)
+      rack (>= 3.0.0, < 4)
+      rack-protection (= 4.1.1)
+      rack-session (>= 2.0.0, < 3)
+      tilt (~> 2.0)
+    tilt (2.6.0)
+
+PLATFORMS
+  arm64-darwin-23
+  ruby
+
+DEPENDENCIES
+  itsi-server!
+  sinatra
+
+BUNDLED WITH
+   2.6.7

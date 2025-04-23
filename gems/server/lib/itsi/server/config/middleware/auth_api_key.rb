@@ -33,12 +33,12 @@ module Itsi
             @params[:key_id_source] = nil
           end
 
-          if File.exist?(".itsi-credentials") && !@params[:credential_file]
-            @params[:credential_file] = ".itsi-credentials"
+          if File.exist?(".itsi-credentials") && !@params[:credentials_file]
+            @params[:credentials_file] = ".itsi-credentials"
           end
 
-          if @params[:credential_file] && File.exist?(@params[:credential_file])
-            @params[:valid_keys] = Passfile.load(@params[:credential_file])
+          if @params[:credentials_file] && File.exist?(@params[:credentials_file])
+            @params[:valid_keys] = Passfile.load(@params[:credentials_file])
           end
 
           unless @params[:valid_keys]&.any?

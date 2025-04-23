@@ -21,16 +21,18 @@ module Itsi
 
         def initialize(location, params={})
           super
+
           unless @params[:credential_pairs]&.any?
-            if File.exist?(".itsi-credentials") && !@params[:credential_file]
-              @params[:credential_file] = ".itsi-credentials"
+            if File.exist?(".itsi-credentials") && !@params[:credentials_file]
+              @params[:credentials_file] = ".itsi-credentials"
             end
 
-            if @params[:credential_file] && File.exist?(@params[:credential_file])
-              @params[:credential_pairs] = Passfile.load(@params[:credential_file])
+            if @params[:credentials_file] && File.exist?(@params[:credentials_file])
+              @params[:credential_pairs] = Passfile.load(@params[:credentials_file])
             end
           end
 
+          raise "No credentials provided" unless @params[:credential_pairs]
           @params[:credential_pairs].compact!
 
           unless @params[:credential_pairs]&.any?

@@ -4,7 +4,7 @@
 > The Serious Web Server, for Serious People
 
 [![Test](https://github.com/wouterken/itsi/actions/workflows/test.yml/badge.svg)](https://github.com/wouterken/itsi/actions/workflows/test.yml)
-[![Gem Version](https://badge.fury.io/rb/itsi-server.svg?icon=si%3Arubygems)](https://badge.fury.io/rb/itsi-server)
+[![Gem Version](https://img.shields.io/gem/v/itsi)](https://rubygems.org/gems/itsi)
 
 Itsi is a feature-packed, high performance web and application server, with first-class support for Ruby applications.
 It's a compliant Rack server. It’s also a well-equipped reverse proxy, API gateway, and static file server, controlled by an intuitive and elegant configuration API and DSL.

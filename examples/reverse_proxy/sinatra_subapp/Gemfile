@@ -1,0 +1,2 @@
+gem "sinatra"
+gem "itsi-server" , path: "../../../gems/server"

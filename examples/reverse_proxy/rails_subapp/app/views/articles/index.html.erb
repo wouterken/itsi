@@ -1,0 +1,29 @@
+<div class="card">
+  <h2>Articles</h2>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Title</th>
+        <th>Excerpt</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @articles.each do |a| %>
+        <tr>
+          <td><%= a.title %></td>
+          <td><%= truncate(a.body, length: 80) %></td>
+          <td>
+            <%= link_to "Show", a, class: "btn btn-secondary btn-sm" %>
+            <%= link_to "Edit", edit_article_path(a), class: "btn btn-secondary btn-sm" %>
+            <%= link_to "Delete", a,
+                        method: :delete,
+                        data: { confirm: "Are you sure?" },
+                        class: "btn btn-secondary btn-sm" %>
+          </td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+  <%= link_to "New Article", new_article_path, class: "btn btn-primary mt-3" %>
+</div>
