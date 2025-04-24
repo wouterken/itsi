@@ -181,44 +181,47 @@ class TestNestedFibers < Minitest::Test
     assert_equal [0, 1, 2, 3, 4, 5, 6, 7], results
   end
 
-  def test_nested_unowned_fibers_with_scheduler
-    results = []
-    out, err = capture_subprocess_io do
-      begin
-        with_scheduler do |scheduler|
-          Fiber.new do
-            fib = Fiber.new do
-              results << 4
-              sleep 0.001
-              results << 5
-              sleep 0.001
-              results << 6
-            end
-
+  if RUBY_VERSION >= '3.2'
+    def test_nested_unowned_fibers_with_scheduler
+      results = []
+      out, err = capture_subprocess_io do
+        begin
+          with_scheduler do |scheduler|
             Fiber.new do
-              results << 0
-              sleep 0.001
+              fib = Fiber.new do
+                results << 4
+                sleep 0.001
+                results << 5
+                sleep 0.001
+                results << 6
+              end
+
               Fiber.new do
-                results << 1
-                sleep 0.1
-                results << 8
-              end.transfer
-              results << 2
-            end.resume
+                results << 0
+                sleep 0.001
+                puts "Launch and transfer"
+                Fiber.new do
+                  results << 1
+                  sleep 0.1
+                  results << 8
+                end.transfer
+                results << 2
+              end.resume
 
-            results << 3
+              results << 3
 
-            fib.resume
-            sleep 0.01
-            results << 7
-          end.transfer
+              fib.resume
+              sleep 0.01
+              results << 7
+            end.transfer
+          end
+        rescue
         end
-      rescue
       end
+      # Transfered fibers are not resumed after yielding out.
+      assert_equal [0, 3, 4, 1, 5, 6], results
+      # assert_match /attempt to yield on a not resumed fiber/, out
     end
-    # Transfered fibers are not resumed after yielding out.
-    assert_equal [0, 3, 4, 1, 5, 6], results
-    # assert_match /attempt to yield on a not resumed fiber/, out
   end
 
   def test_nested_unowned_fibers_no_scheduler

@@ -12,7 +12,7 @@ Gem::Specification.new do |spec|
   spec.description = "Itsi Scheduler - A light-weight Fiber Scheduler implementation for Ruby"
   spec.homepage = "https://itsi.fyi"
   spec.license = "MIT"
-  spec.required_ruby_version = ">= 3.0.0"
+  spec.required_ruby_version = ">= 3.1"
   spec.required_rubygems_version = ">= 3.1.11"
 
   spec.metadata["homepage_uri"] = spec.homepage

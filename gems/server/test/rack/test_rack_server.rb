@@ -75,6 +75,8 @@ class TestRackServer < Minitest::Test
   end
 
   def test_scheduler_non_blocking
+    return unless RUBY_VERSION > "3.1"
+
     server(
       itsi_rb: lambda do
         fiber_scheduler "Itsi::Scheduler"

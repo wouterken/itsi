@@ -42,7 +42,16 @@ module Itsi
         end
 
         def self.included(cls) # rubocop:disable Metrics/PerceivedComplexity,Metrics/AbcSize,Metrics/CyclomaticComplexity,Metrics/MethodLength
+
+          class << cls
+            def subclasses
+              @subclasses ||= []
+            end
+          end
+
           def cls.inherited(base) # rubocop:disable Metrics/MethodLength,Lint/MissingSuper,Metrics/PerceivedComplexity
+            self.subclasses << base
+
             %i[detail documentation insert_text schema].each do |attr|
               base.define_singleton_method(attr) do |value = nil|
                 @middleware_class_attrs ||= {}

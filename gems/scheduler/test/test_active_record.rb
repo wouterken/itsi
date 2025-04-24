@@ -94,14 +94,26 @@ class TestActiveRecordFiberScheduler < Minitest::Test
 
     with_scheduler do |_scheduler|
       Fiber.schedule do
-        ActiveRecord::Base.connection_pool.with_connection(prevent_permanent_checkout: true) do
-          results << ActiveRecord::Base.connection.select_value("SELECT 1")
+        if ActiveRecord::Base.connection_pool.method(:with_connection).arity == 0
+          ActiveRecord::Base.connection_pool.with_connection do
+            results << ActiveRecord::Base.connection.select_value("SELECT 1")
+          end
+        else
+          ActiveRecord::Base.connection_pool.with_connection(prevent_permanent_checkout: true) do
+            results << ActiveRecord::Base.connection.select_value("SELECT 1")
+          end
         end
       end
 
       Fiber.schedule do
-        ActiveRecord::Base.connection_pool.with_connection(prevent_permanent_checkout: true) do
-          results << ActiveRecord::Base.connection.select_value("SELECT 2")
+        if ActiveRecord::Base.connection_pool.method(:with_connection).arity == 0
+          ActiveRecord::Base.connection_pool.with_connection do
+            results << ActiveRecord::Base.connection.select_value("SELECT 2")
+          end
+        else
+          ActiveRecord::Base.connection_pool.with_connection(prevent_permanent_checkout: true) do
+            results << ActiveRecord::Base.connection.select_value("SELECT 2")
+          end
         end
       end
     end

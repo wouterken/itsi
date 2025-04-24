@@ -7,7 +7,7 @@ use itsi_error::ItsiError;
 use itsi_rb_helpers::{call_without_gvl, create_ruby_thread};
 use magnus::{
     error::Result as MagnusResult,
-    value::{InnerValue, Opaque, ReprValue},
+    value::{InnerValue, Lazy, LazyId, Opaque, ReprValue},
     Module, RClass, Ruby, Value,
 };
 use mio::{Events, Poll, Token, Waker};
@@ -19,7 +19,7 @@ use std::{
     time::Duration,
 };
 use timer::Timer;
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct Readiness(i16);
@@ -31,6 +31,9 @@ impl std::fmt::Debug for ItsiScheduler {
 }
 
 const WAKE_TOKEN: Token = Token(0);
+static ID_CURRENT: LazyId = LazyId::new("current");
+static CLASS_FIBER: Lazy<RClass> =
+    Lazy::new(|ruby| ruby.module_kernel().const_get("Fiber").unwrap());
 
 #[magnus::wrap(class = "Itsi::Scheduler", free_immediately, size)]
 pub(crate) struct ItsiScheduler {
@@ -225,14 +228,17 @@ impl ItsiScheduler {
         let result: Arc<RwLock<Option<T>>> = Arc::new(RwLock::new(None));
         let result_clone = Arc::clone(&result);
 
-        let current_fiber = Opaque::from(ruby.fiber_current());
-        let scheduler = Opaque::from(
-            ruby.module_kernel()
-                .const_get::<_, RClass>("Fiber")
-                .unwrap()
-                .funcall::<_, _, Value>("scheduler", ())
-                .unwrap(),
-        );
+        let class_fiber = ruby.get_inner(&CLASS_FIBER);
+        let current_fiber = ruby
+            .get_inner(&CLASS_FIBER)
+            .funcall::<_, _, Value>(*ID_CURRENT, ());
+
+        if current_fiber.is_err() {
+            error!("Failed to get current fiber");
+            return Err(ItsiError::ArgumentError("Failed to get current fiber".to_string()).into());
+        }
+        let current_fiber = Opaque::from(current_fiber.unwrap());
+        let scheduler = Opaque::from(class_fiber.funcall::<_, _, Value>("scheduler", ()).unwrap());
 
         create_ruby_thread(move || {
             call_without_gvl(|| {
