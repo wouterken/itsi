@@ -27,52 +27,49 @@ Install Ruby
 
   Then use `gem` to install Itsi, or its components based on your Ruby version.
 
-  **For Ruby >= 3.1**:
+  **For Ruby >= 3.0**:
   ```bash
   gem install itsi
   ```
   *(Installs both `itsi-server` and `itsi-scheduler`)*
 
-  **For Ruby 2.7 – 3.0**:
+  **For Ruby 2.7**:
   ```bash
   gem install itsi-server
   ```
-  *(Installs `itsi-server` only; `itsi-scheduler` is not supported on Ruby < 3.1)*
+  *(Installs `itsi-server` only; `itsi-scheduler` is not supported on Ruby 2.7)*
 
   {{< callout type="info" >}}
-  Itsi (**server + scheduler**) requires **Ruby >= 3.1**.
+  Itsi (**server + scheduler**) requires **Ruby >= 3.0**.
 
   Itsi **server** supports **Ruby >= 2.7**.
 
   If you wish to use either the scheduler or server independently:
   - `gem install itsi-server`
-  - `gem install itsi-scheduler` (Ruby >= 3.1 only)
-
+  - `gem install itsi-scheduler` (Ruby >= 3.0 only)
   {{< /callout >}}
 
   {{< /tab >}}
   {{< tab >}}
   **Mac**:
-  **For Ruby >= 3.1**:
+  **For Ruby >= 3.0**:
   ```bash
   gem install itsi
   ```
 
-  **For Ruby 2.7 – 3.0**:
+  **For Ruby 2.7**:
   ```bash
   gem install itsi-server
   ```
 
   {{< callout type="info" >}}
-  Itsi (**server + scheduler**) requires **Ruby >= 3.1**.
+  Itsi (**server + scheduler**) requires **Ruby >= 3.0**.
 
   Itsi **server** supports **Ruby >= 2.7**.
 
   You can install components individually:
   - `gem install itsi-server`
-  - `gem install itsi-scheduler` (Ruby >= 3.1 only)
-
-  ⚠️ Scheduler is not compatible with Ruby 3.0.
+  - `gem install itsi-scheduler` (Ruby >= 3.0 only)
   {{< /callout >}}
 
   {{< /tab >}}

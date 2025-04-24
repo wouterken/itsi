@@ -122,7 +122,7 @@ module Itsi
 
     # Hook invoked at the end of the thread.
     # Will start our scheduler's Reactor.
-    def scheduler_close
+    def close
       run
     ensure
       @closed ||= true

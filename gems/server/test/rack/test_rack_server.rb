@@ -75,7 +75,7 @@ class TestRackServer < Minitest::Test
   end
 
   def test_scheduler_non_blocking
-    return unless RUBY_VERSION > "3.1"
+    return unless RUBY_VERSION > "3.0"
 
     server(
       itsi_rb: lambda do
@@ -193,7 +193,7 @@ class TestRackServer < Minitest::Test
     server(app: lambda do |env|
       [200, { "Content-Type" => "text/plain", "Set-Cookie" => "session=abc123; Path=/" }, ["Cookie Test"]]
     end) do
-      response = get_resp('/')
+      response = get_resp("/")
       assert_equal "200", response.code
       assert_match(/session=abc123/, response["set-cookie"])
       assert_equal "Cookie Test", response.body
@@ -258,7 +258,6 @@ class TestRackServer < Minitest::Test
       header_value = env["HTTP_X_MY_HEADER"] || ""
       [200, { "Content-Type" => "text/plain" }, [header_value]]
     end) do |uri|
-
       req = Net::HTTP::Get.new(uri)
       req["X-My-Header"] = "test-header"
       response = Net::HTTP.start(uri.hostname, uri.port) { |http| http.request(req) }

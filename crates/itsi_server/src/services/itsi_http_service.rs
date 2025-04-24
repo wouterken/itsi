@@ -108,16 +108,13 @@ impl HttpRequestContext {
     }
 
     pub fn set_supported_encoding_set(&self, req: &HttpRequest) {
-        let supported_encoding_set = req
-            .headers()
-            .get_all(ACCEPT_ENCODING)
-            .into_iter()
-            .cloned()
-            .collect::<Vec<_>>();
-        self.inner
-            .supported_encoding_set
-            .set(supported_encoding_set)
-            .unwrap();
+        self.inner.supported_encoding_set.get_or_init(move || {
+            req.headers()
+                .get_all(ACCEPT_ENCODING)
+                .into_iter()
+                .cloned()
+                .collect::<Vec<_>>()
+        });
     }
 
     pub fn set_origin(&self, origin: Option<String>) {

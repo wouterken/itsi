@@ -1643,26 +1643,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4a5f13b858c8d314ee3e8f639011f7ccefe71f97f96e50151fb991f267928e2c"
 
 [[package]]
-name = "itsi-scheduler"
-version = "0.2.8"
-dependencies = [
- "bytes",
- "derive_more",
- "itsi_error",
- "itsi_instrument_entry",
- "itsi_rb_helpers",
- "itsi_tracing",
- "magnus",
- "mio",
- "nix",
- "parking_lot",
- "rb-sys",
- "tracing",
-]
-
-[[package]]
 name = "itsi-server"
-version = "0.2.8"
+version = "0.2.9"
 dependencies = [
  "argon2",
  "async-channel",
@@ -1766,15 +1748,6 @@ dependencies = [
  "nix",
  "rcgen",
  "thiserror 2.0.12",
-]
-
-[[package]]
-name = "itsi_instrument_entry"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
 ]
 
 [[package]]

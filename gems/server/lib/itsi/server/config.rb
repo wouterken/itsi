@@ -35,6 +35,7 @@ module Itsi
       # 3. Default values.
       def self.build_config(args, config_file_path, builder_proc = nil)
         args.transform_keys!(&:to_sym)
+
         itsifile_config, errors = \
           if builder_proc
             DSL.evaluate(&builder_proc)
@@ -104,6 +105,7 @@ module Itsi
           Process.daemon(true, false)
           Server.write_pid
         end
+
 
         srv_config = {
           workers: args.fetch(:workers) { itsifile_config.fetch(:workers, 1) },
