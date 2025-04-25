@@ -14,7 +14,6 @@ class TestCacheControl < Minitest::Test
         get("/foo") { |r| r.ok "content" }
       end
     ) do
-      require 'debug'
       res = get_resp("/foo")
       # Check that the Cache-Control header is present and contains required directives
       assert_includes res["Cache-Control"], "public"

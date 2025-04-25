@@ -41,7 +41,7 @@ module Itsi
             DSL.evaluate(&builder_proc)
           elsif args[:static]
             DSL.evaluate do
-              location "/" do
+              location "*" do
                 rate_limit key: "address", store_config: "in_memory", requests: 2, seconds: 5
                 etag type: "strong", algorithm: "md5", min_body_size: 1024 * 1024
                 compress min_size: 1024 * 1024, level: "fastest", algorithms: %w[zstd gzip br deflate],
@@ -149,9 +149,8 @@ module Itsi
         }.transform_keys(&:to_s)
 
         [srv_config, errors_to_error_lines(errors)]
-      rescue StandardError
-        Itsi.log_error e.message
-        puts e.backtrace
+      rescue StandardError => e
+        [{}, errors_to_error_lines([[e, e.backtrace[0]]])]
       end
 
       def self.test!(cli_params)
@@ -179,7 +178,7 @@ module Itsi
           location = message[/(.*?):in/, 1]
           file, lineno = location.split(":")
           lineno = lineno.to_i
-          err_message = error.is_a?(NoMethodError) ? error.detailed_message : error.message
+          err_message = error.is_a?(NoMethodError) && error.respond_to?(:detailed_message) ? error.detailed_message : error.message
           file_lines = IO.readlines(file)
           info_lines = \
             if error.is_a?(SyntaxError)
