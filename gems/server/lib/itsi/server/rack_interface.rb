@@ -40,9 +40,12 @@ module Itsi
         # 2. Set Headers
         body_streamer = streaming_body?(body) ? body : headers.delete("rack.hijack")
         headers.each do |key, value|
-          unless value.is_a?(Array)
-            response[key] = value
-            next
+          value = if value.is_a?(::Array) && !value.empty?
+            value
+          elsif value.respond_to?(:to_s) && !value.to_s.empty?
+            value.to_s.split("\n")
+          else
+            nil
           end
 
           value.each do |v|

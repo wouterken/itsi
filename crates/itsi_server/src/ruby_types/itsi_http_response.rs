@@ -347,7 +347,7 @@ impl ItsiHttpResponse {
         })?;
         let header_value = unsafe { HeaderValue::from_maybe_shared_unchecked(value) };
         if let Some(ref mut resp) = *self.data.response.write() {
-            resp.headers_mut().insert(header_name, header_value);
+            resp.headers_mut().append(header_name, header_value);
         }
         Ok(())
     }
@@ -364,7 +364,7 @@ impl ItsiHttpResponse {
                 })?;
                 for value in values {
                     let header_value = unsafe { HeaderValue::from_maybe_shared_unchecked(value) };
-                    headers_mut.insert(&header_name, header_value);
+                    headers_mut.append(&header_name, header_value);
                 }
             }
         }

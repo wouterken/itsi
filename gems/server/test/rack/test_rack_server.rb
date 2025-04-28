@@ -212,6 +212,17 @@ class TestRackServer < Minitest::Test
     end
   end
 
+  def test_multi_field_headers
+    server(app_with_lint: lambda do |env|
+      [200, { "content-type" => "text/plain", "x-example" => ["one, two, three", "four, five"] }, ["Multiple Field Headers"]]
+    end) do
+      response = get_resp("/")
+      assert_equal "200", response.code
+      assert_equal "one, two, three, four, five", response["x-example"]
+      assert_equal "Multiple Field Headers", response.body
+    end
+  end
+
   def test_large_body
     large_text = "A" * 10_000
     server(app_with_lint: lambda do |env|
