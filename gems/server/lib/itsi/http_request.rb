@@ -11,7 +11,8 @@ module Itsi
     include ResponseStatusShortcodes
     attr_accessor :hijacked
 
-    EMPTY_IO = StringIO.new("")
+    EMPTY_IO = StringIO.new("").tap { |io| io.set_encoding(Encoding::ASCII_8BIT) }
+
     RACK_HEADER_MAP = StandardHeaders::ALL.map do |header|
       rack_form = if header == "content-type"
                     "CONTENT_TYPE"
@@ -49,9 +50,7 @@ module Itsi
       "rack.version" => nil,
       "rack.url_scheme" => "",
       "rack.input" => "",
-      "rack.hijack" => "",
-      "CONTENT_TYPE" => nil,
-      "CONTENT_LENGTH" => nil
+      "rack.hijack" => ""
     }.freeze
 
     def to_rack_env
@@ -75,20 +74,20 @@ module Itsi
       env["rack.hijack"] = method(:hijack)
       headers.each do |(k, v)|
         env[case k
-          when "content-type" then "CONTENT_TYPE"
-          when "content-length" then "CONTENT_LENGTH"
-          when "accept" then "HTTP_ACCEPT"
-          when "accept-encoding" then "HTTP_ACCEPT_ENCODING"
-          when "accept-language" then "HTTP_ACCEPT_LANGUAGE"
-          when "user-agent" then "HTTP_USER_AGENT"
-          when "referer" then "HTTP_REFERER"
-          when "origin" then "HTTP_ORIGIN"
-          when "cookie" then "HTTP_COOKIE"
-          when "authorization" then "HTTP_AUTHORIZATION"
-          when "x-forwarded-for" then "HTTP_X_FORWARDED_FOR"
-          when "x-forwarded-proto" then "HTTP_X_FORWARDED_PROTO"
-          else RACK_HEADER_MAP[k]
-          end
+            when "content-type" then "CONTENT_TYPE"
+            when "content-length" then "CONTENT_LENGTH"
+            when "accept" then "HTTP_ACCEPT"
+            when "accept-encoding" then "HTTP_ACCEPT_ENCODING"
+            when "accept-language" then "HTTP_ACCEPT_LANGUAGE"
+            when "user-agent" then "HTTP_USER_AGENT"
+            when "referer" then "HTTP_REFERER"
+            when "origin" then "HTTP_ORIGIN"
+            when "cookie" then "HTTP_COOKIE"
+            when "authorization" then "HTTP_AUTHORIZATION"
+            when "x-forwarded-for" then "HTTP_X_FORWARDED_FOR"
+            when "x-forwarded-proto" then "HTTP_X_FORWARDED_PROTO"
+            else RACK_HEADER_MAP[k]
+            end
         ] = v
       end
       env
@@ -154,8 +153,8 @@ module Itsi
     def build_input_io
       case body_parts
       when nil then EMPTY_IO
-      when String then StringIO.new(body_parts)
-      when Array then File.open(body_parts.first, "rb")
+      when String then StringIO.new(body_parts).tap { |io| io.set_encoding(Encoding::ASCII_8BIT) }
+      when Array then File.open(body_parts.first, "rb").tap { |io| io.set_encoding(Encoding::ASCII_8BIT) }
       else body_parts
       end
     end

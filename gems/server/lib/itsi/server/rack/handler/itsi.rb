@@ -8,10 +8,11 @@ module Rack
         port = options.fetch(:Port, 3001)
         ::Itsi::Server.start(
           {
-            app: app,
             binds: ["http://#{host}:#{port}"]
           }
-        )
+        ) do
+          run app
+        end
       end
     end
   end

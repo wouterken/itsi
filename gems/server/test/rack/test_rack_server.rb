@@ -6,25 +6,25 @@ class TestRackServer < Minitest::Test
   end
 
   def test_hello_world
-    server(app: lambda do |env|
-      [200, { "Content-Type" => "text/plain" }, ["Hello, World!"]]
+    server(app_with_lint: lambda do |env|
+      [200, { "content-type" => "text/plain" }, ["Hello, World!"]]
     end) do
       assert_equal "Hello, World!", get("/")
     end
   end
 
   def test_post
-    server(app: lambda do |env|
+    server(app_with_lint: lambda do |env|
       assert_equal env["REQUEST_METHOD"], "POST"
       assert_equal "data", env["rack.input"].read
-      [200, { "Content-Type" => "text/plain" }, ["Hello, World!"]]
+      [200, { "content-type" => "text/plain" }, ["Hello, World!"]]
     end) do
       assert_equal "Hello, World!", post("/", "data").body
     end
   end
 
   def test_full_hijack
-    server(app: lambda do |env|
+    server(app_with_lint: lambda do |env|
       io = env["rack.hijack"].call
       io.write("HTTP/1.1 200 Ok\r\n")
       io.write("Content-Type: text/plain\r\n")
@@ -36,14 +36,15 @@ class TestRackServer < Minitest::Test
       io.write("World!\r\n")
       io.write("0\r\n\r\n")
       io.close
+      [200, {}, []]
     end) do
       assert_equal "Hello, World!", get("/")
     end
   end
 
   def test_streaming_body
-    server(app: lambda do |env|
-      [200, { "Content-Type" => "text/plain" }, lambda { |stream|
+    server(app_with_lint: lambda do |env|
+      [200, { "content-type" => "text/plain" }, lambda { |stream|
         stream.write("Hello")
         stream.write(", World!")
         stream.close
@@ -54,8 +55,8 @@ class TestRackServer < Minitest::Test
   end
 
   def test_partial_hijack
-    server(app: lambda do |env|
-      [200, { "Content-Type" => "text/plain", "rack.hijack" => lambda { |stream|
+    server(app_with_lint: lambda do |env|
+      [200, { "content-type" => "text/plain", "rack.hijack" => lambda { |stream|
         stream.write("Hello")
         stream.write(", World!")
         stream.close
@@ -66,8 +67,8 @@ class TestRackServer < Minitest::Test
   end
 
   def test_enumerable_body
-    server(app: lambda do |env|
-      [200, { "Content-Type" => "application/json" },
+    server(app_with_lint: lambda do |env|
+      [200, { "content-type" => "application/json" },
        %W[one\n two\n three\n]]
     end) do
       assert_equal "one\ntwo\nthree\n", get("/")
@@ -82,7 +83,7 @@ class TestRackServer < Minitest::Test
         fiber_scheduler "Itsi::Scheduler"
         run(lambda do |env|
           sleep 0.25
-          [200, { "Content-Type" => "text/plain" }, "Response: #{env["PATH_INFO"][1..-1]}"]
+          [200, { "content-type" => "text/plain" }, "Response: #{env["PATH_INFO"][1..-1]}"]
         end)
       end
     ) do
@@ -100,17 +101,17 @@ class TestRackServer < Minitest::Test
   end
 
   def test_query_params
-    server(app: lambda do |env|
-      [200, { "Content-Type" => "text/plain" }, [env["QUERY_STRING"]]]
+    server(app_with_lint: lambda do |env|
+      [200, { "content-type" => "text/plain" }, [env["QUERY_STRING"]]]
     end) do
       assert_equal "foo=bar&baz=qux", get("/?foo=bar&baz=qux")
     end
   end
 
   def test_put_request
-    server(app: lambda do |env|
+    server(app_with_lint: lambda do |env|
       body = env["rack.input"].read
-      [200, { "Content-Type" => "text/plain" }, [body]]
+      [200, { "content-type" => "text/plain" }, [body]]
     end) do |uri|
       req = Net::HTTP::Put.new(uri)
       req.body = "put data"
@@ -120,9 +121,9 @@ class TestRackServer < Minitest::Test
   end
 
   def test_custom_headers
-    server(app: lambda do |env|
+    server(app_with_lint: lambda do |env|
       header = env["HTTP_X_CUSTOM"] || ""
-      [200, { "Content-Type" => "text/plain" }, [header]]
+      [200, { "content-type" => "text/plain" }, [header]]
     end) do |uri|
       req = Net::HTTP::Get.new(uri)
       req["X-Custom"] = "custom-value"
@@ -134,7 +135,7 @@ class TestRackServer < Minitest::Test
   def test_error_response
     response = nil
     capture_subprocess_io do
-      server(app: lambda do |env|
+      server(app_with_lint: lambda do |env|
         raise "Intentional error for testing"
       end) do
         response = get_resp("/")
@@ -144,8 +145,8 @@ class TestRackServer < Minitest::Test
   end
 
   def test_redirect
-    server(app: lambda do |env|
-      [302, { "Location" => "http://example.com" }, []]
+    server(app_with_lint: lambda do |env|
+      [302, { "location" => "http://example.com" }, []]
     end) do
       response = get_resp("/")
       assert_equal "302", response.code
@@ -154,11 +155,11 @@ class TestRackServer < Minitest::Test
   end
 
   def test_not_found
-    server(app: lambda do |env|
+    server(app_with_lint: lambda do |env|
       if env["PATH_INFO"] == "/"
-        [200, { "Content-Type" => "text/plain" }, ["Home"]]
+        [200, { "content-type" => "text/plain" }, ["Home"]]
       else
-        [404, { "Content-Type" => "text/plain" }, ["Not Found"]]
+        [404, { "content-type" => "text/plain" }, ["Not Found"]]
       end
     end) do
       response = get_resp("/nonexistent")
@@ -168,8 +169,8 @@ class TestRackServer < Minitest::Test
   end
 
   def test_head_request
-    server(app: lambda do |env|
-      [200, { "Content-Type" => "text/plain", "Content-Length" => "13" }, ["Hello, World!"]]
+    server(app_with_lint: lambda do |env|
+      [200, { "content-type" => "text/plain", "content-length" => "13" }, []]
     end) do
       response = head("/")
       assert_equal "200", response.code
@@ -179,8 +180,8 @@ class TestRackServer < Minitest::Test
   end
 
   def test_options_request
-    server(app: lambda do |env|
-      [200, { "Allow" => "GET,POST,OPTIONS", "Content-Type" => "text/plain" }, ["Options Response"]]
+    server(app_with_lint: lambda do |env|
+      [200, { "allow" => "GET,POST,OPTIONS", "content-type" => "text/plain" }, ["Options Response"]]
     end) do
       response = options("/")
       assert_equal "200", response.code
@@ -190,8 +191,8 @@ class TestRackServer < Minitest::Test
   end
 
   def test_cookie_handling
-    server(app: lambda do |env|
-      [200, { "Content-Type" => "text/plain", "Set-Cookie" => "session=abc123; Path=/" }, ["Cookie Test"]]
+    server(app_with_lint: lambda do |env|
+      [200, { "content-type" => "text/plain", "set-cookie" => "session=abc123; Path=/" }, ["Cookie Test"]]
     end) do
       response = get_resp("/")
       assert_equal "200", response.code
@@ -201,8 +202,8 @@ class TestRackServer < Minitest::Test
   end
 
   def test_multiple_headers
-    server(app: lambda do |env|
-      [200, { "Content-Type" => "text/plain", "X-Example" => "one, two, three" }, ["Multiple Headers"]]
+    server(app_with_lint: lambda do |env|
+      [200, { "content-type" => "text/plain", "x-example" => "one, two, three" }, ["Multiple Headers"]]
     end) do
       response = get_resp("/")
       assert_equal "200", response.code
@@ -213,8 +214,8 @@ class TestRackServer < Minitest::Test
 
   def test_large_body
     large_text = "A" * 10_000
-    server(app: lambda do |env|
-      [200, { "Content-Type" => "text/plain", "Content-Length" => large_text.bytesize.to_s }, [large_text]]
+    server(app_with_lint: lambda do |env|
+      [200, { "content-type" => "text/plain", "content-length" => large_text.bytesize.to_s }, [large_text]]
     end) do
       response = get_resp("/")
       assert_equal "200", response.code
@@ -223,8 +224,8 @@ class TestRackServer < Minitest::Test
   end
 
   def test_custom_status_code
-    server(app: lambda do |env|
-      [201, { "Content-Type" => "text/plain" }, ["Created"]]
+    server(app_with_lint: lambda do |env|
+      [201, { "content-type" => "text/plain" }, ["Created"]]
     end) do
       response = get_resp("/")
       assert_equal "201", response.code
@@ -233,8 +234,8 @@ class TestRackServer < Minitest::Test
   end
 
   def test_empty_body
-    server(app: lambda do |env|
-      [204, { "Content-Type" => "text/plain" }, []]
+    server(app_with_lint: lambda do |env|
+      [204, {}, []]
     end) do
       response = get_resp("/")
       assert_equal "204", response.code
@@ -244,8 +245,8 @@ class TestRackServer < Minitest::Test
 
   def test_utf8_response
     utf8_text = "こんにちは世界"
-    server(app: lambda do |env|
-      [200, { "Content-Type" => "text/plain; charset=utf-8" }, [utf8_text]]
+    server(app_with_lint: lambda do |env|
+      [200, { "content-type" => "text/plain; charset=utf-8" }, [utf8_text]]
     end) do
       response = get_resp("/")
       assert_equal "200", response.code
@@ -254,9 +255,9 @@ class TestRackServer < Minitest::Test
   end
 
   def test_custom_request_header
-    server(app: lambda do |env|
+    server(app_with_lint: lambda do |env|
       header_value = env["HTTP_X_MY_HEADER"] || ""
-      [200, { "Content-Type" => "text/plain" }, [header_value]]
+      [200, { "content-type" => "text/plain" }, [header_value]]
     end) do |uri|
       req = Net::HTTP::Get.new(uri)
       req["X-My-Header"] = "test-header"
@@ -266,16 +267,16 @@ class TestRackServer < Minitest::Test
   end
 
   def test_url_encoded_query_params
-    server(app: lambda do |env|
-      [200, { "Content-Type" => "text/plain" }, [env["QUERY_STRING"]]]
+    server(app_with_lint: lambda do |env|
+      [200, { "content-type" => "text/plain" }, [env["QUERY_STRING"]]]
     end) do
       assert_equal "param=%C3%A9", get("/?param=%C3%A9")
     end
   end
 
-  def test_https
-    server(app: lambda do |env|
-      [200, { "Content-Type" => "text/plain" }, ["Hello, HTTPS!"]]
+  def test_rackup_handler
+    server(app_with_lint: lambda do |env|
+      [200, { "content-type" => "text/plain" }, ["Hello, HTTPS!"]]
     end, protocol: "https") do |uri|
       response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true,
                                                          verify_mode: OpenSSL::SSL::VERIFY_NONE) do |http|
@@ -284,5 +285,25 @@ class TestRackServer < Minitest::Test
       assert_equal "200", response.code
       assert_equal "Hello, HTTPS!", response.body
     end
+  end
+
+  # Used by `rails -s` and other tools using the rack-up interface.
+  def test_rackup_handler
+    host, port = free_bind.split(%r{:/?/?}).last(2)
+    app = ->(_) { [200, { "content-type" => "text/plain" }, ["Hello, Rackup!"]] }
+
+    Thread.new do
+      Rack::Handler::Itsi.run(
+        app,
+        {
+          host: host,
+          Port: port
+        }
+      )
+    end
+
+    sleep 0.25
+    assert_equal Net::HTTP.get(URI("http://#{host}:#{port}")), "Hello, Rackup!"
+    Process.kill(:SIGINT, Process.pid)
   end
 end

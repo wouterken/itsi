@@ -3,7 +3,7 @@ title: Scheduler Threads
 url: /options/scheduler_threads
 ---
 
-You can explicitly spawn a pool of non-blocking scheduler threads and divide work across traditional blocking and non-blocking threads, using [location](/middleware/location) blocks.
+You can explicitly spawn a pool of non-blocking scheduler threads and divide work across traditional/blocking and non-blocking threads, using [location](/middleware/location) blocks.
 
 This allows you to safely dip your toes into using non-blocking threads for specific I/O heavy operations without having to port an entire application to non-blocking I/O.
 

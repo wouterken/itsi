@@ -31,8 +31,8 @@ fiber_scheduler nil
 
 # If you bind to https, without specifying a certificate, Itsi will use a self-signed certificate.
 # The self-signed certificate will use a CA generated for your host and stored inside `ITSI_LOCAL_CA_DIR` (Defaults to ~/.itsi)
-# bind "https://localhost:3000"
-# bind "https://localhost:3000?domains=dev.itsi.fyi"
+# bind "https://0.0.0.0:3000"
+# bind "https://0.0.0.0:3000?domains=dev.itsi.fyi"
 #
 # If you want to use let's encrypt to generate you a real certificate you and pass cert=acme and an acme_email address to generate one.
 # bind "https://itsi.fyi?cert=acme&acme_email=admin@itsi.fyi"

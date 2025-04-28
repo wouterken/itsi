@@ -9,11 +9,11 @@ Itsi can automatically generate TLS certificates for you, both in development an
 To automatically generate a TLS certificate in development, just bind using the `https` scheme.
 E.g.
 ```ruby {filename=Itsi.rb}
-bind "https://localhost"
+bind "https://0.0.0.0"
 
 or
 
-bind "https://localhost:8443"
+bind "https://0.0.0.0:8443"
 ```
 Itsi will generate a local development CA for you if it does not yet exist, then use this to
 sign a just-in-time certificate for your server.

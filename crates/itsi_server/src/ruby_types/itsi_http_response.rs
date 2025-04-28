@@ -272,6 +272,14 @@ impl ItsiHttpResponse {
         // not implemented
     }
 
+    pub fn flush(&self) {
+        // no-op
+    }
+
+    pub fn is_closed(&self) -> bool {
+        self.data.response_writer.write().is_none()
+    }
+
     pub fn send_and_close(&self, frame: Bytes) -> MagnusResult<()> {
         let result = self.send_frame_into(ByteFrame::End(frame), &self.data.response_writer);
         self.data.response_writer.write().take();

@@ -3,6 +3,7 @@
 ENV["ITSI_LOG"] = "off"
 
 require "minitest/reporters"
+require "rackup"
 require "itsi/server"
 require "itsi/scheduler"
 require "socket"
@@ -24,7 +25,9 @@ def free_bind(protocol = "http", unix_socket: false)
   end
 end
 
-def server(app: nil, protocol: "http", bind: free_bind(protocol), itsi_rb: nil, cleanup: true, timeout: 5, &blk)
+def server(app: nil, app_with_lint: nil, protocol: "http", bind: free_bind(protocol), itsi_rb: nil, cleanup: true,
+           timeout: 5, &blk)
+  app ||= Rack::Lint.new(app_with_lint) if app_with_lint
   itsi_rb ||= lambda do
     # Inline Itsi.rb
     bind bind
