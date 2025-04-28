@@ -5,9 +5,10 @@ prev: deny_list/
 next: controller/
 ---
 
+> If you're after running a rack app using a fully-featured framework, e.g. a Ruby on Rails or Sinatra, take a look at the [Rackup File](/middleware/rackup_file) middleware instead.
+
 The **endpoint** middleware allows you to define an ultra light-weight, inline, Ruby endpoint.
 
-> If you're after running a rack app using a fully-featured framework, e.g. a Ruby on Rails or Sinatra, take a look at the [Rackup File](/middleware/rackup_file) middleware instead.
 This feature can be useful for quickly prototyping, building small pieces of isolated functionality, or minimal endpoints where high throughput is essential.
 
 `endpoint` has several variants, that further restrict the endpoint to respond to specific HTTP methods:

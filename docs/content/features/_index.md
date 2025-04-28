@@ -273,9 +273,9 @@ Note that despite the header being named `X-Sendfile`, Itsi does not use the Sen
 {{% /details %}}
 
 {{% details title="Graceful Memory Limits" closed="true" %}}
-* Itsi allows you to specify memory limits for Ruby processes. When the limit is reached, Itsi gracefully terminates the process and also invokes a dedicated `after_memory_threshold_reached` callback,
+* Itsi allows you to specify memory limits for Ruby processes. When the limit is reached, Itsi gracefully terminates the process and also invokes a dedicated `after_memory_limit_reached` callback,
 so that you can log the event for further analysis.
-* See <a target="_blank" href="/options/worker_memory_limit">worker_memory_limit</a> and  <a target="_blank" href="/options/after_memory_threshold_reached">after_memory_threshold_reached</a>.
+* See <a target="_blank" href="/options/worker_memory_limit">worker_memory_limit</a> and  <a target="_blank" href="/options/after_memory_limit_reached">after_memory_limit_reached</a>.
 {{% /details %}}
 
 {{% details title="OOB GC" closed="true" %}}
