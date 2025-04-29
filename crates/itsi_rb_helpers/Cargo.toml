@@ -1,7 +1,7 @@
 [package]
 name = "itsi_rb_helpers"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [dependencies]
 cfg-if = "1.0.0"

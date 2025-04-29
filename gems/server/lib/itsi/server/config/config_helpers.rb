@@ -11,14 +11,17 @@ module Itsi
           ].flatten
 
           listing.each do |file|
-            current = klass.subclasses
+            current = klass.subclasses.dup
             require file
             following = klass.subclasses
             new_class = (following - current).first
 
             documentation_file = "#{file[/(.*)\.rb/, 1]}.md"
             documentation_file = "#{file[%r{(.*)/[^/]+\.rb}, 1]}/_index.md" unless File.exist?(documentation_file)
-            next unless File.exist?(documentation_file) && new_class
+            unless File.exist?(documentation_file) && new_class
+              new_class&.documentation "Documentation not found"
+              next
+            end
 
             new_class.documentation IO.read(documentation_file)
                                       .gsub(/^---.*?\n.*?-+/m, "") # Strip frontmatter

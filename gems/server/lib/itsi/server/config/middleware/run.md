@@ -39,7 +39,6 @@ run(Rack::Builder.app do
   use Rack::CommonLogger
   run ->(env) { [200, { 'content-type' => 'text/plain' }, [[env['SCRIPT_NAME'], env['PATH_INFO']].join(":") ]  ] }
 end)
-
 ```
 
 ```bash
@@ -48,6 +47,26 @@ $ curl http://0.0.0.0:3000/subpath/child_path
 
 $ curl http://0.0.0.0:3000/root/child_path
 :/root/child_path
+```
+
+### `SCRIPT_NAME` and `PATH_INFO` Rack ENV variables.
+Rack applications mounted at a subpath will, by default, receive a `SCRIPT_NAME` value that includes the subpath at which the app is mounted, and a `PATH_INFO` value that is relative to the subpath at which the rack app is mounted.
+If you wish to use location blocks only to control the middleware that applies to a rack app, but still have it behave as if it were mounted elsewhere (e.g. at the root), you can explicitly set the `script_name` option.
+E.g.
+
+```ruby
+location "/subpath/*" do
+  run(Rack::Builder.app do
+    use Rack::CommonLogger
+    run ->(env) { [200, { 'content-type' => 'text/plain' }, [[env['SCRIPT_NAME'], env['PATH_INFO']].join(":") ]  ] }
+  end, script_name: '/')
+end
+```
+
+```bash
+# Our script-name override kicks in here, even though the app is mounted under `/subpath`
+$ curl http://0.0.0.0:3000/subpath/child_path
+/:/subpath/child_path
 ```
 
 ### Options

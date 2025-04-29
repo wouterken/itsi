@@ -18,6 +18,7 @@ use std::sync::Arc;
 pub struct RubyApp {
     app: Arc<HeapValue<Proc>>,
     request_type: RequestType,
+    script_name: Option<String>,
     sendfile: bool,
     nonblocking: bool,
     base_path: Regex,
@@ -53,6 +54,9 @@ impl RubyApp {
         let base_path_src = params
             .funcall::<_, _, String>(Symbol::new("[]"), ("base_path",))
             .unwrap_or("".to_owned());
+        let script_name = params
+            .funcall::<_, _, Option<String>>(Symbol::new("[]"), ("script_name",))
+            .unwrap_or(None);
         let base_path = Regex::new(&base_path_src).unwrap();
 
         let request_type: RequestType = params
@@ -65,6 +69,7 @@ impl RubyApp {
             app: Arc::new(app.into()),
             sendfile,
             nonblocking,
+            script_name,
             request_type,
             base_path,
         }))
@@ -82,13 +87,14 @@ impl MiddlewareLayer for RubyApp {
         match self.request_type {
             RequestType::Http => {
                 let uri = req.uri().path();
-                let script_name = self
-                    .base_path
-                    .captures(uri)
-                    .and_then(|caps| caps.name("base_path"))
-                    .map(|m| m.as_str())
-                    .unwrap_or("/")
-                    .to_owned();
+                let script_name = self.script_name.clone().unwrap_or_else(|| {
+                    self.base_path
+                        .captures(uri)
+                        .and_then(|caps| caps.name("base_path"))
+                        .map(|m| m.as_str())
+                        .unwrap_or("/")
+                        .to_owned()
+                });
                 ItsiHttpRequest::process_request(
                     self.app.clone(),
                     req,

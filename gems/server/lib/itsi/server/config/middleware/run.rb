@@ -15,6 +15,7 @@ module Itsi
         schema do
           {
             nonblocking: Bool().default(false),
+            script_name: Type(String).default(nil),
             sendfile: Bool().default(true)
           }
         end
@@ -30,6 +31,7 @@ module Itsi
             preloader: -> { Itsi::Server::RackInterface.for(@app) },
             sendfile: @params[:sendfile],
             nonblocking: @params[:nonblocking],
+            script_name: @params[:script_name],
             base_path: "^(?<base_path>#{location.paths_from_parent.gsub(/\.\*\)$/, ')')}).*$"
           }
           location.middleware[:app] = app_args

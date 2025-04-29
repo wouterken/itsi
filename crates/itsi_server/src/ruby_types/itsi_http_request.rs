@@ -22,6 +22,7 @@ use super::{
     itsi_http_response::ItsiHttpResponse,
 };
 use crate::{
+    default_responses::{INTERNAL_SERVER_ERROR_RESPONSE, SERVICE_UNAVAILABLE_RESPONSE},
     server::{
         byte_frame::ByteFrame,
         http_message_types::{HttpRequest, HttpResponse},
@@ -186,16 +187,20 @@ impl ItsiHttpRequest {
                 } else {
                     &context.sender
                 };
-                match sender
-                    .send(RequestJob::ProcessHttpRequest(request, app))
-                    .await
-                {
-                    Err(err) => {
-                        error!("Error occurred: {}", err);
-                        let mut response = Response::new(BoxBody::new(Empty::new()));
-                        *response.status_mut() = StatusCode::BAD_REQUEST;
-                        Ok(response)
-                    }
+                match sender.try_send(RequestJob::ProcessHttpRequest(request, app)) {
+                    Err(err) => match err {
+                        async_channel::TrySendError::Full(_) => {
+                            Ok(SERVICE_UNAVAILABLE_RESPONSE
+                                .to_http_response(context.accept.clone())
+                                .await)
+                        }
+                        async_channel::TrySendError::Closed(err) => {
+                            error!("Error occurred: {:?}", err);
+                            Ok(INTERNAL_SERVER_ERROR_RESPONSE
+                                .to_http_response(context.accept.clone())
+                                .await)
+                        }
+                    },
                     _ => match receiver.recv().await {
                         Some(first_frame) => Ok(response
                             .build(first_frame, receiver, shutdown_channel)

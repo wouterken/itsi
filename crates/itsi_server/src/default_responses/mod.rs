@@ -9,3 +9,6 @@ pub static NOT_FOUND_RESPONSE: LazyLock<ErrorResponse> = LazyLock::new(ErrorResp
 
 pub static INTERNAL_SERVER_ERROR_RESPONSE: LazyLock<ErrorResponse> =
     LazyLock::new(ErrorResponse::internal_server_error);
+
+pub static SERVICE_UNAVAILABLE_RESPONSE: LazyLock<ErrorResponse> =
+    LazyLock::new(ErrorResponse::service_unavailable);

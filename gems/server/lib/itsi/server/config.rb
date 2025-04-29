@@ -134,6 +134,9 @@ module Itsi
           oob_gc_responses_threshold: args.fetch(:oob_gc_responses_threshold) do
             itsifile_config.fetch(:oob_gc_responses_threshold, nil)
           end,
+          ruby_thread_request_backlog_size: args.fetch(:ruby_thread_request_backlog_size) do
+            itsifile_config.fetch(:ruby_thread_request_backlog_size, nil)
+          end,
           log_level: args.fetch(:log_level) { itsifile_config.fetch(:log_level, nil) },
           log_format: args.fetch(:log_format) { itsifile_config.fetch(:log_format, nil) },
           log_target: args.fetch(:log_target) { itsifile_config.fetch(:log_target, nil) },

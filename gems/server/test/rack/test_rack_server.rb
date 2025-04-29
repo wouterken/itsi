@@ -306,4 +306,63 @@ class TestRackServer < Minitest::Test
     assert_equal Net::HTTP.get(URI("http://#{host}:#{port}")), "Hello, Rackup!"
     Process.kill(:SIGINT, Process.pid)
   end
+
+  def test_script_name_inferred_from_mount
+    server(itsi_rb: lambda do
+      location "foo*" do
+        run ->(env) { [200, { "content-type" => "text/plain" }, [env["SCRIPT_NAME"]]] }
+      end
+      run ->(env) { [200, { "content-type" => "text/plain" }, [env["SCRIPT_NAME"]]] }
+    end) do
+      assert_equal get("/foo/bar"), "/foo"
+      assert_equal get("/baz"), ""
+    end
+  end
+
+  def test_path_info_inferred_from_mount
+    server(itsi_rb: lambda do
+      location "foo*" do
+        run ->(env) { [200, { "content-type" => "text/plain" }, [env["PATH_INFO"]]] }
+      end
+      run ->(env) { [200, { "content-type" => "text/plain" }, [env["PATH_INFO"]]] }
+    end) do
+      assert_equal get("/foo/bar"), "/bar"
+      assert_equal get("/baz"), "/baz"
+    end
+  end
+
+  def test_script_name_explicitly_set
+    server(itsi_rb: lambda do
+      location "foo*" do
+        run ->(env) { [200, { "content-type" => "text/plain" }, [env["SCRIPT_NAME"]]] }, script_name: "/overridden"
+      end
+      run ->(env) { [200, { "content-type" => "text/plain" }, [env["SCRIPT_NAME"]]] }, script_name: ""
+    end) do
+      assert_equal get("/foo/bar"), "/overridden"
+      assert_equal get("/baz"), ""
+    end
+  end
+
+  def test_path_info_when_script_name_explicitly_set
+    server(itsi_rb: lambda do
+      location "foo*" do
+        run ->(env) { [200, { "content-type" => "text/plain" }, [env["PATH_INFO"]]] }, script_name: ""
+      end
+      run ->(env) { [200, { "content-type" => "text/plain" }, [env["PATH_INFO"]]] }, script_name: ""
+    end) do
+      assert_equal get("/foo/bar"), "/foo/bar"
+      assert_equal get("/baz"), "/baz"
+    end
+  end
+
+  def test_multi_field_headers
+    server(app_with_lint: lambda do |env|
+      [200, { "content-type" => "text/plain", "x-example" => ["one, two, three", "four, five"] }, ["Multiple Field Headers"]]
+    end) do
+      response = get_resp("/")
+      assert_equal "200", response.code
+      assert_equal "one, two, three, four, five", response["x-example"]
+      assert_equal "Multiple Field Headers", response.body
+    end
+  end
 end

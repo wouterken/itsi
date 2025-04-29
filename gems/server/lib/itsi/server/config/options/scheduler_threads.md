@@ -25,10 +25,17 @@ fiber_scheduler true
 # We mount the same app *twice*.
 # For a specific route prefix, all requests will be sent to non blocking threads.
 # All others fall through to the default mount
+
 location "/heavy_io/*" do
+  # You can optionally use the `script_name: ""` option here to set the base path for the mounted app (useful if a nested app
+  # should still serve requests as if it was mounted at the root).
+  # Otherwise it will infer the script-name based on the parent location block.
   rackup_file "./config.ru", nonblocking: true
 end
 
 rackup_file "./config.ru"
 
 ```
+## Examples.
+
+See [https://github.com/wouterken/itsi/tree/main/examples/hybrid_scheduler_mode](hybrid_scheduler_mode) example in the Git repository.

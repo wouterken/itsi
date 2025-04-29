@@ -26,12 +26,13 @@ module Itsi
             paths: Array(Or(Type(String), Type(Regexp))),
             handler: Type(Proc) & Required(),
             http_methods: Array(Type(String)),
+            script_name: Type(String).default(nil),
             nonblocking: Bool()
           }
         end
 
-        def initialize(location, path="", handler=nil, http_methods: [], nonblocking: false, &handler_proc)
-          location.endpoint(path, handler, http_methods: ["PUT"], nonblocking: nonblocking, &handler_proc)
+        def initialize(location, path="", handler=nil, http_methods: [], nonblocking: false, script_name: nil, &handler_proc) # rubocop:disable Lint/MissingSuper,Metrics/ParameterLists
+          location.endpoint(path, handler, http_methods: ["PUT"], nonblocking: nonblocking, script_name: script_name, &handler_proc)
         end
 
         def build!

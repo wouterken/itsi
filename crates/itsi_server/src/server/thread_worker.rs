@@ -65,9 +65,12 @@ type ThreadWorkerBuildResult = Result<(
 pub fn build_thread_workers(params: Arc<ServerParams>, pid: Pid) -> ThreadWorkerBuildResult {
     let blocking_thread_count = params.threads;
     let nonblocking_thread_count = params.scheduler_threads;
+    let ruby_thread_request_backlog_size: usize = params
+        .ruby_thread_request_backlog_size
+        .unwrap_or_else(|| (blocking_thread_count as u16 * 30) as usize);
 
     let (blocking_sender, blocking_receiver) =
-        async_channel::bounded((blocking_thread_count as u16 * 30) as usize);
+        async_channel::bounded(ruby_thread_request_backlog_size);
     let blocking_receiver_ref = Arc::new(blocking_receiver);
     let blocking_sender_ref = blocking_sender;
     let scheduler_class = load_scheduler_class(params.scheduler_class.clone())?;

@@ -28,17 +28,24 @@ module Itsi
             paths: Array(Or(Type(String), Type(Regexp))),
             handler: Type(Proc) & Required(),
             http_methods: Array(Type(String)),
+            script_name: Type(String).default(nil),
             nonblocking: Bool()
           }
         end
 
-        def initialize(location, path="", handler=nil, http_methods: [], nonblocking: false, &handler_proc)
+        def initialize(location, path="", handler=nil, http_methods: [], nonblocking: false, script_name: nil, &handler_proc)
           raise "Can not combine a controller method and inline handler" if handler && handler_proc
           handler_proc = location.controller.method(handler).to_proc if handler.is_a?(Symbol) || handler.is_a?(String)
 
           super(
             location,
-            { paths: Array(path), handler: handler_proc, http_methods: http_methods, nonblocking: nonblocking }
+            {
+              paths: Array(path),
+              handler: handler_proc,
+              http_methods: http_methods,
+              nonblocking: nonblocking,
+              script_name: script_name
+            }
           )
 
           num_required, keywords = Itsi::Server::TypedHandlers::SourceParser.extract_expr_from_source_location(handler_proc)
@@ -75,7 +82,11 @@ module Itsi
 
         def build!
           params = @params
-          app = { preloader: -> { params[:handler] }, nonblocking: @params[:nonblocking] }
+          app = {
+            preloader: -> { params[:handler] },
+            nonblocking: @params[:nonblocking],
+            script_name: @params[:script_name]
+          }
 
           if @params[:paths] == [""] && @params[:http_methods].empty?
             location.middleware[:app] = app

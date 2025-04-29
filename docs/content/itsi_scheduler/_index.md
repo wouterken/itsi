@@ -101,6 +101,36 @@ end.value
 
 puts results.map(&:inspect)
 ```
-
 to run many blocking operations simultaneously all while occupying only a single Ruby thread!
+
+### 3 (Optional) - Enable Scheduler Refinements
+You can opt-in to a tiny set of Ruby refinements provided by the `Itsi::Scheduler` to make usage even more ergonomic.
+By opting in to this refinement (using `using Itsi::Scheduler`) you gain access to the top-level #schedule(&block) method, as well
+as enumerable methods #schedule_each, and #schedule_map.
+
+```ruby
+
+using Itsi::Scheduler
+
+# Fire-and-forget: 100 HTTP calls in parallel
+100.times.schedule_each do |i|
+  Net::HTTP.get(URI("https://example.com/#{i}"))
+end
+
+# Concurrent transform that keeps the original order
+squares = (1..20).schedule_map { |n| n * n }
+puts squares.inspect
+# => [1, 4, 9, 16, … 400]
+
+# Manual orchestration — still one thread
+schedule do
+  a, b = Queue.new, Queue.new
+
+  schedule { a << Net::HTTP.get(URI("https://httpbin.org/get")) }
+  schedule { b << Net::HTTP.get(URI("https://httpbin.org/uuid")) }
+
+  puts a.pop
+  puts b.pop
+end
+```
 {{% /steps %}}

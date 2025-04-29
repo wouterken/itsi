@@ -104,3 +104,11 @@ You can also run gem-specific variants of the above. E.g.
 * `rake server:test` or `rake scheduler:test`
 * `rake server:compile` or `rake scheduler:compile`
 * `rake server:build` or `rake scheduler:build`
+
+
+### Contributing
+Developer Certificate of Origin
+
+By submitting a pull-request you certify that:
+1. The contribution is your original work or you have the right to submit it;
+2. You have read and understood the [Developer Certificate of Origin](https://developercertificate.org/) and you accept it.

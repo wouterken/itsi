@@ -69,6 +69,7 @@ pub struct ServerParams {
     pub pin_worker_cores: bool,
     pub scheduler_class: Option<String>,
     pub oob_gc_responses_threshold: Option<u64>,
+    pub ruby_thread_request_backlog_size: Option<usize>,
     pub middleware_loader: HeapValue<Proc>,
     pub middleware: OnceLock<MiddlewareSet>,
     pub binds: Vec<Bind>,
@@ -222,6 +223,10 @@ impl ServerParams {
         let scheduler_class: Option<String> = rb_param_hash.fetch("scheduler_class")?;
         let oob_gc_responses_threshold: Option<u64> =
             rb_param_hash.fetch("oob_gc_responses_threshold")?;
+
+        let ruby_thread_request_backlog_size: Option<usize> =
+            rb_param_hash.fetch("ruby_thread_request_backlog_size")?;
+
         let middleware_loader: Proc = rb_param_hash.fetch("middleware_loader")?;
         let log_level: Option<String> = rb_param_hash.fetch("log_level")?;
         let log_target: Option<String> = rb_param_hash.fetch("log_target")?;
@@ -310,6 +315,7 @@ impl ServerParams {
             scheduler_threads,
             streamable_body,
             scheduler_class,
+            ruby_thread_request_backlog_size,
             oob_gc_responses_threshold,
             binds,
             itsi_server_token_preference,
