@@ -356,13 +356,44 @@ class TestRackServer < Minitest::Test
   end
 
   def test_multi_field_headers
-    server(app_with_lint: lambda do |env|
+    server(app_with_lint: lambda do |_|
       [200, { "content-type" => "text/plain", "x-example" => ["one, two, three", "four, five"] }, ["Multiple Field Headers"]]
     end) do
       response = get_resp("/")
       assert_equal "200", response.code
       assert_equal "one, two, three, four, five", response["x-example"]
       assert_equal "Multiple Field Headers", response.body
+    end
+  end
+
+  # For backwards compatibility with Rack-2, which uses "\n" for multiple values in headers.
+  # https://github.com/rack/rack/blob/df6c47357f6c6bec2d585f45f417285d813d9b3a/lib/rack/utils.rb#L271
+  #
+  # In Rack 3, the behavior has changed to using Arrays of Strings exclusively.
+  # Note we don't use Rack lint here, because it'll complain about the invalid header value.
+  def test_multiline_headers_legacy_cookie
+    cookies = "one\r\ntwo\n three\n\tfour\nfive\n\n"
+    server(app: ->(_) { [200, { "set-cookie" => cookies }, ["OK"]] }) do
+      resp = get_resp("/")
+      assert_equal "200", resp.code
+      # folded lines should coalesce; empty lines disappear
+      assert_equal %w[one two three four five], resp.get_fields("set-cookie")
+    end
+  end
+
+  def test_control_chars_are_stripped
+    evil = "good\nbad\x01bad\ngood"
+    server(app: ->(_) { [200, { "x-evil" => evil }, ["body"]] }) do
+      resp = get_resp("/")
+      assert_equal %w[good good], resp.get_fields("x-evil")
+    end
+  end
+
+  def test_rack3_array_is_untouched
+    server(app: ->(_) { [200,
+                        { "set-cookie" => ["a=b", "c=d"] }, ["OK"] ] }) do
+      resp = get_resp("/")
+      assert_equal %w[a=b c=d], resp.get_fields("set-cookie")
     end
   end
 end

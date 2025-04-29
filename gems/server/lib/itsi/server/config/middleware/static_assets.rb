@@ -18,7 +18,8 @@ module Itsi
             serve_hidden_files: ${11|true,false|}
         SNIPPET
 
-        detail "Serves static files from a designated directory with options for auto indexing, in-memory caching, and custom header support. Supports relative path rewriting and file range requests."
+        detail "Serves static files from a designated directory with options for auto indexing, in-memory caching, "\
+          "and custom header support. Supports relative path rewriting and file range requests."
 
         ErrorResponse = TypedStruct.new do
           {
@@ -42,7 +43,7 @@ module Itsi
           {
             root_dir: (Type(String) & Required()).default("./"),
             not_found_behavior: Or(
-              Enum(["fallthrough", "index", "redirect", "internal_server_error"]),
+              Enum(%w[fallthrough index redirect internal_server_error]),
               Type(IndexResponse),
               Type(RedirectResponse),
               Type(ErrorResponse)

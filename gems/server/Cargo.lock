@@ -1644,7 +1644,7 @@ checksum = "4a5f13b858c8d314ee3e8f639011f7ccefe71f97f96e50151fb991f267928e2c"
 
 [[package]]
 name = "itsi-server"
-version = "0.2.13"
+version = "0.2.14"
 dependencies = [
  "argon2",
  "async-channel",
@@ -1674,6 +1674,7 @@ dependencies = [
  "jsonwebtoken",
  "magnus",
  "md5",
+ "memchr",
  "moka",
  "nix",
  "notify",

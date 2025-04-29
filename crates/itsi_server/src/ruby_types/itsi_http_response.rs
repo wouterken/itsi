@@ -1,4 +1,4 @@
-use bytes::{Bytes, BytesMut};
+use bytes::{Buf, Bytes, BytesMut};
 use derive_more::Debug;
 use futures::stream::{unfold, StreamExt};
 use http::{
@@ -12,6 +12,7 @@ use hyper_util::rt::TokioIo;
 use itsi_error::Result;
 use itsi_tracing::error;
 use magnus::error::Result as MagnusResult;
+use memchr::{memchr, memchr_iter};
 use parking_lot::RwLock;
 use std::{
     collections::HashMap,
@@ -345,11 +346,52 @@ impl ItsiHttpResponse {
         let header_name: HeaderName = HeaderName::from_bytes(&name).map_err(|e| {
             itsi_error::ItsiError::InvalidInput(format!("Invalid header name {:?}: {:?}", name, e))
         })?;
-        let header_value = unsafe { HeaderValue::from_maybe_shared_unchecked(value) };
         if let Some(ref mut resp) = *self.data.response.write() {
-            resp.headers_mut().append(header_name, header_value);
+            let headers_mut = resp.headers_mut();
+            self.insert_header(headers_mut, &header_name, value);
         }
         Ok(())
+    }
+
+    pub fn insert_header(
+        &self,
+        headers_mut: &mut HeaderMap,
+        header_name: &HeaderName,
+        value: Bytes,
+    ) {
+        static MAX_SPLIT_HEADERS: usize = 100;
+
+        let mut start = 0usize;
+        let mut emitted = 0usize;
+
+        for idx in memchr_iter(b'\n', &value).chain(std::iter::once(value.len())) {
+            if idx == start {
+                start += 1;
+                continue;
+            }
+
+            let mut part = value.slice(start..idx);
+            if part.ends_with(b"\r") {
+                part.truncate(part.len() - 1);
+            }
+            if let Some(&(b' ' | b'\t')) = part.first() {
+                part.advance(1);
+            }
+            if memchr(0, &part).is_some() || part.iter().any(|&b| b < 0x20) {
+                warn!("stripped control char from header {:?}", header_name);
+                start = idx + 1;
+                continue;
+            }
+
+            emitted += 1;
+            if emitted > MAX_SPLIT_HEADERS {
+                break;
+            }
+
+            let hv = unsafe { HeaderValue::from_maybe_shared_unchecked(part) };
+            headers_mut.append(header_name, hv);
+            start = idx + 1;
+        }
     }
 
     pub fn add_headers(&self, headers: HashMap<Bytes, Vec<Bytes>>) -> MagnusResult<()> {
@@ -363,8 +405,7 @@ impl ItsiHttpResponse {
                     ))
                 })?;
                 for value in values {
-                    let header_value = unsafe { HeaderValue::from_maybe_shared_unchecked(value) };
-                    headers_mut.append(&header_name, header_value);
+                    self.insert_header(headers_mut, &header_name, value);
                 }
             }
         }
