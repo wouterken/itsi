@@ -33,6 +33,6 @@ Gem::Specification.new do |spec|
 
   spec.require_paths = ['lib']
 
-  spec.add_dependency 'itsi-scheduler', '~> 0.2.11'
-  spec.add_dependency 'itsi-server', '~> 0.2.11'
+  spec.add_dependency 'itsi-scheduler', '~> 0.2.13'
+  spec.add_dependency 'itsi-server', '~> 0.2.13'
 end
