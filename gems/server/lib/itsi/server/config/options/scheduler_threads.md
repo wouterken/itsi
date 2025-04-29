@@ -38,4 +38,4 @@ rackup_file "./config.ru"
 ```
 ## Examples.
 
-See [https://github.com/wouterken/itsi/tree/main/examples/hybrid_scheduler_mode](hybrid_scheduler_mode) example in the Git repository.
+See [a code example](https://github.com/wouterken/itsi/tree/main/examples/hybrid_scheduler_mode) in the Git repository.
