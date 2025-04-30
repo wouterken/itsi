@@ -109,8 +109,9 @@ By opting in to this refinement (using `using Itsi::Scheduler`) you gain access 
 as enumerable methods #schedule_each, and #schedule_map.
 
 ```ruby
+require 'net/http'
 
-using Itsi::Scheduler
+using Itsi::ScheduleRefinement
 
 # Fire-and-forget: 100 HTTP calls in parallel
 100.times.schedule_each do |i|
