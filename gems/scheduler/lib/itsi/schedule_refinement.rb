@@ -65,7 +65,7 @@ module Itsi
       def schedule_map(&block)
         return Enumerator.new do |y|
           schedule do
-            with_index.each_with_object([]) do |(item, index), agg|
+            each_with_index.each_with_object([]) do |(item, index), agg|
               schedule do
                 agg[index] = (y << item)
               end
@@ -73,7 +73,7 @@ module Itsi
           end
         end.map unless block_given?
         schedule do
-          with_index.each_with_object([]) do |(item, index), agg|
+          each_with_index.each_with_object([]) do |(item, index), agg|
             schedule do
               agg[index] = block[item]
             end

@@ -16,10 +16,15 @@ use http::{
 };
 use itsi_error::ItsiError;
 use magnus::error::Result;
-use moka::sync::Cache;
+use quick_cache::sync::Cache;
 use regex::Regex;
 use serde::Deserialize;
-use std::{collections::HashMap, path::PathBuf, sync::OnceLock, time::Duration};
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    sync::{Arc, OnceLock},
+    time::Duration,
+};
 use tracing::debug;
 
 #[derive(Debug, Deserialize)]
@@ -76,10 +81,7 @@ impl MiddlewareLayer for StaticAssets {
                 recheck_interval: Duration::from_secs(self.file_check_interval),
                 serve_hidden_files: self.serve_hidden_files,
                 allowed_extensions: self.allowed_extensions.clone(),
-                miss_cache: Cache::builder()
-                    .max_capacity(self.max_files_in_memory)
-                    .time_to_live(Duration::from_secs(self.file_check_interval))
-                    .build(),
+                miss_cache: Arc::new(Cache::new(self.max_files_in_memory as usize)),
             })?)
             .map_err(ItsiError::new)?;
         Ok(())

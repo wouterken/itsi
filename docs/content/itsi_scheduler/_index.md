@@ -110,25 +110,31 @@ as enumerable methods #schedule_each, and #schedule_map.
 
 ```ruby
 require 'net/http'
+require "json"
 
 using Itsi::ScheduleRefinement
 
-# Fire-and-forget: 100 HTTP calls in parallel
-100.times.schedule_each do |i|
-  Net::HTTP.get(URI("https://example.com/#{i}"))
+addr = Resolv.getaddress("httpbin.org")
+
+# Fire-and-forget: 20 HTTP calls in parallel
+result = []
+20.times.schedule_each do |i|
+  result << JSON.parse(Net::HTTP.get(addr, "/anything/#{i}"))["url"].split("/").last
 end
+puts "schedule_each: #{result}"
+# => ["6","1","8","3",...]
 
 # Concurrent transform that keeps the original order
-squares = (1..20).schedule_map { |n| n * n }
-puts squares.inspect
+squares = (1..20).schedule_map { |n| sleep Random.rand(0.0..0.1); n * n }
+puts "schedule_map: #{squares}"
 # => [1, 4, 9, 16, … 400]
 
 # Manual orchestration — still one thread
 schedule do
   a, b = Queue.new, Queue.new
 
-  schedule { a << Net::HTTP.get(URI("https://httpbin.org/get")) }
-  schedule { b << Net::HTTP.get(URI("https://httpbin.org/uuid")) }
+  schedule { a << Net::HTTP.get(addr, "/get") }
+  schedule { b << Net::HTTP.get(addr, "/uuid") }
 
   puts a.pop
   puts b.pop

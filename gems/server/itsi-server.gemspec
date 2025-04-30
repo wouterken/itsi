@@ -11,7 +11,7 @@ Gem::Specification.new do |spec|
   spec.summary = "Itsi Server - A light-weight Rack Server implementation for Ruby."
   spec.description = "Itsi Server - A light-weight Rack Server implementation for Ruby"
   spec.homepage = "https://itsi.fyi"
-  spec.license = "MIT"
+  spec.license = "LGPL-3.0"
   spec.required_ruby_version = ">= 2.7.0"
   spec.required_rubygems_version = ">= 3.1"
 
@@ -36,10 +36,10 @@ Gem::Specification.new do |spec|
   spec.require_paths = ["lib"]
   spec.extensions = ["ext/itsi_server/extconf.rb"]
 
-  spec.add_dependency "rack", ">= 1.6"
-  spec.add_dependency "json", '~> 2'
-  spec.add_dependency "rb_sys", "~> 0.9.91"
+  spec.add_dependency "json", "~> 2"
   spec.add_dependency 'prism', '~> 1.4'
+  spec.add_dependency "rack", ">= 1.6"
+  spec.add_dependency "rb_sys", "~> 0.9.91"
 
   spec.add_development_dependency "ruby-lsp"
   # For more information and examples about making a new gem, check out our

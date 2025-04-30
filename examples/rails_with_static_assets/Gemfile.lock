@@ -1,8 +1,9 @@
 PATH
   remote: ../../gems/server
   specs:
-    itsi-server (0.2.4)
+    itsi-server (0.2.15)
       json (~> 2)
+      prism (~> 1.4)
       rack (>= 1.6)
       rb_sys (~> 0.9.91)
 

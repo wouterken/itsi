@@ -11,7 +11,7 @@ Gem::Specification.new do |spec|
   spec.summary = 'Wrapper Gem for both the Itsi server and the Itsi Fiber scheduler'
   spec.description = 'Wrapper Gem for both the Itsi server and the Itsi Fiber scheduler'
   spec.homepage = 'https://itsi.fyi'
-  spec.license = 'MIT'
+  spec.license = 'LGPL-3.0'
   spec.required_ruby_version = '>= 3.0'
   spec.required_rubygems_version = '>= 3.2'
 
@@ -33,6 +33,6 @@ Gem::Specification.new do |spec|
 
   spec.require_paths = ['lib']
 
-  spec.add_dependency 'itsi-scheduler', '~> 0.2.14'
-  spec.add_dependency 'itsi-server', '~> 0.2.14'
+  spec.add_dependency 'itsi-scheduler', '~> 0.2.15'
+  spec.add_dependency 'itsi-server', '~> 0.2.15'
 end

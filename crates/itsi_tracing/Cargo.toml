@@ -1,7 +1,7 @@
 [package]
 name = "itsi_tracing"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [dependencies]
 tracing = { version = "0.1.41", features = ["attributes"] }

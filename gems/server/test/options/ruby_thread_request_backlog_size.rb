@@ -10,7 +10,7 @@ class TestRubyThreadRequestBacklogSize < Minitest::Test
         ruby_thread_request_backlog_size 1
         get("/foo"){|r| sleep 0.1; r.ok "ok" }
       end) do
-      responses = 3.times.map{ Thread.new{ get_resp("/foo") } }.map(&:value)
+      responses = 10.times.map{ Thread.new{ get_resp("/foo") } }.map(&:value)
 
       assert_equal "ok", responses.first.body
       assert_equal "200", responses.first.code

@@ -11,7 +11,7 @@ Gem::Specification.new do |spec|
   spec.summary = "Itsi Scheduler - A light-weight Fiber Scheduler implementation for Ruby."
   spec.description = "Itsi Scheduler - A light-weight Fiber Scheduler implementation for Ruby"
   spec.homepage = "https://itsi.fyi"
-  spec.license = "MIT"
+  spec.license = "LGPL-3.0"
   spec.required_ruby_version = ">= 3.0"
   spec.required_rubygems_version = ">= 3.1.11"
 
