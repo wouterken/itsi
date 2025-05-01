@@ -6,6 +6,7 @@ use crate::services::rate_limiter::{
 };
 use async_trait::async_trait;
 use either::Either;
+use http::{HeaderName, HeaderValue};
 use magnus::error::Result;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -24,6 +25,8 @@ pub struct RateLimit {
     pub trusted_proxies: HashMap<String, TokenSource>,
     #[serde(default = "too_many_requests_error_response")]
     pub error_response: ErrorResponse,
+    #[serde(skip)]
+    pub limit_header_value: OnceLock<HeaderValue>,
 }
 
 fn too_many_requests_error_response() -> ErrorResponse {
@@ -38,6 +41,12 @@ pub enum RateLimitKey {
     Parameter(TokenSource),
 }
 
+static X_RATELIMIT_LIMIT: HeaderName = HeaderName::from_static("x-ratelimit-limit");
+static X_RATELIMIT_REMAINING: HeaderName = HeaderName::from_static("x-ratelimit-remaining");
+static X_RATELIMIT_RESET: HeaderName = HeaderName::from_static("x-ratelimit-reset");
+static RETRY_AFTER: HeaderName = HeaderName::from_static("retry-after");
+static ZERO_VALUE: HeaderValue = HeaderValue::from_static("0");
+
 #[async_trait]
 impl MiddlewareLayer for RateLimit {
     async fn initialize(&self) -> Result<()> {
@@ -46,6 +55,9 @@ impl MiddlewareLayer for RateLimit {
         if let Ok(limiter) = get_rate_limiter(&self.store_config).await {
             let _ = self.rate_limiter.set(limiter);
         }
+        self.limit_header_value
+            .set(self.requests.to_string().parse().unwrap())
+            .ok();
         Ok(())
     }
 
@@ -58,8 +70,7 @@ impl MiddlewareLayer for RateLimit {
         let key_value = match &self.key {
             RateLimitKey::SocketAddress => {
                 // Use the socket address from the context
-                if self.trusted_proxies.contains_key(&context.addr) {
-                    let source = self.trusted_proxies.get(&context.addr).unwrap();
+                if let Some(source) = self.trusted_proxies.get(&context.addr) {
                     source.extract_token(&req).unwrap_or(&context.addr)
                 } else {
                     &context.addr
@@ -114,18 +125,20 @@ impl MiddlewareLayer for RateLimit {
                         .error_response
                         .to_http_response(req.accept().into())
                         .await;
+                    let ttl_header_value: HeaderValue = ttl.to_string().parse().unwrap();
+                    response.headers_mut().insert(
+                        X_RATELIMIT_LIMIT.clone(),
+                        self.limit_header_value.get().unwrap().clone(),
+                    );
                     response
                         .headers_mut()
-                        .insert("X-RateLimit-Limit", limit.to_string().parse().unwrap());
+                        .insert(X_RATELIMIT_REMAINING.clone(), ZERO_VALUE.clone());
                     response
                         .headers_mut()
-                        .insert("X-RateLimit-Remaining", "0".parse().unwrap());
+                        .insert(X_RATELIMIT_RESET.clone(), ttl_header_value.clone());
                     response
                         .headers_mut()
-                        .insert("X-RateLimit-Reset", ttl.to_string().parse().unwrap());
-                    response
-                        .headers_mut()
-                        .insert("Retry-After", ttl.to_string().parse().unwrap());
+                        .insert(RETRY_AFTER.clone(), ttl_header_value);
                     Ok(Either::Right(response))
                 }
                 Err(e) => {

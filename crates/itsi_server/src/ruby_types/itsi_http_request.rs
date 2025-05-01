@@ -180,24 +180,22 @@ impl ItsiHttpRequest {
     ) -> itsi_error::Result<HttpResponse> {
         match ItsiHttpRequest::new(hyper_request, context, script_name).await {
             Ok((request, mut receiver)) => {
-                let shutdown_channel = context.service.shutdown_channel.clone();
+                let shutdown_channel = context.service.shutdown_receiver.clone();
                 let response = request.response.clone();
                 let sender = if nonblocking {
                     &context.nonblocking_sender
                 } else {
-                    &context.sender
+                    &context.job_sender
                 };
                 match sender.try_send(RequestJob::ProcessHttpRequest(request, app)) {
                     Err(err) => match err {
-                        async_channel::TrySendError::Full(_) => {
-                            Ok(SERVICE_UNAVAILABLE_RESPONSE
-                                .to_http_response(context.accept.clone())
-                                .await)
-                        }
+                        async_channel::TrySendError::Full(_) => Ok(SERVICE_UNAVAILABLE_RESPONSE
+                            .to_http_response(context.accept)
+                            .await),
                         async_channel::TrySendError::Closed(err) => {
                             error!("Error occurred: {:?}", err);
                             Ok(INTERNAL_SERVER_ERROR_RESPONSE
-                                .to_http_response(context.accept.clone())
+                                .to_http_response(context.accept)
                                 .await)
                         }
                     },
@@ -309,7 +307,7 @@ impl ItsiHttpRequest {
             .parts
             .uri
             .host()
-            .unwrap_or_else(|| &self.context.listener.host))
+            .unwrap_or_else(|| &self.context.listener_info.host))
     }
 
     pub(crate) fn scheme(&self) -> MagnusResult<&str> {
@@ -318,7 +316,7 @@ impl ItsiHttpRequest {
             .uri
             .scheme()
             .map(|scheme| scheme.as_str())
-            .unwrap_or_else(|| &self.context.listener.scheme))
+            .unwrap_or_else(|| &self.context.listener_info.scheme))
     }
 
     pub(crate) fn headers(&self) -> MagnusResult<Vec<(&str, &str)>> {
@@ -354,7 +352,7 @@ impl ItsiHttpRequest {
             .parts
             .uri
             .port_u16()
-            .unwrap_or(self.context.listener.port))
+            .unwrap_or(self.context.listener_info.port))
     }
 
     pub(crate) fn body(&self) -> MagnusResult<Option<Value>> {

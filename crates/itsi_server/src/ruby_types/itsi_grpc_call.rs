@@ -126,12 +126,12 @@ impl ItsiGrpcCall {
         nonblocking: bool,
     ) -> itsi_error::Result<HttpResponse> {
         let (request, mut receiver) = ItsiGrpcCall::new(hyper_request, context).await;
-        let shutdown_channel = context.service.shutdown_channel.clone();
+        let shutdown_channel = context.service.shutdown_receiver.clone();
         let response_stream = request.stream.clone();
         let sender = if nonblocking {
             &context.nonblocking_sender
         } else {
-            &context.sender
+            &context.job_sender
         };
         match sender
             .send(RequestJob::ProcessGrpcRequest(request, app))

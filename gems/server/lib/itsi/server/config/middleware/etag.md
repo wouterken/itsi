@@ -13,8 +13,7 @@ ETags are useful for optimizing client-side caching, conditional GETs, and reduc
 etag \
   type: "strong",
   algorithm: "sha256",
-  min_body_size: 0,
-  handle_if_none_match: true
+  min_body_size: 0
 ```
 
 ## ETag Applied to a sub-location
@@ -23,8 +22,7 @@ location "/assets" do
   etag \
     type: "weak",
     algorithm: "md5",
-    min_body_size: 1024,
-    handle_if_none_match: true
+    min_body_size: 1024
 end
 ```
 
@@ -40,12 +38,10 @@ end
 
 - **min_body_size**: Minimum response body size (in bytes) required before an ETag is generated. Use this to skip ETags for small or trivial responses.
 
-- **handle_if_none_match**: When `true`, incoming requests with a matching `If-None-Match` header will receive a `304 Not Modified` response (instead of a full body), if the ETag matches the computed value.
-
 ## How It Works
 
 ### Before the Response
-If `handle_if_none_match` is enabled and the request includes an `If-None-Match` header, the value is stored in the request context for comparison later.
+If  the request includes an `If-None-Match` header, the value is stored in the request context for comparison later.
 
 ### After the Response
 

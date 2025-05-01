@@ -21,6 +21,10 @@ pub struct StaticResponse {
     body: Vec<u8>,
     #[serde(skip)]
     header_map: OnceLock<HeaderMap>,
+    #[serde(skip)]
+    body_bytes: OnceLock<Full<Bytes>>,
+    #[serde(skip)]
+    status_code: OnceLock<StatusCode>,
 }
 
 #[async_trait]
@@ -35,6 +39,12 @@ impl MiddlewareLayer for StaticResponse {
         self.header_map
             .set(header_map)
             .map_err(|_| ItsiError::new("Failed to set headers"))?;
+        self.body_bytes
+            .set(Full::new(Bytes::from(self.body.clone())))
+            .map_err(|_| ItsiError::new("Failed to set body bytes"))?;
+        self.status_code
+            .set(StatusCode::from_u16(self.code).unwrap_or(StatusCode::OK))
+            .map_err(|_| ItsiError::new("Failed to set status code"))?;
         Ok(())
     }
 
@@ -43,9 +53,8 @@ impl MiddlewareLayer for StaticResponse {
         _req: HttpRequest,
         _context: &mut HttpRequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
-        let mut resp = Response::new(BoxBody::new(Full::new(Bytes::from(self.body.clone()))));
-        let status = StatusCode::from_u16(self.code).unwrap_or(StatusCode::OK);
-        *resp.status_mut() = status;
+        let mut resp = Response::new(BoxBody::new(self.body_bytes.get().unwrap().clone()));
+        *resp.status_mut() = *self.status_code.get().unwrap();
         *resp.headers_mut() = self.header_map.get().unwrap().clone();
 
         Ok(Either::Right(resp))

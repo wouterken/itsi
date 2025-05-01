@@ -303,7 +303,7 @@ impl MiddlewareLayer for Proxy {
         let url = self.to.rewrite_request(&req, context);
 
         let accept: ResponseFormat = req.accept().into();
-        let error_response = self.error_response.to_http_response(accept.clone()).await;
+        let error_response = self.error_response.to_http_response(accept).await;
 
         let destination = match Url::parse(&url) {
             Ok(dest) => dest,

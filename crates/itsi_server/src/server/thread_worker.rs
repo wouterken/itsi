@@ -23,9 +23,12 @@ use std::{
 use tokio::{runtime::Builder as RuntimeBuilder, sync::watch};
 use tracing::instrument;
 
-use crate::ruby_types::{
-    itsi_grpc_call::ItsiGrpcCall, itsi_http_request::ItsiHttpRequest,
-    itsi_server::itsi_server_config::ServerParams, ITSI_SERVER,
+use crate::{
+    ruby_types::{
+        itsi_grpc_call::ItsiGrpcCall, itsi_http_request::ItsiHttpRequest,
+        itsi_server::itsi_server_config::ServerParams, ITSI_SERVER,
+    },
+    server::process_worker::CORE_IDS,
 };
 
 use super::request_job::RequestJob;
@@ -184,9 +187,13 @@ impl ThreadWorker {
         let scheduler_class = self.scheduler_class;
         let params = self.params.clone();
         let self_ref = self.clone();
+        let id = self.id;
         call_with_gvl(|_| {
             *self.thread.write() = Some(
                 create_ruby_thread(move || {
+                    if params.pin_worker_cores {
+                        core_affinity::set_for_current(CORE_IDS[(id as usize) % CORE_IDS.len()]);
+                    }
                     debug!("Ruby thread worker started");
                     if let Some(scheduler_class) = scheduler_class {
                         if let Err(err) = self_ref.fiber_accept_loop(

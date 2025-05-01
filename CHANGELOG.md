@@ -1,3 +1,13 @@
+## [0.2.16] - 2025-05-02
+- Optimized static error responses
+- Optimized rate limit middleware
+- Made default static serve command use more efficient defaults
+- Reduced cloning in main accept-loop
+- Fixed ability to set nodelay to false.
+- Added send_buffer_size option.
+- Worker pinning accepts ruby workers too
+- Fixed ordering incomaptibility in etag forwarding from static file server
+
 ## [0.2.14] - 2025-04-30
 - Support new-line separated headers for Rack 2 backward compatibility.
 

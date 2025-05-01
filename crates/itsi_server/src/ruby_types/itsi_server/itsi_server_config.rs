@@ -82,7 +82,7 @@ pub struct ServerParams {
     preexisting_listeners: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum ItsiServerTokenPreference {
     Version,
     Name,
@@ -109,6 +109,7 @@ pub struct SocketOpts {
     pub listen_backlog: usize,
     pub nodelay: bool,
     pub recv_buffer_size: usize,
+    pub send_buffer_size: usize,
 }
 
 impl ServerParams {
@@ -248,6 +249,9 @@ impl ServerParams {
         let recv_buffer_size: usize = rb_param_hash
             .fetch::<_, Option<usize>>("recv_buffer_size")?
             .unwrap_or(262_144);
+        let send_buffer_size: usize = rb_param_hash
+            .fetch::<_, Option<usize>>("send_buffer_size")?
+            .unwrap_or(262_144);
 
         if let Some(level) = log_level {
             set_level(&level);
@@ -296,6 +300,7 @@ impl ServerParams {
             listen_backlog,
             nodelay,
             recv_buffer_size,
+            send_buffer_size,
         };
         let preexisting_listeners = rb_param_hash.delete::<_, Option<String>>("listeners")?;
 

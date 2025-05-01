@@ -97,14 +97,13 @@ module Itsi
           if !self.class.ancestors.include?(Middleware) && !location.parent.nil?
             raise "#{opt_name} must be set at the top level"
           end
-
           @location = location
           @params = case schema
                     when TypedStruct::Validation
                       schema.validate!(params)
                     when Array
                       default, validation = schema
-                      params ? validation.validate!(params) : default
+                      !params.nil? ? validation.validate!(params) : default
                     when nil
                       nil
                     else

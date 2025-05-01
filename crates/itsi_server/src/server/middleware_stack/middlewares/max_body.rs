@@ -37,7 +37,7 @@ impl MiddlewareLayer for MaxBody {
     async fn after(&self, resp: HttpResponse, context: &mut HttpRequestContext) -> HttpResponse {
         if resp.status() == StatusCode::PAYLOAD_TOO_LARGE {
             self.error_response
-                .to_http_response(context.response_format().clone())
+                .to_http_response(*context.response_format())
                 .await
         } else {
             resp

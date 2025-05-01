@@ -4,7 +4,7 @@ class TestETag < Minitest::Test
   def test_strong_etag_added
     server(
       itsi_rb: lambda do
-        etag type: "strong", algorithm: "sha256", min_body_size: 0, handle_if_none_match: false
+        etag type: "strong", algorithm: "sha256", min_body_size: 0
         get("/foo") { |r| r.ok "etag-body" }
       end
     ) do
@@ -17,7 +17,7 @@ class TestETag < Minitest::Test
   def test_weak_etag_added_with_md5
     server(
       itsi_rb: lambda do
-        etag type: "weak", algorithm: "md5", min_body_size: 0, handle_if_none_match: false
+        etag type: "weak", algorithm: "md5", min_body_size: 0
         get("/foo") { |r| r.ok "etag-weak-md5" }
       end
     ) do
@@ -42,7 +42,7 @@ class TestETag < Minitest::Test
     body = "etag-content"
     server(
       itsi_rb: lambda do
-        etag type: "strong", min_body_size: 0, handle_if_none_match: true
+        etag type: "strong", min_body_size: 0
         get("/foo") { |r| r.ok body }
       end
     ) do

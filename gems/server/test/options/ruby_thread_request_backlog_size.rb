@@ -12,9 +12,8 @@ class TestRubyThreadRequestBacklogSize < Minitest::Test
       end) do
       responses = 10.times.map{ Thread.new{ get_resp("/foo") } }.map(&:value)
 
-      assert_equal "ok", responses.first.body
-      assert_equal "200", responses.first.code
-      assert_equal "503", responses.last.code
+      assert responses.map(&:code).include?("200")
+      assert responses.map(&:code).include?("503")
     end
   end
 

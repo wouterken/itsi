@@ -4,6 +4,7 @@ use cluster_mode::ClusterMode;
 use itsi_error::Result;
 use single_mode::SingleMode;
 
+pub mod acceptor;
 pub mod cluster_mode;
 pub mod single_mode;
 
