@@ -119,11 +119,7 @@ impl MiddlewareLayer for RubyApp {
         if self.sendfile {
             if let Some(sendfile_header) = resp.headers().get("X-Sendfile") {
                 return ROOT_STATIC_FILE_SERVER
-                    .serve_single_abs(
-                        sendfile_header.to_str().unwrap(),
-                        context.accept.clone(),
-                        &[],
-                    )
+                    .serve_single_abs(sendfile_header.to_str().unwrap(), context.accept, &[])
                     .await;
             }
         }

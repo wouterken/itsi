@@ -1,13 +1,11 @@
 use crate::default_responses::{NOT_FOUND_RESPONSE, TIMEOUT_RESPONSE};
-use crate::ruby_types::itsi_server::itsi_server_config::{ItsiServerTokenPreference, ServerParams};
-use crate::server::binds::listener::ListenerInfo;
+use crate::ruby_types::itsi_server::itsi_server_config::ItsiServerTokenPreference;
 use crate::server::http_message_types::{
     ConversionExt, HttpRequest, HttpResponse, RequestExt, ResponseFormat,
 };
 use crate::server::lifecycle_event::LifecycleEvent;
 use crate::server::middleware_stack::MiddlewareLayer;
-use crate::server::request_job::RequestJob;
-use crate::server::serve_strategy::single_mode::RunningPhase;
+use crate::server::serve_strategy::acceptor::AcceptorArgs;
 use crate::server::signal::send_lifecycle_event;
 use chrono::{self, DateTime, Local};
 use either::Either;
@@ -23,7 +21,6 @@ use std::time::{Duration, Instant};
 use tracing::error;
 
 use std::{future::Future, ops::Deref, pin::Pin, sync::Arc};
-use tokio::sync::watch::{self};
 use tokio::time::timeout;
 
 #[derive(Clone)]
@@ -40,12 +37,16 @@ impl Deref for ItsiHttpService {
 }
 
 pub struct ItsiHttpServiceInner {
-    pub sender: async_channel::Sender<RequestJob>,
-    pub nonblocking_sender: async_channel::Sender<RequestJob>,
-    pub server_params: Arc<ServerParams>,
-    pub listener: Arc<ListenerInfo>,
+    pub acceptor_args: Arc<AcceptorArgs>,
     pub addr: String,
-    pub shutdown_channel: watch::Receiver<RunningPhase>,
+}
+
+impl Deref for ItsiHttpServiceInner {
+    type Target = Arc<AcceptorArgs>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.acceptor_args
+    }
 }
 
 #[derive(Clone)]
@@ -178,26 +179,30 @@ impl Service<Request<Incoming>> for ItsiHttpService {
     type Future = Pin<Box<dyn Future<Output = itsi_error::Result<HttpResponse>> + Send>>;
 
     fn call(&self, req: Request<Incoming>) -> Self::Future {
-        let params = self.server_params.clone();
         let self_clone = self.clone();
         let mut req = req.limit();
         let accept: ResponseFormat = req.accept().into();
-        let accept_clone = accept.clone();
         let is_single_mode = self.server_params.workers == 1;
 
         let request_timeout = self.server_params.request_timeout;
         let is_ruby_request = Arc::new(AtomicBool::new(false));
         let irr_clone = is_ruby_request.clone();
-        let service_future = async move {
-            let mut resp: Option<HttpResponse> = None;
-            let (stack, matching_pattern) = params.middleware.get().unwrap().stack_for(&req)?;
 
-            let mut context = HttpRequestContext::new(
-                self_clone,
-                matching_pattern,
-                accept_clone.clone(),
-                irr_clone,
-            );
+        let token_preference = self.server_params.itsi_server_token_preference;
+
+        let service_future = async move {
+            let middleware_stack = self_clone
+                .server_params
+                .middleware
+                .get()
+                .unwrap()
+                .stack_for(&req)
+                .unwrap();
+            let (stack, matching_pattern) = middleware_stack;
+            let mut resp: Option<HttpResponse> = None;
+
+            let mut context =
+                HttpRequestContext::new(self_clone.clone(), matching_pattern, accept, irr_clone);
             let mut depth = 0;
 
             for (index, elm) in stack.iter().enumerate() {
@@ -217,14 +222,14 @@ impl Service<Request<Incoming>> for ItsiHttpService {
 
             let mut resp = match resp {
                 Some(r) => r,
-                None => return Ok(NOT_FOUND_RESPONSE.to_http_response(accept_clone).await),
+                None => return Ok(NOT_FOUND_RESPONSE.to_http_response(accept).await),
             };
 
             for elm in stack.iter().rev().skip(stack.len() - depth - 1) {
                 resp = elm.after(resp, &mut context).await;
             }
 
-            match params.itsi_server_token_preference {
+            match token_preference {
                 ItsiServerTokenPreference::Version => {
                     resp.headers_mut().insert("Server", SERVER_TOKEN_VERSION);
                 }

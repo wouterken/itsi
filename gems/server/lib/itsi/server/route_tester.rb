@@ -23,7 +23,7 @@ module Itsi
         when "cors"
           "\e[33mcors\e[0m(#{mw_args["allow_origins"].join(" ")}, #{mw_args["allow_methods"].join(" ")})"
         when "etag"
-          "\e[33metag\e[0m(#{mw_args["type"]}/#{mw_args["algorithm"]}, #{mw_args["handle_if_none_match"] ? "if_none_match" : ""})"
+          "\e[33metag\e[0m(#{mw_args["type"]}/#{mw_args["algorithm"]})"
         when "cache_control"
           "\e[33mcache_control\e[0m(max_age: #{mw_args["max_age"]}, #{mw_args.select do |_, v|
             v == true

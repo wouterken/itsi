@@ -41,29 +41,28 @@ module Itsi
             DSL.evaluate(&builder_proc)
           elsif args[:static]
             DSL.evaluate do
-              location "*" do
-                rate_limit key: "address", store_config: "in_memory", requests: 2, seconds: 5
-                etag type: "strong", algorithm: "md5", min_body_size: 1024 * 1024
-                compress min_size: 1024 * 1024, level: "fastest", algorithms: %w[zstd gzip br deflate],
-                         mime_types: %w[all], compress_streams: true
-                log_requests before: { level: "INFO", format: "[{request_id}] {method} {path_and_query} - {addr} " },
-                             after: { level: "INFO",
-                                      format: "[{request_id}] └─ {status} in {response_time}" }
-                static_assets \
-                  relative_path: true,
-                  allowed_extensions: [],
-                  root_dir: ".",
-                  not_found_behavior: { error: "not_found" },
-                  auto_index: true,
-                  try_html_extension: true,
-                  max_file_size_in_memory: 1024 * 1024, # 1MB
-                  max_files_in_memory: 1000,
-                  file_check_interval: 1,
-                  serve_hidden_files: false,
-                  headers: {
-                    "X-Content-Type-Options" => "nosniff"
-                  }
-              end
+              rate_limit key: "address", store_config: "in_memory", requests: 5, seconds: 10
+              etag type: "strong", algorithm: "md5", min_body_size: 1024 * 1024
+              compress min_size: 1024 * 1024, level: "fastest", algorithms: %w[zstd gzip br deflate],
+                        mime_types: %w[all], compress_streams: true
+              log_requests before: { level: "DEBUG", format: "[{request_id}] {method} {path_and_query} - {addr} " },
+                            after: { level: "DEBUG",
+                                    format: "[{request_id}] └─ {status} in {response_time}" }
+              nodelay false
+              static_assets \
+                relative_path: true,
+                allowed_extensions: [],
+                root_dir: ".",
+                not_found_behavior: { error: "not_found" },
+                auto_index: true,
+                try_html_extension: true,
+                max_file_size_in_memory: 1024 * 1024, # 1MB
+                max_files_in_memory: 1000,
+                file_check_interval: 1,
+                serve_hidden_files: false,
+                headers: {
+                  "X-Content-Type-Options" => "nosniff"
+                }
             end
           elsif File.exist?(config_file_path.to_s)
             DSL.evaluate(config_file_path)
@@ -106,7 +105,6 @@ module Itsi
           Server.write_pid
         end
 
-
         srv_config = {
           workers: args.fetch(:workers) { itsifile_config.fetch(:workers, 1) },
           worker_memory_limit: args.fetch(:worker_memory_limit) { itsifile_config.fetch(:worker_memory_limit, nil) },
@@ -148,7 +146,8 @@ module Itsi
           reuse_port: itsifile_config.fetch(:reuse_port, true),
           listen_backlog: itsifile_config.fetch(:listen_backlog, 1024),
           nodelay: itsifile_config.fetch(:nodelay, true),
-          recv_buffer_size: itsifile_config.fetch(:recv_buffer_size, 262_144)
+          recv_buffer_size: itsifile_config.fetch(:recv_buffer_size, 262_144),
+          send_buffer_size: itsifile_config.fetch(:send_buffer_size, 262_144)
         }.transform_keys(&:to_s)
 
         [srv_config, errors_to_error_lines(errors)]

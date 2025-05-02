@@ -5,7 +5,6 @@ use http_body_util::{combinators::BoxBody, Full};
 use serde::{Deserialize, Deserializer};
 use std::convert::Infallible;
 use std::path::PathBuf;
-use std::sync::Arc;
 use tracing::warn;
 
 use crate::server::http_message_types::{HttpResponse, ResponseFormat};
@@ -20,7 +19,7 @@ pub enum ContentSource {
     File(PathBuf),
     #[serde(rename(deserialize = "static"))]
     #[serde(skip_deserializing)]
-    Static(Arc<String>),
+    Static(Full<Bytes>),
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -151,13 +150,13 @@ impl ErrorResponse {
                 return BoxBody::new(Full::new(Bytes::from(text.clone())));
             }
             Some(ContentSource::Static(text)) => {
-                return BoxBody::new(Full::new(Bytes::from(String::from(text.as_str()))));
+                return BoxBody::new(text.clone());
             }
             Some(ContentSource::File(path)) => {
                 // Convert the PathBuf to a &str (assumes valid UTF-8).
                 if let Some(path_str) = path.to_str() {
                     let response = ROOT_STATIC_FILE_SERVER
-                        .serve_single(path_str, accept.clone(), &[])
+                        .serve_single(path_str, accept, &[])
                         .await;
                     if response.status().is_success() {
                         return response.into_body();

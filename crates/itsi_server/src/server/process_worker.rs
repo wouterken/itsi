@@ -42,7 +42,8 @@ impl Default for ProcessWorker {
     }
 }
 
-static CORE_IDS: LazyLock<Vec<CoreId>> = LazyLock::new(|| core_affinity::get_core_ids().unwrap());
+pub static CORE_IDS: LazyLock<Vec<CoreId>> =
+    LazyLock::new(|| core_affinity::get_core_ids().unwrap());
 
 impl ProcessWorker {
     #[instrument(skip(self, cluster_template), fields(self.worker_id = %self.worker_id))]

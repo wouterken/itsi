@@ -32,7 +32,7 @@ pub trait PathExt {
     fn no_trailing_slash(&self) -> &str;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum ResponseFormat {
     JSON,
     HTML,

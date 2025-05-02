@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use parking_lot::{Mutex, RwLock};
 use rand::Rng;
 use redis::aio::ConnectionManager;
 use redis::{Client, RedisError, Script};
@@ -6,9 +7,9 @@ use serde::Deserialize;
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
 use std::result::Result;
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::{Arc, LazyLock};
 use std::time::{Duration, Instant};
-use tokio::sync::{Mutex as AsyncMutex, RwLock};
+use tokio::sync::Mutex as AsyncMutex;
 use tokio::time::timeout;
 use tracing::warn;
 use url::Url;
@@ -242,10 +243,10 @@ impl InMemoryRateLimiter {
     /// Cleans up expired entries
     async fn cleanup(&self) {
         // Try to get the write lock, but fail open if we can't
-        if let Ok(mut entries) = self.entries.try_write() {
-            let now = Instant::now();
-            entries.retain(|_, entry| entry.expires_at > now);
-        }
+        let now = Instant::now();
+        self.entries
+            .write()
+            .retain(|_, entry| entry.expires_at > now);
     }
 
     /// Bans an IP address for the specified duration
@@ -258,12 +259,7 @@ impl InMemoryRateLimiter {
         let now = Instant::now();
         let ban_key = format!("ban:ip:{}", ip);
 
-        let mut entries = self.entries.try_write().map_err(|e| {
-            tracing::error!("Failed to acquire write lock: {}", e);
-            RateLimitError::LockError
-        })?;
-
-        entries.insert(
+        self.entries.write().insert(
             ban_key,
             RateLimitEntry {
                 count: 1, // Use count=1 to indicate banned
@@ -279,12 +275,7 @@ impl InMemoryRateLimiter {
         let now = Instant::now();
         let ban_key = format!("ban:ip:{}", ip);
 
-        let entries = self.entries.try_read().map_err(|e| {
-            tracing::error!("Failed to acquire read lock: {}", e);
-            RateLimitError::LockError
-        })?;
-
-        if let Some(entry) = entries.get(&ban_key) {
+        if let Some(entry) = self.entries.read().get(&ban_key) {
             if entry.expires_at > now {
                 // IP is banned, return a generic reason since we don't store reasons
                 return Ok(Some("IP address banned".to_string()));
@@ -310,7 +301,7 @@ impl RateLimiter for InMemoryRateLimiter {
 
         let now = Instant::now();
 
-        let mut entries = self.entries.write().await;
+        let mut entries = self.entries.write();
 
         let entry = entries
             .entry(key.to_string())
@@ -436,7 +427,7 @@ impl RateLimiterStore {
     ) -> Result<Arc<RedisRateLimiter>, RateLimitError> {
         // First check if this URL is known to fail
         {
-            let failed_urls = self.failed_urls.lock().unwrap_or_else(|e| e.into_inner());
+            let failed_urls = self.failed_urls.lock();
             if failed_urls.contains(connection_url) {
                 return Err(RateLimitError::ConnectionTimeout);
             }
@@ -444,10 +435,7 @@ impl RateLimiterStore {
 
         // Then check if we already have a limiter for this URL
         {
-            let limiters = self
-                .redis_limiters
-                .lock()
-                .unwrap_or_else(|e| e.into_inner());
+            let limiters = self.redis_limiters.lock();
             if let Some(limiter) = limiters.get(connection_url) {
                 return Ok(limiter.clone());
             }
@@ -455,7 +443,7 @@ impl RateLimiterStore {
 
         // Get a dedicated mutex for this URL or create a new one if it doesn't exist
         let url_mutex = {
-            let mut locks = CONNECTION_LOCKS.lock().unwrap_or_else(|e| e.into_inner());
+            let mut locks = CONNECTION_LOCKS.lock();
 
             // Get or create the mutex for this URL
             locks
@@ -476,10 +464,7 @@ impl RateLimiterStore {
 
         // Check again if another thread created the limiter while we were waiting
         {
-            let limiters = self
-                .redis_limiters
-                .lock()
-                .unwrap_or_else(|e| e.into_inner());
+            let limiters = self.redis_limiters.lock();
             if let Some(limiter) = limiters.get(connection_url) {
                 return Ok(limiter.clone());
             }
@@ -492,10 +477,7 @@ impl RateLimiterStore {
                 let limiter = Arc::new(limiter);
 
                 // Store it for future use
-                let mut limiters = self
-                    .redis_limiters
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner());
+                let mut limiters = self.redis_limiters.lock();
                 limiters.insert(connection_url.to_string(), limiter.clone());
 
                 Ok(limiter)
@@ -503,7 +485,7 @@ impl RateLimiterStore {
             Err(e) => {
                 tracing::error!("Failed to initialize Redis rate limiter: {}", e);
                 // Cache the failure
-                let mut failed_urls = self.failed_urls.lock().unwrap_or_else(|e| e.into_inner());
+                let mut failed_urls = self.failed_urls.lock();
                 failed_urls.insert(connection_url.to_string());
                 Err(e)
             }

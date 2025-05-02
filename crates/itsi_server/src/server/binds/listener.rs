@@ -111,7 +111,7 @@ impl TokioListener {
         Self::to_tokio_io(Stream::TcpStream(tcp_stream), None).await
     }
 
-    pub async fn spawn_state_task(&self, mut shutdown_receiver: Receiver<RunningPhase>) {
+    pub async fn spawn_acme_event_task(&self, mut shutdown_receiver: Receiver<RunningPhase>) {
         if let TokioListener::TcpTls(
             _,
             ItsiTlsAcceptor::Automatic(_acme_acceptor, state, _server_config),
@@ -414,6 +414,9 @@ fn connect_tcp_socket(addr: IpAddr, port: u16, socket_opts: &SocketOpts) -> Resu
     socket.set_reuse_port(socket_opts.reuse_port).ok();
     socket.set_nonblocking(true).ok();
     socket.set_nodelay(socket_opts.nodelay).ok();
+    socket
+        .set_send_buffer_size(socket_opts.send_buffer_size)
+        .ok();
     socket
         .set_recv_buffer_size(socket_opts.recv_buffer_size)
         .ok();

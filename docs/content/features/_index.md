@@ -35,7 +35,7 @@ Pick and choose **just** the features that make sense for you.
 {{% /details %}}
 
 {{% details title="ETag and Cache Control" closed="true" %}}
-* Weak and Strong eTag support.
+* Weak and Strong ETag support.
 * `If-None-Match` and `If-Modified-Since` support.
 * Automated etag generation for dynamic content (or forwarding of existing `etags` if present)
 * See <a target="_blank" href="/middleware/etag">etag</a> and <a target="_blank" href="/middleware/cache_control">cache_control</a>

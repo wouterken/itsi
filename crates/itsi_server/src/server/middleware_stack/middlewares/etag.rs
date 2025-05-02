@@ -43,12 +43,6 @@ pub struct ETag {
     pub algorithm: HashAlgorithm,
     #[serde(default)]
     pub min_body_size: usize,
-    #[serde(default = "default_true")]
-    pub handle_if_none_match: bool,
-}
-
-fn default_true() -> bool {
-    true
 }
 
 #[async_trait]
@@ -59,14 +53,13 @@ impl MiddlewareLayer for ETag {
         context: &mut HttpRequestContext,
     ) -> Result<Either<HttpRequest, HttpResponse>> {
         // Store if-none-match header in context if present for later use in after hook
-        if self.handle_if_none_match {
-            if let Some(if_none_match) = req.headers().get(header::IF_NONE_MATCH) {
-                debug!(target: "middleware::etag", "Received If-None-Match header: {:?}", if_none_match);
-                if let Ok(etag_value) = if_none_match.to_str() {
-                    context.set_if_none_match(Some(etag_value.to_string()));
-                }
+        if let Some(if_none_match) = req.headers().get(header::IF_NONE_MATCH) {
+            debug!(target: "middleware::etag", "Received If-None-Match header: {:?}", if_none_match);
+            if let Ok(etag_value) = if_none_match.to_str() {
+                context.set_if_none_match(Some(etag_value.to_string()));
             }
         }
+
         Ok(Either::Left(req))
     }
 
@@ -83,11 +76,6 @@ impl MiddlewareLayer for ETag {
                 debug!(target: "middleware::etag", "Skipping ETag middleware for ineligible response");
                 return resp;
             }
-        }
-
-        if resp.headers().contains_key(header::ETAG) {
-            debug!(target: "middleware::etag", "Forwarding response with existing ETag");
-            return resp;
         }
 
         if let Some(cache_control) = resp.headers().get(header::CACHE_CONTROL) {
@@ -155,28 +143,26 @@ impl MiddlewareLayer for ETag {
             formatted_etag
         };
 
-        if self.handle_if_none_match {
-            if let Some(if_none_match) = context.get_if_none_match() {
-                if if_none_match == etag_value || if_none_match == "*" {
-                    // Return 304 Not Modified without the body
-                    let mut not_modified = Response::new(BoxBody::new(Empty::new()));
-                    *not_modified.status_mut() = StatusCode::NOT_MODIFIED;
-                    // Copy headers we want to preserve
-                    for (name, value) in parts.headers.iter() {
-                        if matches!(
-                            name,
-                            &header::CACHE_CONTROL
-                                | &header::CONTENT_LOCATION
-                                | &header::DATE
-                                | &header::ETAG
-                                | &header::EXPIRES
-                                | &header::VARY
-                        ) {
-                            not_modified.headers_mut().insert(name, value.clone());
-                        }
+        if let Some(if_none_match) = context.get_if_none_match() {
+            if if_none_match == etag_value || if_none_match == "*" {
+                // Return 304 Not Modified without the body
+                let mut not_modified = Response::new(BoxBody::new(Empty::new()));
+                *not_modified.status_mut() = StatusCode::NOT_MODIFIED;
+                // Copy headers we want to preserve
+                for (name, value) in parts.headers.iter() {
+                    if matches!(
+                        name,
+                        &header::CACHE_CONTROL
+                            | &header::CONTENT_LOCATION
+                            | &header::DATE
+                            | &header::ETAG
+                            | &header::EXPIRES
+                            | &header::VARY
+                    ) {
+                        not_modified.headers_mut().insert(name, value.clone());
                     }
-                    return not_modified;
                 }
+                return not_modified;
             }
         }
 
@@ -190,7 +176,6 @@ impl Default for ETag {
             r#type: ETagType::Strong,
             algorithm: HashAlgorithm::Sha256,
             min_body_size: 0,
-            handle_if_none_match: true,
         }
     }
 }

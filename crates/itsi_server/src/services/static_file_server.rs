@@ -19,7 +19,7 @@ use http::{
 use http_body_util::{combinators::BoxBody, Full};
 use itsi_error::Result;
 use parking_lot::{Mutex, RwLock};
-use percent_encoding::{percent_decode_str, utf8_percent_encode, NON_ALPHANUMERIC};
+use percent_encoding::percent_decode_str;
 use quick_cache::sync::Cache;
 use serde::Deserialize;
 use serde_json::json;
@@ -175,7 +175,7 @@ impl CacheEntry {
             let mut hasher = Sha256::new();
             hasher.update(&bytes);
             let result = hasher.finalize();
-            general_purpose::STANDARD.encode(result)
+            general_purpose::STANDARD.encode(&result[..16])
         };
         let headers_ct = get_mime_type(&path);
         let headers_etag = format!(r#"W/"{etag}""#).parse().unwrap();
@@ -279,7 +279,7 @@ impl StaticFileServer {
         supported_encodings: &[HeaderValue],
     ) -> Option<HttpResponse> {
         let accept: ResponseFormat = request.accept().into();
-        let resolved = self.resolve(path, abs_path, accept.clone()).await;
+        let resolved = self.resolve(path, abs_path, accept).await;
 
         Some(match resolved {
             Ok(ResolvedAsset {
@@ -1188,7 +1188,6 @@ async fn generate_directory_listing(
 
             // Generate JSON entries for directories.
             for (name, metadata) in dirs {
-                let encoded = utf8_percent_encode(&name, NON_ALPHANUMERIC).to_string();
                 let modified = metadata
                     .modified()
                     .ok()
@@ -1201,7 +1200,7 @@ async fn generate_directory_listing(
 
                 items.push(json!({
                     "name": format!("{}/", name),
-                    "path": format!("{}/", encoded),
+                    "path": format!("{}/", name),
                     "is_dir": true,
                     "size": null,
                     "modified": modified,
@@ -1210,7 +1209,6 @@ async fn generate_directory_listing(
 
             // Generate JSON entries for files.
             for (name, metadata) in files {
-                let encoded = utf8_percent_encode(&name, NON_ALPHANUMERIC).to_string();
                 let file_size = metadata.len();
                 let formatted_size = if file_size < 1024 {
                     format!("{} B", file_size)
@@ -1234,7 +1232,7 @@ async fn generate_directory_listing(
 
                 items.push(json!({
                     "name": name,
-                    "path": encoded,
+                    "path": name,
                     "is_dir": false,
                     "size": formatted_size,
                     "modified": modified_str,
@@ -1341,11 +1339,9 @@ async fn generate_directory_listing(
 
             // Generate rows for directories.
             for (name, metadata) in dirs {
-                let encoded = utf8_percent_encode(&name, NON_ALPHANUMERIC).to_string();
-
                 rows.push_str(&format!(
             r#"<tr><td><a href="{0}/">{1}/</a></td><td class="size">-</td><td class="date">{2}</td></tr>"#,
-            encoded,
+            name,
             name,
             metadata.modified().ok().map(|m| DateTime::<Utc>::from(m).format("%Y-%m-%d %H:%M:%S").to_string())
                 .unwrap_or_else(|| "-".to_string())
@@ -1355,8 +1351,6 @@ async fn generate_directory_listing(
 
             // Generate rows for files.
             for (name, metadata) in files {
-                let encoded = utf8_percent_encode(&name, NON_ALPHANUMERIC).to_string();
-
                 let file_size = metadata.len();
                 let formatted_size = if file_size < 1024 {
                     format!("{} B", file_size)
@@ -1380,7 +1374,7 @@ async fn generate_directory_listing(
 
                 rows.push_str(&format!(
             r#"<tr><td><a href="{0}">{1}</a></td><td class="size">{2}</td><td class="date">{3}</td></tr>"#,
-            encoded, name, formatted_size, modified_str
+            name, name, formatted_size, modified_str
         ));
                 rows.push('\n');
             }
