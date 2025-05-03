@@ -10,10 +10,7 @@ env = ENV.fetch("APP_ENV") { ENV.fetch("RACK_ENV", "development") }
 
 # Number of worker processes to spawn
 # If more than 1, Itsi will be booted in Cluster mode
-workers ENV.fetch("ITSI_WORKERS") {
-  require "etc"
-  env == "development" ? 1 : nil
-}
+workers ENV["ITSI_WORKERS"]&.to_i || env == "development" ? 1 : nil
 
 # Number of threads to spawn per worker process
 # For pure CPU bound applicationss, you'll get the best results keeping this number low
