@@ -15,67 +15,97 @@ Install Ruby
 
 ### Step 2 - Install Itsi
 
-{{< tabs items="Linux,Mac,Windows" >}}
+{{< tabs items="Linux,Mac,Windows,FreeBSD" >}}
   {{< tab >}}
   **Prerequisites**
 
-  You'll need at least `build-essential` and `libclang-dev` installed to build Itsi on Linux.
-  E.g.
-  ```bash
-  apt-get install build-essential libclang-dev
-  ```
 
-  Then use `gem` to install Itsi, or its components based on your Ruby version.
+You'll need at least a C/C++ build environment and `clang` and `curl` (for running `rustup`) installed.
 
-  **For Ruby >= 3.0**:
-  ```bash
-  gem install itsi
-  ```
-  *(Installs both `itsi-server` and `itsi-scheduler`)*
+#### For Ubuntu / Debian:
+```bash
+    apt-get install build-essential libclang-dev curl
+```
+#### For Fedora / RHEL / Rocky / AlmaLinux:
+```bash
+    dnf groupinstall "Development Tools"
+    dnf install clang curl
+```
+#### For Arch Linux / Manjaro:
+```bash
+    pacman -S base-devel clang curl
+```
+#### For Alpine Linux:
+```bash
+    apk add build-base clang curl
+```
 
-  **For Ruby 2.7**:
-  ```bash
-  gem install itsi-server
-  ```
-  *(Installs `itsi-server` only; `itsi-scheduler` is not supported on Ruby 2.7)*
+Then use `gem` to install Itsi, or its components based on your Ruby version.
 
-  {{< callout type="info" >}}
-  Itsi (**server + scheduler**) requires **Ruby >= 3.0**.
+**For Ruby >= 3.0**:
+```bash
+    gem install itsi
+```
+*(Installs both `itsi-server` and `itsi-scheduler`)*
 
-  Itsi **server** supports **Ruby >= 2.7**.
+**For Ruby 2.7**:
+```bash
+    gem install itsi-server
+```
+*(Installs `itsi-server` only; `itsi-scheduler` is not supported on Ruby 2.7)*
 
-  If you wish to use either the scheduler or server independently:
-  - `gem install itsi-server`
-  - `gem install itsi-scheduler` (Ruby >= 3.0 only)
-  {{< /callout >}}
+> ℹ️ **Itsi (`server` + `scheduler`) requires Ruby >= 3.0**
+> Itsi `server` supports Ruby >= 2.7
+> You can install components individually:
+> `gem install itsi-server`
+> `gem install itsi-scheduler` (Ruby >= 3.0 only)
 
   {{< /tab >}}
   {{< tab >}}
   **Mac**:
   **For Ruby >= 3.0**:
-  ```bash
-  gem install itsi
-  ```
+```bash
+    gem install itsi
+```
+*(Installs both `itsi-server` and `itsi-scheduler`)*
 
-  **For Ruby 2.7**:
-  ```bash
-  gem install itsi-server
-  ```
+**For Ruby 2.7**:
+```bash
+    gem install itsi-server
+```
+*(Installs `itsi-server` only; `itsi-scheduler` is not supported on Ruby 2.7)*
 
-  {{< callout type="info" >}}
-  Itsi (**server + scheduler**) requires **Ruby >= 3.0**.
-
-  Itsi **server** supports **Ruby >= 2.7**.
-
-  You can install components individually:
-  - `gem install itsi-server`
-  - `gem install itsi-scheduler` (Ruby >= 3.0 only)
-  {{< /callout >}}
-
+> ℹ️ **Itsi (`server` + `scheduler`) requires Ruby >= 3.0**
+> Itsi `server` supports Ruby >= 2.7
+> You can install components individually:
+> `gem install itsi-server`
+> `gem install itsi-scheduler` (Ruby >= 3.0 only)
   {{< /tab >}}
   {{< tab >}}**Windows**: Itsi currently doesn't support native Windows builds, but it runs well on [WSL](https://learn.microsoft.com/en-us/windows/wsl/install).
 
   Follow the linked instructions to install a Linux distribution like Ubuntu or Debian, and then follow the instructions in the Linux tab.
+  {{< /tab >}}
+  {{< tab >}}
+  **FreeBSD**
+
+On FreeBSD you'll need to install a few build tools manually:
+```bash
+  pkg install gmake cmake curl llvm
+```
+
+Then install Itsi with GNU make to avoid build errors:
+```bash
+MAKE=gmake gem install itsi
+```
+
+ *(Installs both `itsi-server` and `itsi-scheduler`)*
+
+**For Ruby 2.7**:
+```bash
+MAKE=gmake gem install itsi-server
+```
+*(Installs `itsi-server` only; `itsi-scheduler` is not supported on Ruby 2.7)*
+
   {{< /tab >}}
 
 {{< /tabs >}}
