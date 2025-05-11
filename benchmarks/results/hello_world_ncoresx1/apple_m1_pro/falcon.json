@@ -1,0 +1,62 @@
+{
+  "server": "falcon",
+  "test_case": "hello_world_ncoresx1",
+  "results": {
+    "10": {
+      "successRate": 1.0,
+      "total": 5.0,
+      "slowest": 0.13,
+      "fastest": 0.0,
+      "average": 0.0,
+      "requestsPerSec": 43899.58,
+      "totalData": 8126569,
+      "sizePerRequest": 37,
+      "sizePerSec": 1624284.29,
+      "errorDistribution": {},
+      "p95_latency": 4.61292e-4
+    },
+    "50": {
+      "successRate": 1.0,
+      "total": 5.0,
+      "slowest": 0.13,
+      "fastest": 0.0,
+      "average": 0.0,
+      "requestsPerSec": 59254.71,
+      "totalData": 10969057,
+      "sizePerRequest": 37,
+      "sizePerSec": 2192424.13,
+      "errorDistribution": {},
+      "p95_latency": 0.001484166
+    },
+    "100": {
+      "successRate": 1.0,
+      "total": 5.0,
+      "slowest": 0.25,
+      "fastest": 0.0,
+      "average": 0.0,
+      "requestsPerSec": 60481.14,
+      "totalData": 11200196,
+      "sizePerRequest": 37,
+      "sizePerSec": 2237802.18,
+      "errorDistribution": {},
+      "p95_latency": 0.003058459
+    },
+    "250": {
+      "successRate": 1.0,
+      "total": 5.01,
+      "slowest": 0.13,
+      "fastest": 0.0,
+      "average": 0.0,
+      "requestsPerSec": 61334.09,
+      "totalData": 11355559,
+      "sizePerRequest": 37,
+      "sizePerSec": 2267720.84,
+      "errorDistribution": {
+        "Connection reset by peer (os error 54)": 9,
+        "connection error": 213
+      },
+      "p95_latency": 0.007778875
+    }
+  },
+  "timestamp": "2025-05-11T05:14:05Z"
+}

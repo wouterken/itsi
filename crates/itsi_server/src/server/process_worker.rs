@@ -88,7 +88,7 @@ impl ProcessWorker {
                             .pin_worker_cores
                         {
                             core_affinity::set_for_current(
-                                CORE_IDS[self.worker_id % CORE_IDS.len()],
+                                CORE_IDS[(self.worker_id + 1) % CORE_IDS.len()],
                             );
                         }
                         Arc::new(single_mode).run().ok();

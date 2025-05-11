@@ -1,0 +1,72 @@
+{
+  "server": "unicorn",
+  "test_case": "hello_world_ncoresx1",
+  "results": {
+    "10": {
+      "successRate": 1.0,
+      "total": 6.54,
+      "slowest": 0.1,
+      "fastest": 0.0,
+      "average": 0.0,
+      "requestsPerSec": 1388.48,
+      "totalData": 99715,
+      "sizePerRequest": 11,
+      "sizePerSec": 15256.46,
+      "errorDistribution": {
+        "timeout": 10
+      },
+      "p95_latency": 0.002061125
+    },
+    "50": {
+      "successRate": 0.21,
+      "total": 10.01,
+      "slowest": 0.01,
+      "fastest": 0.0,
+      "average": 0.0,
+      "requestsPerSec": 11.29,
+      "totalData": 264,
+      "sizePerRequest": 11,
+      "sizePerSec": 26.38,
+      "errorDistribution": {
+        "timeout": 89
+      },
+      "p95_latency": 0.008829375
+    },
+    "100": {
+      "successRate": 0.24,
+      "total": 10.0,
+      "slowest": 0.01,
+      "fastest": 0.0,
+      "average": 0.0,
+      "requestsPerSec": 13.29,
+      "totalData": 352,
+      "sizePerRequest": 11,
+      "sizePerSec": 35.19,
+      "errorDistribution": {
+        "timeout": 101
+      },
+      "p95_latency": 0.003890333
+    },
+    "250": {
+      "successRate": 0.44,
+      "total": 5.1,
+      "slowest": 3.56,
+      "fastest": 0.0,
+      "average": 0.19,
+      "requestsPerSec": 1719.79,
+      "totalData": 42790,
+      "sizePerRequest": 11,
+      "sizePerSec": 8387.26,
+      "errorDistribution": {
+        "Connection reset by peer (os error 54)": 203,
+        "Invalid argument (os error 22)": 1,
+        "connection error": 4632,
+        "error writing a body to connection": 27,
+        "operation was canceled": 19,
+        "timeout": 2
+      },
+      "p95_latency": 1.039263375
+    }
+  },
+  "timestamp": "2025-05-11T02:46:40Z"
+}

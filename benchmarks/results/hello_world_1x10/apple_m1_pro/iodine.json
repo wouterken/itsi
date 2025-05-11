@@ -1,0 +1,61 @@
+{
+  "server": "iodine",
+  "test_case": "hello_world_1x10",
+  "results": {
+    "10": {
+      "successRate": 1.0,
+      "total": 5.0,
+      "slowest": 0.01,
+      "fastest": 0.0,
+      "average": 0.0,
+      "requestsPerSec": 55165.34,
+      "totalData": 3035824,
+      "sizePerRequest": 11,
+      "sizePerSec": 606818.69,
+      "errorDistribution": {},
+      "p95_latency": 2.55833e-4
+    },
+    "50": {
+      "successRate": 1.0,
+      "total": 5.0,
+      "slowest": 0.0,
+      "fastest": 0.0,
+      "average": 0.0,
+      "requestsPerSec": 67519.34,
+      "totalData": 3715250,
+      "sizePerRequest": 11,
+      "sizePerSec": 742712.75,
+      "errorDistribution": {},
+      "p95_latency": 0.000992
+    },
+    "100": {
+      "successRate": 1.0,
+      "total": 5.0,
+      "slowest": 0.01,
+      "fastest": 0.0,
+      "average": 0.0,
+      "requestsPerSec": 66590.53,
+      "totalData": 3665464,
+      "sizePerRequest": 11,
+      "sizePerSec": 732495.85,
+      "errorDistribution": {},
+      "p95_latency": 0.001898083
+    },
+    "250": {
+      "successRate": 1.0,
+      "total": 5.01,
+      "slowest": 0.03,
+      "fastest": 0.0,
+      "average": 0.0,
+      "requestsPerSec": 67913.79,
+      "totalData": 3739395,
+      "sizePerRequest": 11,
+      "sizePerSec": 746812.25,
+      "errorDistribution": {
+        "connection error": 109
+      },
+      "p95_latency": 0.004406875
+    }
+  },
+  "timestamp": "2025-05-11T02:39:31Z"
+}

@@ -227,6 +227,11 @@ module Itsi
 
       # Find config file path, if it exists.
       def self.config_file_path(config_file_path = nil)
+
+        if config_file_path && !File.exist?(config_file_path)
+          raise "Config file #{config_file_path} does not exist"
+        end
+
         config_file_path ||= \
           if File.exist?(ITSI_DEFAULT_CONFIG_FILE)
             ITSI_DEFAULT_CONFIG_FILE

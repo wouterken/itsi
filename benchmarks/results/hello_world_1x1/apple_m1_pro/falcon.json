@@ -1,0 +1,65 @@
+{
+  "server": "falcon",
+  "test_case": "hello_world_1x1",
+  "results": {
+    "10": {
+      "successRate": 1.0,
+      "total": 5.0,
+      "slowest": 0.01,
+      "fastest": 0.0,
+      "average": 0.0,
+      "requestsPerSec": 14005.78,
+      "totalData": 2592997,
+      "sizePerRequest": 37,
+      "sizePerSec": 518213.84,
+      "errorDistribution": {},
+      "p95_latency": 0.001081208
+    },
+    "50": {
+      "successRate": 1.0,
+      "total": 5.01,
+      "slowest": 0.09,
+      "fastest": 0.0,
+      "average": 0.0,
+      "requestsPerSec": 14727.98,
+      "totalData": 2728121,
+      "sizePerRequest": 37,
+      "sizePerSec": 544935.13,
+      "errorDistribution": {},
+      "p95_latency": 0.00417775
+    },
+    "100": {
+      "successRate": 1.0,
+      "total": 5.01,
+      "slowest": 0.35,
+      "fastest": 0.0,
+      "average": 0.01,
+      "requestsPerSec": 14689.27,
+      "totalData": 2721905,
+      "sizePerRequest": 37,
+      "sizePerSec": 543502.84,
+      "errorDistribution": {},
+      "p95_latency": 0.008007333
+    },
+    "250": {
+      "successRate": 0.99,
+      "total": 5.03,
+      "slowest": 1.99,
+      "fastest": 0.0,
+      "average": 0.02,
+      "requestsPerSec": 13310.2,
+      "totalData": 2459834,
+      "sizePerRequest": 37,
+      "sizePerSec": 489327.03,
+      "errorDistribution": {
+        "Connection reset by peer (os error 54)": 14,
+        "Invalid argument (os error 22)": 1,
+        "connection error": 407,
+        "error writing a body to connection": 2,
+        "operation was canceled": 4
+      },
+      "p95_latency": 0.024928959
+    }
+  },
+  "timestamp": "2025-05-11T02:36:35Z"
+}

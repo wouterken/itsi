@@ -1,0 +1,62 @@
+{
+  "server": "itsi",
+  "test_case": "hello_world_ncoresx1_http2",
+  "results": {
+    "10": {
+      "successRate": 1.0,
+      "total": 5.0,
+      "slowest": 0.09,
+      "fastest": 0.0,
+      "average": 0.0,
+      "requestsPerSec": 142404.31,
+      "totalData": 7838842,
+      "sizePerRequest": 11,
+      "sizePerSec": 1566447.4,
+      "errorDistribution": {},
+      "p95_latency": 0.002764
+    },
+    "50": {
+      "successRate": 1.0,
+      "total": 5.01,
+      "slowest": 0.16,
+      "fastest": 0.0,
+      "average": 0.01,
+      "requestsPerSec": 155502.71,
+      "totalData": 8565722,
+      "sizePerRequest": 11,
+      "sizePerSec": 1710529.76,
+      "errorDistribution": {},
+      "p95_latency": 0.018322334
+    },
+    "100": {
+      "successRate": 1.0,
+      "total": 5.01,
+      "slowest": 0.33,
+      "fastest": 0.0,
+      "average": 0.01,
+      "requestsPerSec": 168234.68,
+      "totalData": 9267786,
+      "sizePerRequest": 11,
+      "sizePerSec": 1850581.5,
+      "errorDistribution": {},
+      "p95_latency": 0.034948917
+    },
+    "250": {
+      "successRate": 1.0,
+      "total": 5.02,
+      "slowest": 0.38,
+      "fastest": 0.0,
+      "average": 0.02,
+      "requestsPerSec": 170761.73,
+      "totalData": 9404648,
+      "sizePerRequest": 11,
+      "sizePerSec": 1874520.22,
+      "errorDistribution": {
+        "connection error": 1711,
+        "operation was canceled": 49
+      },
+      "p95_latency": 0.11090425
+    }
+  },
+  "timestamp": "2025-05-11T02:47:50Z"
+}

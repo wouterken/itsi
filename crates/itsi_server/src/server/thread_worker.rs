@@ -437,7 +437,6 @@ impl ThreadWorker {
                     break;
                 }
                 Ok(request_job) => call_with_gvl(|ruby| {
-                    thread::sleep(Duration::from_micros(1));
                     self.process_one(&ruby, request_job);
                     while let Ok(request_job) = receiver.try_recv() {
                         if matches!(request_job, RequestJob::Shutdown) {

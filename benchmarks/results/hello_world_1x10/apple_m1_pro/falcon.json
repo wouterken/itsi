@@ -1,0 +1,62 @@
+{
+  "server": "falcon",
+  "test_case": "hello_world_1x10",
+  "results": {
+    "10": {
+      "successRate": 1.0,
+      "total": 5.0,
+      "slowest": 0.0,
+      "fastest": 0.0,
+      "average": 0.0,
+      "requestsPerSec": 9763.38,
+      "totalData": 1806710,
+      "sizePerRequest": 37,
+      "sizePerSec": 361244.9,
+      "errorDistribution": {},
+      "p95_latency": 0.001607292
+    },
+    "50": {
+      "successRate": 1.0,
+      "total": 5.01,
+      "slowest": 0.01,
+      "fastest": 0.0,
+      "average": 0.0,
+      "requestsPerSec": 11463.07,
+      "totalData": 2123430,
+      "sizePerRequest": 37,
+      "sizePerSec": 424133.65,
+      "errorDistribution": {},
+      "p95_latency": 0.0053925
+    },
+    "100": {
+      "successRate": 1.0,
+      "total": 5.01,
+      "slowest": 0.05,
+      "fastest": 0.0,
+      "average": 0.01,
+      "requestsPerSec": 11559.13,
+      "totalData": 2142633,
+      "sizePerRequest": 37,
+      "sizePerSec": 427687.76,
+      "errorDistribution": {},
+      "p95_latency": 0.009789542
+    },
+    "250": {
+      "successRate": 1.0,
+      "total": 5.02,
+      "slowest": 0.28,
+      "fastest": 0.0,
+      "average": 0.02,
+      "requestsPerSec": 11389.15,
+      "totalData": 2107409,
+      "sizePerRequest": 37,
+      "sizePerSec": 419432.38,
+      "errorDistribution": {
+        "connection error": 266,
+        "error writing a body to connection": 1
+      },
+      "p95_latency": 0.023551333
+    }
+  },
+  "timestamp": "2025-05-11T02:39:08Z"
+}

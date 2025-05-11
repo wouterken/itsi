@@ -1,0 +1,63 @@
+{
+  "server": "itsi",
+  "test_case": "hello_world_1x1_http2",
+  "results": {
+    "10": {
+      "successRate": 1.0,
+      "total": 5.0,
+      "slowest": 0.02,
+      "fastest": 0.0,
+      "average": 0.0,
+      "requestsPerSec": 134971.4,
+      "totalData": 7430841,
+      "sizePerRequest": 11,
+      "sizePerSec": 1484685.41,
+      "errorDistribution": {},
+      "p95_latency": 0.002448958
+    },
+    "50": {
+      "successRate": 1.0,
+      "total": 5.01,
+      "slowest": 0.06,
+      "fastest": 0.0,
+      "average": 0.01,
+      "requestsPerSec": 136500.14,
+      "totalData": 7522185,
+      "sizePerRequest": 11,
+      "sizePerSec": 1501501.5,
+      "errorDistribution": {},
+      "p95_latency": 0.011023833
+    },
+    "100": {
+      "successRate": 1.0,
+      "total": 5.02,
+      "slowest": 0.09,
+      "fastest": 0.0,
+      "average": 0.02,
+      "requestsPerSec": 131881.26,
+      "totalData": 7275928,
+      "sizePerRequest": 11,
+      "sizePerSec": 1450693.82,
+      "errorDistribution": {},
+      "p95_latency": 0.020508042
+    },
+    "250": {
+      "successRate": 1.0,
+      "total": 5.04,
+      "slowest": 0.17,
+      "fastest": 0.0,
+      "average": 0.04,
+      "requestsPerSec": 124392.46,
+      "totalData": 6873163,
+      "sizePerRequest": 11,
+      "sizePerSec": 1363601.01,
+      "errorDistribution": {
+        "Connection reset by peer (os error 54)": 1,
+        "connection error": 1780,
+        "operation was canceled": 380
+      },
+      "p95_latency": 0.048815208
+    }
+  },
+  "timestamp": "2025-05-11T02:41:59Z"
+}
