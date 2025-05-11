@@ -1,0 +1,62 @@
+{
+  "server": "iodine",
+  "test_case": "sinatra_post_4x4",
+  "results": {
+    "10": {
+      "successRate": 1.0,
+      "total": 2.0,
+      "slowest": 0.0,
+      "fastest": 0.0,
+      "average": 0.0,
+      "requestsPerSec": 11765.65,
+      "totalData": 282828,
+      "sizePerRequest": 12,
+      "sizePerSec": 141187.83,
+      "errorDistribution": {},
+      "p95_latency": 0.001727666
+    },
+    "50": {
+      "successRate": 1.0,
+      "total": 2.01,
+      "slowest": 0.01,
+      "fastest": 0.0,
+      "average": 0.0,
+      "requestsPerSec": 17978.71,
+      "totalData": 432696,
+      "sizePerRequest": 12,
+      "sizePerSec": 215744.57,
+      "errorDistribution": {},
+      "p95_latency": 0.004066292
+    },
+    "100": {
+      "successRate": 1.0,
+      "total": 2.01,
+      "slowest": 0.02,
+      "fastest": 0.0,
+      "average": 0.01,
+      "requestsPerSec": 18553.37,
+      "totalData": 447108,
+      "sizePerRequest": 12,
+      "sizePerSec": 222640.49,
+      "errorDistribution": {},
+      "p95_latency": 0.006763208
+    },
+    "250": {
+      "successRate": 1.0,
+      "total": 2.02,
+      "slowest": 0.13,
+      "fastest": 0.0,
+      "average": 0.01,
+      "requestsPerSec": 19302.58,
+      "totalData": 465144,
+      "sizePerRequest": 12,
+      "sizePerSec": 230726.2,
+      "errorDistribution": {
+        "Connection reset by peer (os error 54)": 18,
+        "connection error": 134
+      },
+      "p95_latency": 0.014969209
+    }
+  },
+  "timestamp": "2025-05-11T01:01:09Z"
+}

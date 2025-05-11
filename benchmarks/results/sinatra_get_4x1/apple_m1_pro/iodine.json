@@ -1,0 +1,63 @@
+{
+  "server": "iodine",
+  "test_case": "sinatra_get_4x1",
+  "results": {
+    "10": {
+      "successRate": 1.0,
+      "total": 2.0,
+      "slowest": 0.0,
+      "fastest": 0.0,
+      "average": 0.0,
+      "requestsPerSec": 23387.82,
+      "totalData": 608478,
+      "sizePerRequest": 13,
+      "sizePerSec": 304041.61,
+      "errorDistribution": {},
+      "p95_latency": 7.9225e-4
+    },
+    "50": {
+      "successRate": 1.0,
+      "total": 2.0,
+      "slowest": 0.01,
+      "fastest": 0.0,
+      "average": 0.0,
+      "requestsPerSec": 22464.35,
+      "totalData": 585338,
+      "sizePerRequest": 13,
+      "sizePerSec": 292036.51,
+      "errorDistribution": {},
+      "p95_latency": 0.003549958
+    },
+    "100": {
+      "successRate": 1.0,
+      "total": 2.01,
+      "slowest": 0.02,
+      "fastest": 0.0,
+      "average": 0.0,
+      "requestsPerSec": 26145.52,
+      "totalData": 682240,
+      "sizePerRequest": 13,
+      "sizePerSec": 339891.77,
+      "errorDistribution": {},
+      "p95_latency": 0.005026
+    },
+    "250": {
+      "successRate": 1.0,
+      "total": 2.01,
+      "slowest": 0.12,
+      "fastest": 0.0,
+      "average": 0.01,
+      "requestsPerSec": 26244.07,
+      "totalData": 684528,
+      "sizePerRequest": 13,
+      "sizePerSec": 340042.85,
+      "errorDistribution": {
+        "Connection reset by peer (os error 54)": 1,
+        "connection error": 170,
+        "error writing a body to connection": 4
+      },
+      "p95_latency": 0.011763
+    }
+  },
+  "timestamp": "2025-05-11T00:54:45Z"
+}

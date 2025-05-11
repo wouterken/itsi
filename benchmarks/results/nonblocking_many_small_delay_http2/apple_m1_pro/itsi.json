@@ -1,0 +1,70 @@
+{
+  "server": "itsi",
+  "test_case": "nonblocking_many_small_delay_http2",
+  "results": {
+    "10": {
+      "successRate": 1.0,
+      "total": 2.0,
+      "slowest": 1.01,
+      "fastest": 1.0,
+      "average": 1.0,
+      "requestsPerSec": 159.75,
+      "totalData": 1760,
+      "sizePerRequest": 11,
+      "sizePerSec": 878.63,
+      "errorDistribution": {
+        "aborted due to deadline": 160
+      },
+      "p95_latency": 1.005241
+    },
+    "50": {
+      "successRate": 1.0,
+      "total": 2.0,
+      "slowest": 1.01,
+      "fastest": 1.0,
+      "average": 1.01,
+      "requestsPerSec": 798.29,
+      "totalData": 8800,
+      "sizePerRequest": 11,
+      "sizePerSec": 4390.6,
+      "errorDistribution": {
+        "aborted due to deadline": 800
+      },
+      "p95_latency": 1.008407542
+    },
+    "100": {
+      "successRate": 1.0,
+      "total": 2.01,
+      "slowest": 1.03,
+      "fastest": 1.02,
+      "average": 1.02,
+      "requestsPerSec": 1595.83,
+      "totalData": 17600,
+      "sizePerRequest": 11,
+      "sizePerSec": 8777.06,
+      "errorDistribution": {
+        "aborted due to deadline": 1600
+      },
+      "p95_latency": 1.028983458
+    },
+    "250": {
+      "successRate": 0.68,
+      "total": 2.01,
+      "slowest": 1.1,
+      "fastest": 1.04,
+      "average": 1.07,
+      "requestsPerSec": 4921.14,
+      "totalData": 44000,
+      "sizePerRequest": 11,
+      "sizePerSec": 21896.05,
+      "errorDistribution": {
+        "Connection reset by peer (os error 54)": 1,
+        "aborted due to deadline": 4000,
+        "connection error": 1808,
+        "operation was canceled": 80
+      },
+      "p95_latency": 1.097423709
+    }
+  },
+  "timestamp": "2025-05-11T01:04:00Z"
+}

@@ -50,7 +50,7 @@ pub struct ResponseData {
     pub response_writer: RwLock<Option<mpsc::Sender<ByteFrame>>>,
     pub response_buffer: RwLock<BytesMut>,
     pub hijacked_socket: RwLock<Option<UnixStream>>,
-    pub parts: Parts,
+    pub parts: Arc<Parts>,
 }
 
 impl ItsiHttpResponse {
@@ -193,7 +193,7 @@ impl ItsiHttpResponse {
         let mut response = if requires_upgrade {
             let parts = self.data.parts.clone();
             tokio::spawn(async move {
-                let mut req = Request::from_parts(parts, Empty::<Bytes>::new());
+                let mut req = Request::from_parts((*parts).clone(), Empty::<Bytes>::new());
                 match hyper::upgrade::on(&mut req).await {
                     Ok(upgraded) => {
                         Self::two_way_bridge(upgraded, reader)
@@ -266,7 +266,11 @@ impl ItsiHttpResponse {
     }
 
     pub fn send_frame(&self, frame: Bytes) -> MagnusResult<()> {
-        self.send_frame_into(ByteFrame::Data(frame), &self.data.response_writer)
+        if let Some(writer) = self.data.response_writer.read().clone() {
+            self.send_frame_into(ByteFrame::Data(frame), &writer)
+        } else {
+            Ok(())
+        }
     }
 
     pub fn recv_frame(&self) {
@@ -278,26 +282,25 @@ impl ItsiHttpResponse {
     }
 
     pub fn is_closed(&self) -> bool {
-        self.data.response_writer.write().is_none()
+        self.data.response_writer.read().is_none()
     }
 
     pub fn send_and_close(&self, frame: Bytes) -> MagnusResult<()> {
-        let result = self.send_frame_into(ByteFrame::End(frame), &self.data.response_writer);
-        self.data.response_writer.write().take();
-        result
+        if let Some(writer) = self.data.response_writer.write().take() {
+            self.send_frame_into(ByteFrame::End(frame), &writer)
+        } else {
+            Ok(())
+        }
     }
 
     pub fn send_frame_into(
         &self,
         frame: ByteFrame,
-        writer: &RwLock<Option<mpsc::Sender<ByteFrame>>>,
+        writer: &mpsc::Sender<ByteFrame>,
     ) -> MagnusResult<()> {
-        if let Some(writer) = writer.write().as_ref() {
-            return Ok(writer
-                .blocking_send(frame)
-                .map_err(|_| itsi_error::ItsiError::ClientConnectionClosed)?);
-        }
-        Ok(())
+        Ok(writer
+            .blocking_send(frame)
+            .map_err(|_| itsi_error::ItsiError::ClientConnectionClosed)?)
     }
 
     pub fn is_hijacked(&self) -> bool {
@@ -330,7 +333,7 @@ impl ItsiHttpResponse {
         Ok(true)
     }
 
-    pub fn new(parts: Parts, response_writer: mpsc::Sender<ByteFrame>) -> Self {
+    pub fn new(parts: Arc<Parts>, response_writer: mpsc::Sender<ByteFrame>) -> Self {
         Self {
             data: Arc::new(ResponseData {
                 response: RwLock::new(Some(Response::new(BoxBody::new(Empty::new())))),
@@ -342,13 +345,9 @@ impl ItsiHttpResponse {
         }
     }
 
-    pub fn add_header(&self, name: Bytes, value: Bytes) -> MagnusResult<()> {
-        let header_name: HeaderName = HeaderName::from_bytes(&name).map_err(|e| {
-            itsi_error::ItsiError::InvalidInput(format!("Invalid header name {:?}: {:?}", name, e))
-        })?;
+    pub fn reserve_headers(&self, header_count: usize) -> MagnusResult<()> {
         if let Some(ref mut resp) = *self.data.response.write() {
-            let headers_mut = resp.headers_mut();
-            self.insert_header(headers_mut, &header_name, value);
+            resp.headers_mut().try_reserve(header_count).ok();
         }
         Ok(())
     }
@@ -394,6 +393,20 @@ impl ItsiHttpResponse {
         }
     }
 
+    pub fn add_header(&self, header_name: Bytes, value: Bytes) -> MagnusResult<()> {
+        if let Some(ref mut resp) = *self.data.response.write() {
+            let headers_mut = resp.headers_mut();
+            let header_name = HeaderName::from_bytes(&header_name).map_err(|e| {
+                itsi_error::ItsiError::InvalidInput(format!(
+                    "Invalid header name {:?}: {:?}",
+                    header_name, e
+                ))
+            })?;
+            self.insert_header(headers_mut, &header_name, value);
+        }
+        Ok(())
+    }
+
     pub fn add_headers(&self, headers: HashMap<Bytes, Vec<Bytes>>) -> MagnusResult<()> {
         if let Some(ref mut resp) = *self.data.response.write() {
             let headers_mut = resp.headers_mut();
@@ -432,7 +445,7 @@ impl ItsiHttpResponse {
         if let Some(writer) = self.data.response_writer.write().as_ref() {
             writer
                 .blocking_send(ByteFrame::Empty)
-                .map_err(|_| itsi_error::ItsiError::ClientConnectionClosed)?
+                .map_err(|_| itsi_error::ItsiError::ClientConnectionClosed)?;
         }
         self.close();
         Ok(())

@@ -1,0 +1,64 @@
+{
+  "server": "puma",
+  "test_case": "empty_response",
+  "results": {
+    "10": {
+      "successRate": 1.0,
+      "total": 2.01,
+      "slowest": 0.02,
+      "fastest": 0.0,
+      "average": 0.0,
+      "requestsPerSec": 22305.09,
+      "totalData": 0,
+      "sizePerRequest": 0,
+      "sizePerSec": 0.0,
+      "errorDistribution": {},
+      "p95_latency": 0.003957
+    },
+    "50": {
+      "successRate": 1.0,
+      "total": 2.01,
+      "slowest": 0.05,
+      "fastest": 0.0,
+      "average": 0.0,
+      "requestsPerSec": 21253.9,
+      "totalData": 0,
+      "sizePerRequest": 0,
+      "sizePerSec": 0.0,
+      "errorDistribution": {},
+      "p95_latency": 0.02171775
+    },
+    "100": {
+      "successRate": 1.0,
+      "total": 2.02,
+      "slowest": 0.08,
+      "fastest": 0.0,
+      "average": 0.01,
+      "requestsPerSec": 19683.9,
+      "totalData": 0,
+      "sizePerRequest": 0,
+      "sizePerSec": 0.0,
+      "errorDistribution": {},
+      "p95_latency": 0.048591791
+    },
+    "250": {
+      "successRate": 0.99,
+      "total": 5.12,
+      "slowest": 0.1,
+      "fastest": 0.0,
+      "average": 0.0,
+      "requestsPerSec": 8611.74,
+      "totalData": 0,
+      "sizePerRequest": 0,
+      "sizePerSec": 0.0,
+      "errorDistribution": {
+        "connection error": 150,
+        "error writing a body to connection": 1,
+        "operation was canceled": 2,
+        "timeout": 249
+      },
+      "p95_latency": 6.5542e-5
+    }
+  },
+  "timestamp": "2025-05-11T01:04:44Z"
+}

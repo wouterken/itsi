@@ -1,0 +1,64 @@
+{
+  "server": "unicorn",
+  "test_case": "response_size_large",
+  "results": {
+    "10": {
+      "successRate": 1.0,
+      "total": 2.01,
+      "slowest": 0.01,
+      "fastest": 0.0,
+      "average": 0.01,
+      "requestsPerSec": 1444.01,
+      "totalData": 14622556000,
+      "sizePerRequest": 5044000,
+      "sizePerSec": 7283568272.68,
+      "errorDistribution": {},
+      "p95_latency": 0.008261792
+    },
+    "50": {
+      "successRate": 1.0,
+      "total": 2.03,
+      "slowest": 0.06,
+      "fastest": 0.0,
+      "average": 0.03,
+      "requestsPerSec": 1426.39,
+      "totalData": 14617512000,
+      "sizePerRequest": 5044000,
+      "sizePerSec": 7194690477.83,
+      "errorDistribution": {},
+      "p95_latency": 0.040160209
+    },
+    "100": {
+      "successRate": 1.0,
+      "total": 2.06,
+      "slowest": 0.1,
+      "fastest": 0.0,
+      "average": 0.07,
+      "requestsPerSec": 1385.72,
+      "totalData": 14420796000,
+      "sizePerRequest": 5044000,
+      "sizePerSec": 6989585208.34,
+      "errorDistribution": {},
+      "p95_latency": 0.094066167
+    },
+    "250": {
+      "successRate": 0.87,
+      "total": 3.58,
+      "slowest": 3.57,
+      "fastest": 0.01,
+      "average": 0.17,
+      "requestsPerSec": 902.07,
+      "totalData": 14198860000,
+      "sizePerRequest": 5044000,
+      "sizePerSec": 3961776299.36,
+      "errorDistribution": {
+        "Connection reset by peer (os error 54)": 2,
+        "connection error": 409,
+        "error writing a body to connection": 4,
+        "operation was canceled": 3
+      },
+      "p95_latency": 0.169384209
+    }
+  },
+  "timestamp": "2025-05-11T01:06:13Z"
+}

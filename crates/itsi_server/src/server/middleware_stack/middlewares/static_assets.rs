@@ -134,8 +134,7 @@ impl MiddlewareLayer for StaticAssets {
         let file_server = self.file_server.get().unwrap();
         let encodings: &[HeaderValue] = context
             .supported_encoding_set()
-            .map(Vec::as_slice)
-            .unwrap_or(&[] as &[HeaderValue]);
+            .map_or(&[], |set| set.as_slice());
         let response = file_server
             .serve(
                 &req,

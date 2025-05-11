@@ -1,0 +1,68 @@
+{
+  "server": "unicorn",
+  "test_case": "sinatra_get_1x1",
+  "results": {
+    "10": {
+      "successRate": 1.0,
+      "total": 2.0,
+      "slowest": 0.03,
+      "fastest": 0.0,
+      "average": 0.0,
+      "requestsPerSec": 3553.17,
+      "totalData": 92560,
+      "sizePerRequest": 13,
+      "sizePerSec": 46191.27,
+      "errorDistribution": {},
+      "p95_latency": 0.003352625
+    },
+    "50": {
+      "successRate": 0.99,
+      "total": 6.22,
+      "slowest": 0.05,
+      "fastest": 0.0,
+      "average": 0.01,
+      "requestsPerSec": 708.74,
+      "totalData": 56641,
+      "sizePerRequest": 13,
+      "sizePerSec": 9109.12,
+      "errorDistribution": {
+        "timeout": 50
+      },
+      "p95_latency": 0.016450625
+    },
+    "100": {
+      "successRate": 0.14,
+      "total": 5.16,
+      "slowest": 1.53,
+      "fastest": 0.0,
+      "average": 0.02,
+      "requestsPerSec": 618.15,
+      "totalData": 5642,
+      "sizePerRequest": 13,
+      "sizePerSec": 1092.61,
+      "errorDistribution": {
+        "Can't assign requested address (os error 49)": 2661,
+        "timeout": 97
+      },
+      "p95_latency": 0.012267833
+    },
+    "250": {
+      "successRate": 0.02,
+      "total": 5.01,
+      "slowest": 2.03,
+      "fastest": 0.59,
+      "average": 1.6,
+      "requestsPerSec": 573.36,
+      "totalData": 793,
+      "sizePerRequest": 13,
+      "sizePerSec": 158.37,
+      "errorDistribution": {
+        "Can't assign requested address (os error 49)": 2624,
+        "connection error": 109,
+        "timeout": 77
+      },
+      "p95_latency": 2.028074208
+    }
+  },
+  "timestamp": "2025-05-11T00:53:00Z"
+}

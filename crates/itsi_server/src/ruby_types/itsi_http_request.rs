@@ -3,12 +3,12 @@ use futures::StreamExt;
 use http::{header::CONTENT_LENGTH, request::Parts, Response, StatusCode, Version};
 use http_body_util::{combinators::BoxBody, BodyExt, Empty};
 use itsi_error::CLIENT_CONNECTION_CLOSED;
-use itsi_rb_helpers::{print_rb_backtrace, HeapValue};
-use itsi_tracing::{debug, error};
+use itsi_rb_helpers::{funcall_no_ret, print_rb_backtrace, HeapValue};
+use itsi_tracing::debug;
 use magnus::{
-    block::Proc,
+    block::{yield_values, Proc},
     error::{ErrorType, Result as MagnusResult},
-    Error, RHash, Symbol,
+    Error, IntoValue, RHash, Symbol,
 };
 use magnus::{
     value::{LazyId, ReprValue},
@@ -16,6 +16,7 @@ use magnus::{
 };
 use std::{fmt, io::Write, sync::Arc, time::Instant};
 use tokio::sync::mpsc::{self};
+use tracing::error;
 
 use super::{
     itsi_body_proxy::{big_bytes::BigBytes, ItsiBody, ItsiBodyProxy},
@@ -33,11 +34,12 @@ use crate::{
 };
 
 static ID_MESSAGE: LazyId = LazyId::new("message");
+static ID_CALL: LazyId = LazyId::new("call");
 
 #[derive(Debug)]
 #[magnus::wrap(class = "Itsi::HttpRequest", free_immediately, size)]
 pub struct ItsiHttpRequest {
-    pub parts: Parts,
+    pub parts: Arc<Parts>,
     #[debug(skip)]
     pub body: ItsiBody,
     pub version: Version,
@@ -148,8 +150,10 @@ impl ItsiHttpRequest {
 
     pub fn process(self, ruby: &Ruby, app_proc: Arc<HeapValue<Proc>>) -> magnus::error::Result<()> {
         let response = self.response.clone();
-        let result = app_proc.call::<_, Value>((self,));
-        if let Err(err) = result {
+
+        if let Err(err) =
+            funcall_no_ret(app_proc.as_value(), *ID_CALL, [self.into_value_with(ruby)])
+        {
             Self::internal_error(ruby, response, err);
         }
         Ok(())
@@ -219,6 +223,7 @@ impl ItsiHttpRequest {
         script_name: String,
     ) -> Result<(ItsiHttpRequest, mpsc::Receiver<ByteFrame>), HttpResponse> {
         let (parts, body) = request.into_parts();
+        let parts = Arc::new(parts);
         let body = if context.server_params.streamable_body {
             ItsiBody::Stream(ItsiBodyProxy::new(body))
         } else {
@@ -326,6 +331,13 @@ impl ItsiHttpRequest {
             .iter()
             .map(|(hn, hv)| (hn.as_str(), hv.to_str().unwrap_or("")))
             .collect::<Vec<(&str, &str)>>())
+    }
+
+    pub(crate) fn each_header(&self) -> MagnusResult<()> {
+        self.parts.headers.iter().for_each(|(hn, hv)| {
+            yield_values::<_, Value>((hn.as_str(), hv.to_str().unwrap_or(""))).ok();
+        });
+        Ok(())
     }
 
     pub(crate) fn uri(&self) -> MagnusResult<String> {

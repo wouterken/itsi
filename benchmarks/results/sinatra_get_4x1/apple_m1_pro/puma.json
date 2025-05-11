@@ -1,0 +1,66 @@
+{
+  "server": "puma",
+  "test_case": "sinatra_get_4x1",
+  "results": {
+    "10": {
+      "successRate": 1.0,
+      "total": 2.0,
+      "slowest": 0.02,
+      "fastest": 0.0,
+      "average": 0.0,
+      "requestsPerSec": 16366.65,
+      "totalData": 426296,
+      "sizePerRequest": 13,
+      "sizePerSec": 212766.41,
+      "errorDistribution": {},
+      "p95_latency": 0.003930416
+    },
+    "50": {
+      "successRate": 1.0,
+      "total": 2.01,
+      "slowest": 0.06,
+      "fastest": 0.0,
+      "average": 0.0,
+      "requestsPerSec": 15954.22,
+      "totalData": 416403,
+      "sizePerRequest": 13,
+      "sizePerSec": 207404.83,
+      "errorDistribution": {},
+      "p95_latency": 0.028084666
+    },
+    "100": {
+      "successRate": 1.0,
+      "total": 2.01,
+      "slowest": 0.07,
+      "fastest": 0.0,
+      "average": 0.01,
+      "requestsPerSec": 16229.4,
+      "totalData": 424463,
+      "sizePerRequest": 13,
+      "sizePerSec": 210982.14,
+      "errorDistribution": {},
+      "p95_latency": 0.058453541
+    },
+    "250": {
+      "successRate": 0.98,
+      "total": 7.0,
+      "slowest": 3.53,
+      "fastest": 0.0,
+      "average": 0.02,
+      "requestsPerSec": 4689.37,
+      "totalData": 419848,
+      "sizePerRequest": 13,
+      "sizePerSec": 59951.99,
+      "errorDistribution": {
+        "Connection reset by peer (os error 54)": 15,
+        "Invalid argument (os error 22)": 1,
+        "connection error": 458,
+        "error writing a body to connection": 10,
+        "operation was canceled": 7,
+        "timeout": 53
+      },
+      "p95_latency": 0.0780275
+    }
+  },
+  "timestamp": "2025-05-11T00:55:16Z"
+}

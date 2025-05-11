@@ -12,16 +12,14 @@ use either::Either;
 use http::header::ACCEPT_ENCODING;
 use http::{HeaderValue, Request};
 use hyper::body::Incoming;
-use hyper::service::Service;
-use itsi_error::ItsiError;
 use regex::Regex;
+use smallvec::SmallVec;
+use std::ops::Deref;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
-use tracing::error;
-
-use std::{future::Future, ops::Deref, pin::Pin, sync::Arc};
 use tokio::time::timeout;
+use tracing::error;
 
 #[derive(Clone)]
 pub struct ItsiHttpService {
@@ -80,12 +78,14 @@ pub struct RequestContextInner {
     pub request_start_time: OnceLock<DateTime<Local>>,
     pub start_instant: Instant,
     pub if_none_match: OnceLock<Option<String>>,
-    pub supported_encoding_set: OnceLock<Vec<HeaderValue>>,
+    pub supported_encoding_set: OnceLock<AcceptEncodingSet>,
     pub is_ruby_request: Arc<AtomicBool>,
 }
 
+type AcceptEncodingSet = SmallVec<[HeaderValue; 2]>;
+
 impl HttpRequestContext {
-    fn new(
+    pub fn new(
         service: ItsiHttpService,
         matching_pattern: Option<Arc<Regex>>,
         accept: ResponseFormat,
@@ -109,12 +109,14 @@ impl HttpRequestContext {
     }
 
     pub fn set_supported_encoding_set(&self, req: &HttpRequest) {
-        self.inner.supported_encoding_set.get_or_init(move || {
-            req.headers()
-                .get_all(ACCEPT_ENCODING)
-                .into_iter()
-                .cloned()
-                .collect::<Vec<_>>()
+        self.inner.supported_encoding_set.get_or_init(|| {
+            let mut set: AcceptEncodingSet = SmallVec::new();
+
+            for hv in req.headers().get_all(ACCEPT_ENCODING) {
+                set.push(hv.clone()); // clone ≈ 16 B struct copy
+            }
+
+            set
         });
     }
 
@@ -164,7 +166,7 @@ impl HttpRequestContext {
         self.inner.response_format.get().unwrap()
     }
 
-    pub fn supported_encoding_set(&self) -> Option<&Vec<HeaderValue>> {
+    pub fn supported_encoding_set(&self) -> Option<&AcceptEncodingSet> {
         self.inner.supported_encoding_set.get()
     }
 }
@@ -173,13 +175,8 @@ const SERVER_TOKEN_VERSION: HeaderValue =
     HeaderValue::from_static(concat!("Itsi/", env!("CARGO_PKG_VERSION")));
 const SERVER_TOKEN_NAME: HeaderValue = HeaderValue::from_static("Itsi");
 
-impl Service<Request<Incoming>> for ItsiHttpService {
-    type Response = HttpResponse;
-    type Error = ItsiError;
-    type Future = Pin<Box<dyn Future<Output = itsi_error::Result<HttpResponse>> + Send>>;
-
-    fn call(&self, req: Request<Incoming>) -> Self::Future {
-        let self_clone = self.clone();
+impl ItsiHttpService {
+    pub async fn handle_request(&self, req: Request<Incoming>) -> itsi_error::Result<HttpResponse> {
         let mut req = req.limit();
         let accept: ResponseFormat = req.accept().into();
         let is_single_mode = self.server_params.workers == 1;
@@ -191,7 +188,7 @@ impl Service<Request<Incoming>> for ItsiHttpService {
         let token_preference = self.server_params.itsi_server_token_preference;
 
         let service_future = async move {
-            let middleware_stack = self_clone
+            let middleware_stack = self
                 .server_params
                 .middleware
                 .get()
@@ -202,7 +199,7 @@ impl Service<Request<Incoming>> for ItsiHttpService {
             let mut resp: Option<HttpResponse> = None;
 
             let mut context =
-                HttpRequestContext::new(self_clone.clone(), matching_pattern, accept, irr_clone);
+                HttpRequestContext::new(self.clone(), matching_pattern, accept, irr_clone);
             let mut depth = 0;
 
             for (index, elm) in stack.iter().enumerate() {
@@ -243,28 +240,26 @@ impl Service<Request<Incoming>> for ItsiHttpService {
         };
 
         if let Some(timeout_duration) = request_timeout {
-            Box::pin(async move {
-                match timeout(timeout_duration, service_future).await {
-                    Ok(result) => result,
-                    Err(_) => {
-                        // If we're still running Ruby at this point, we can't just kill the
-                        // thread as it might be in a critical section.
-                        // Instead we must ask the worker to hot restart.
-                        if is_ruby_request.load(Ordering::Relaxed) {
-                            if is_single_mode {
-                                // If we're in single mode, re-exec the whole process
-                                send_lifecycle_event(LifecycleEvent::Restart);
-                            } else {
-                                // Otherwise we can shutdown the worker and rely on the master to restart it
-                                send_lifecycle_event(LifecycleEvent::Shutdown);
-                            }
+            match timeout(timeout_duration, service_future).await {
+                Ok(result) => result,
+                Err(_) => {
+                    // If we're still running Ruby at this point, we can't just kill the
+                    // thread as it might be in a critical section.
+                    // Instead we must ask the worker to hot restart.
+                    if is_ruby_request.load(Ordering::Relaxed) {
+                        if is_single_mode {
+                            // If we're in single mode, re-exec the whole process
+                            send_lifecycle_event(LifecycleEvent::Restart);
+                        } else {
+                            // Otherwise we can shutdown the worker and rely on the master to restart it
+                            send_lifecycle_event(LifecycleEvent::Shutdown);
                         }
-                        Ok(TIMEOUT_RESPONSE.to_http_response(accept).await)
                     }
+                    Ok(TIMEOUT_RESPONSE.to_http_response(accept).await)
                 }
-            })
+            }
         } else {
-            Box::pin(service_future)
+            service_future.await
         }
     }
 }

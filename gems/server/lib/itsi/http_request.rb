@@ -72,7 +72,7 @@ module Itsi
       env["rack.url_scheme"] = scheme
       env["rack.input"] = build_input_io
       env["rack.hijack"] = method(:hijack)
-      headers.each do |(k, v)|
+      each_header do |k, v|
         env[case k
             when "content-type" then "CONTENT_TYPE"
             when "content-length" then "CONTENT_LENGTH"

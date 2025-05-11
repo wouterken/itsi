@@ -1,0 +1,70 @@
+{
+  "server": "falcon",
+  "test_case": "nonblocking_many_small_delay_http2",
+  "results": {
+    "10": {
+      "successRate": 1.0,
+      "total": 2.01,
+      "slowest": 1.2,
+      "fastest": 1.14,
+      "average": 1.18,
+      "requestsPerSec": 159.53,
+      "totalData": 5920,
+      "sizePerRequest": 37,
+      "sizePerSec": 2951.23,
+      "errorDistribution": {
+        "aborted due to deadline": 160
+      },
+      "p95_latency": 1.197580417
+    },
+    "50": {
+      "successRate": 1.0,
+      "total": 2.0,
+      "slowest": 1.21,
+      "fastest": 1.09,
+      "average": 1.15,
+      "requestsPerSec": 798.38,
+      "totalData": 29600,
+      "sizePerRequest": 37,
+      "sizePerSec": 14769.96,
+      "errorDistribution": {
+        "aborted due to deadline": 800
+      },
+      "p95_latency": 1.199072709
+    },
+    "100": {
+      "successRate": 1.0,
+      "total": 2.0,
+      "slowest": 1.63,
+      "fastest": 1.27,
+      "average": 1.44,
+      "requestsPerSec": 1596.17,
+      "totalData": 59200,
+      "sizePerRequest": 37,
+      "sizePerSec": 29529.14,
+      "errorDistribution": {
+        "aborted due to deadline": 1600
+      },
+      "p95_latency": 1.6042050410000002
+    },
+    "250": {
+      "successRate": 0.0,
+      "total": 2.01,
+      "slowest": null,
+      "fastest": null,
+      "average": null,
+      "requestsPerSec": 5160.04,
+      "totalData": 0,
+      "sizePerRequest": null,
+      "sizePerSec": 0.0,
+      "errorDistribution": {
+        "Connection reset by peer (os error 54)": 43,
+        "aborted due to deadline": 4000,
+        "connection error": 5657,
+        "operation was canceled": 663
+      },
+      "p95_latency": null
+    }
+  },
+  "timestamp": "2025-05-11T01:03:50Z"
+}

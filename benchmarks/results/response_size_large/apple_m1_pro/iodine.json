@@ -1,0 +1,65 @@
+{
+  "server": "iodine",
+  "test_case": "response_size_large",
+  "results": {
+    "10": {
+      "successRate": 1.0,
+      "total": 2.02,
+      "slowest": 0.04,
+      "fastest": 0.01,
+      "average": 0.02,
+      "requestsPerSec": 608.24,
+      "totalData": 6188988000,
+      "sizePerRequest": 5044000,
+      "sizePerSec": 3067972464.11,
+      "errorDistribution": {},
+      "p95_latency": 0.017487625
+    },
+    "50": {
+      "successRate": 1.0,
+      "total": 2.09,
+      "slowest": 0.6,
+      "fastest": 0.01,
+      "average": 0.08,
+      "requestsPerSec": 578.6,
+      "totalData": 6088108000,
+      "sizePerRequest": 5044000,
+      "sizePerSec": 2918439733.96,
+      "errorDistribution": {},
+      "p95_latency": 0.111585834
+    },
+    "100": {
+      "successRate": 1.0,
+      "total": 2.16,
+      "slowest": 2.04,
+      "fastest": 0.01,
+      "average": 0.16,
+      "requestsPerSec": 600.53,
+      "totalData": 6542068000,
+      "sizePerRequest": 5044000,
+      "sizePerSec": 3029049600.53,
+      "errorDistribution": {},
+      "p95_latency": 0.275254334
+    },
+    "250": {
+      "successRate": 0.72,
+      "total": 2.68,
+      "slowest": 2.27,
+      "fastest": 0.02,
+      "average": 0.35,
+      "requestsPerSec": 723.46,
+      "totalData": 7066644000,
+      "sizePerRequest": 5044000,
+      "sizePerSec": 2636630375.57,
+      "errorDistribution": {
+        "Connection reset by peer (os error 54)": 2,
+        "Invalid argument (os error 22)": 1,
+        "connection error": 522,
+        "error writing a body to connection": 9,
+        "operation was canceled": 4
+      },
+      "p95_latency": 2.155246708
+    }
+  },
+  "timestamp": "2025-05-11T01:05:37Z"
+}

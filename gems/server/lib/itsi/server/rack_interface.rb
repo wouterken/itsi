@@ -39,6 +39,9 @@ module Itsi
 
         # 2. Set Headers
         body_streamer = streaming_body?(body) ? body : headers.delete("rack.hijack")
+
+        response.reserve_headers(headers.size)
+
         headers.each do |key, value|
           if value.is_a?(Array)
             value.each do |v|

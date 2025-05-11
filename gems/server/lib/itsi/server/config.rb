@@ -65,14 +65,19 @@ module Itsi
                 }
             end
           elsif File.exist?(config_file_path.to_s)
-            DSL.evaluate(config_file_path)
+            DSL.evaluate do
+              include config_file_path.gsub(".rb", "")
+              rackup_file args[:rackup_file], script_name: "/" if args.key?(:rackup_file)
+            end
           elsif File.exist?("./config.ru")
             DSL.evaluate do
               preload true
-              rackup_file args.fetch(:rackup_file, "./config.ru")
+              rackup_file args.fetch(:rackup_file, "./config.ru"), script_name: "/"
             end
           else
-            DSL.evaluate {}
+            DSL.evaluate do
+              rackup_file args[:rackup_file], script_name: "/" if args.key?(:rackup_file)
+            end
           end
 
         itsifile_config.transform_keys!(&:to_sym)

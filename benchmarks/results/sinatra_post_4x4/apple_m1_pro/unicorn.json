@@ -1,0 +1,66 @@
+{
+  "server": "unicorn",
+  "test_case": "sinatra_post_4x4",
+  "results": {
+    "10": {
+      "successRate": 1.0,
+      "total": 2.03,
+      "slowest": 0.05,
+      "fastest": 0.0,
+      "average": 0.01,
+      "requestsPerSec": 1367.69,
+      "totalData": 33276,
+      "sizePerRequest": 12,
+      "sizePerSec": 16412.23,
+      "errorDistribution": {},
+      "p95_latency": 0.017809542
+    },
+    "50": {
+      "successRate": 1.0,
+      "total": 2.02,
+      "slowest": 0.14,
+      "fastest": 0.01,
+      "average": 0.04,
+      "requestsPerSec": 1415.17,
+      "totalData": 34260,
+      "sizePerRequest": 12,
+      "sizePerSec": 16982.06,
+      "errorDistribution": {},
+      "p95_latency": 0.073567125
+    },
+    "100": {
+      "successRate": 1.0,
+      "total": 2.04,
+      "slowest": 0.17,
+      "fastest": 0.01,
+      "average": 0.07,
+      "requestsPerSec": 1429.34,
+      "totalData": 34968,
+      "sizePerRequest": 12,
+      "sizePerSec": 17152.14,
+      "errorDistribution": {},
+      "p95_latency": 0.131843459
+    },
+    "250": {
+      "successRate": 0.27,
+      "total": 5.51,
+      "slowest": 0.35,
+      "fastest": 0.0,
+      "average": 0.08,
+      "requestsPerSec": 665.8,
+      "totalData": 11880,
+      "sizePerRequest": 12,
+      "sizePerSec": 2157.58,
+      "errorDistribution": {
+        "Connection reset by peer (os error 54)": 44,
+        "Invalid argument (os error 22)": 1,
+        "connection error": 2376,
+        "error writing a body to connection": 2,
+        "operation was canceled": 3,
+        "timeout": 250
+      },
+      "p95_latency": 0.246288666
+    }
+  },
+  "timestamp": "2025-05-11T01:01:45Z"
+}

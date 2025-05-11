@@ -1,0 +1,67 @@
+{
+  "server": "falcon",
+  "test_case": "nonblocking_many_small_delay",
+  "results": {
+    "10": {
+      "successRate": 1.0,
+      "total": 2.0,
+      "slowest": 1.04,
+      "fastest": 1.02,
+      "average": 1.03,
+      "requestsPerSec": 9.99,
+      "totalData": 370,
+      "sizePerRequest": 37,
+      "sizePerSec": 184.88,
+      "errorDistribution": {
+        "aborted due to deadline": 10
+      },
+      "p95_latency": 1.036943716
+    },
+    "50": {
+      "successRate": 1.0,
+      "total": 2.0,
+      "slowest": 1.04,
+      "fastest": 1.02,
+      "average": 1.03,
+      "requestsPerSec": 49.92,
+      "totalData": 1850,
+      "sizePerRequest": 37,
+      "sizePerSec": 923.44,
+      "errorDistribution": {
+        "aborted due to deadline": 50
+      },
+      "p95_latency": 1.036315071
+    },
+    "100": {
+      "successRate": 1.0,
+      "total": 2.0,
+      "slowest": 1.07,
+      "fastest": 1.04,
+      "average": 1.06,
+      "requestsPerSec": 99.85,
+      "totalData": 3700,
+      "sizePerRequest": 37,
+      "sizePerSec": 1847.27,
+      "errorDistribution": {
+        "aborted due to deadline": 100
+      },
+      "p95_latency": 1.06950017
+    },
+    "250": {
+      "successRate": 1.0,
+      "total": 2.0,
+      "slowest": 1.13,
+      "fastest": 1.04,
+      "average": 1.09,
+      "requestsPerSec": 249.45,
+      "totalData": 9250,
+      "sizePerRequest": 37,
+      "sizePerSec": 4614.81,
+      "errorDistribution": {
+        "aborted due to deadline": 250
+      },
+      "p95_latency": 1.133088781
+    }
+  },
+  "timestamp": "2025-05-11T02:01:55Z"
+}

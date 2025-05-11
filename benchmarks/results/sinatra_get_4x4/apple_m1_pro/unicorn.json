@@ -1,0 +1,70 @@
+{
+  "server": "unicorn",
+  "test_case": "sinatra_get_4x4",
+  "results": {
+    "10": {
+      "successRate": 1.0,
+      "total": 2.04,
+      "slowest": 0.05,
+      "fastest": 0.0,
+      "average": 0.0,
+      "requestsPerSec": 3227.89,
+      "totalData": 85709,
+      "sizePerRequest": 13,
+      "sizePerSec": 41962.6,
+      "errorDistribution": {},
+      "p95_latency": 0.00349725
+    },
+    "50": {
+      "successRate": 0.99,
+      "total": 6.49,
+      "slowest": 0.06,
+      "fastest": 0.0,
+      "average": 0.02,
+      "requestsPerSec": 743.65,
+      "totalData": 62127,
+      "sizePerRequest": 13,
+      "sizePerSec": 9567.38,
+      "errorDistribution": {
+        "timeout": 50
+      },
+      "p95_latency": 0.017195042
+    },
+    "100": {
+      "successRate": 0.13,
+      "total": 6.74,
+      "slowest": 1.49,
+      "fastest": 0.0,
+      "average": 0.06,
+      "requestsPerSec": 374.17,
+      "totalData": 4199,
+      "sizePerRequest": 13,
+      "sizePerSec": 623.23,
+      "errorDistribution": {
+        "Can't assign requested address (os error 49)": 2098,
+        "timeout": 100
+      },
+      "p95_latency": 0.034959667
+    },
+    "250": {
+      "successRate": 0.16,
+      "total": 7.0,
+      "slowest": 1.93,
+      "fastest": 0.01,
+      "average": 0.56,
+      "requestsPerSec": 437.53,
+      "totalData": 6318,
+      "sizePerRequest": 13,
+      "sizePerSec": 902.19,
+      "errorDistribution": {
+        "Can't assign requested address (os error 49)": 2316,
+        "Connection reset by peer (os error 54)": 1,
+        "Invalid argument (os error 22)": 1,
+        "connection error": 96,
+        "timeout": 164
+      },
+      "p95_latency": 1.9285174170000001
+    }
+  },
+  "timestamp": "2025-05-11T00:56:52Z"
+}

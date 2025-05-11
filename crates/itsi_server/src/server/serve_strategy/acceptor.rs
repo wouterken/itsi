@@ -1,6 +1,5 @@
-use std::{ops::Deref, pin::Pin, sync::Arc, time::Duration};
-
 use hyper_util::rt::TokioIo;
+use std::{ops::Deref, pin::Pin, sync::Arc, time::Duration};
 use tokio::task::JoinSet;
 use tracing::debug;
 
@@ -40,17 +39,21 @@ impl Acceptor {
         let io: TokioIo<Pin<Box<IoStream>>> = TokioIo::new(Box::pin(stream));
         let mut shutdown_channel = self.shutdown_receiver.clone();
         let acceptor_args = self.acceptor_args.clone();
+        let service = ItsiHttpService {
+            inner: Arc::new(ItsiHttpServiceInner {
+                acceptor_args: acceptor_args.clone(),
+                addr,
+            }),
+        };
+
         self.join_set.spawn(async move {
             let executor = &acceptor_args.strategy.executor;
-            let mut serve = Box::pin(executor.serve_connection_with_upgrades(
-                io,
-                ItsiHttpService {
-                    inner: Arc::new(ItsiHttpServiceInner {
-                        acceptor_args: acceptor_args.clone(),
-                        addr: addr.to_string(),
-                    }),
-                },
-            ));
+            let svc = hyper::service::service_fn(move |req| {
+                let service = service.clone();
+                async move { service.handle_request(req).await }
+            });
+
+            let mut serve = Box::pin(executor.serve_connection_with_upgrades(io, svc));
 
             tokio::select! {
                 // Await the connection finishing naturally.

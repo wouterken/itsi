@@ -1,0 +1,59 @@
+{
+  "server": "puma",
+  "test_case": "streaming_response_small",
+  "results": {
+    "10": {
+      "successRate": 1.0,
+      "total": 2.01,
+      "slowest": 0.01,
+      "fastest": 0.0,
+      "average": 0.0,
+      "requestsPerSec": 2212.02,
+      "totalData": 394360400,
+      "sizePerRequest": 88900,
+      "sizePerSec": 196648513.94,
+      "errorDistribution": {},
+      "p95_latency": 0.004897067
+    },
+    "50": {
+      "successRate": 1.0,
+      "total": 2.02,
+      "slowest": 0.09,
+      "fastest": 0.0,
+      "average": 0.02,
+      "requestsPerSec": 2188.19,
+      "totalData": 393649200,
+      "sizePerRequest": 88900,
+      "sizePerSec": 194529896.74,
+      "errorDistribution": {},
+      "p95_latency": 0.023488673
+    },
+    "100": {
+      "successRate": 1.0,
+      "total": 2.05,
+      "slowest": 0.13,
+      "fastest": 0.01,
+      "average": 0.04,
+      "requestsPerSec": 2152.43,
+      "totalData": 391515600,
+      "sizePerRequest": 88900,
+      "sizePerSec": 191351363.29,
+      "errorDistribution": {},
+      "p95_latency": 0.046137805
+    },
+    "250": {
+      "successRate": 1.0,
+      "total": 2.12,
+      "slowest": 0.18,
+      "fastest": 0.06,
+      "average": 0.11,
+      "requestsPerSec": 2100.14,
+      "totalData": 394893800,
+      "sizePerRequest": 88900,
+      "sizePerSec": 186702537.43,
+      "errorDistribution": {},
+      "p95_latency": 0.113482834
+    }
+  },
+  "timestamp": "2025-05-11T02:12:31Z"
+}
