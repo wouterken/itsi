@@ -3,7 +3,7 @@
 - Reserve header size ahead of time in rack interface
 - Avoid intermediate array allocation when populating Rack env headers.
 - Rewrite synchronous thread worker to avoid excessive GVL acquisition
-- Revert to default write_ev behaviour for http1 and enable pipeline_flush
+- Revert to default write_ev behaviour for http1
 - Switch to service_fn from service struct to avoid one additional pinned future
 - Worker pinning accepts ruby workers too
 - Fixed ordering incomaptibility in etag forwarding from static file server

@@ -12,7 +12,7 @@ module Itsi
           end
         end
         lambda do |request|
-          Server.respond(request, app.call(request.to_rack_env))
+          Server.respond(request, app.call(env = request.to_rack_env), env)
         end
       end
 
@@ -20,14 +20,14 @@ module Itsi
       # Here we build the env, and invoke the Rack app's call method.
       # We then turn the Rack response into something Itsi server understands.
       def call(app, request)
-        respond request, app.call(request.to_rack_env)
+        respond request, app.call(env = request.to_rack_env), env
       end
 
       # Itsi responses are asynchronous and can be streamed.
       # Response chunks are sent using response.send_frame
       # and the response is finished using response.close_write.
       # If only a single chunk is written, you can use the #send_and_close method.
-      def respond(request, (status, headers, body))
+      def respond(request, (status, headers, body), env)
         response = request.response
 
         # Don't try and respond if we've been hijacked.
@@ -82,6 +82,7 @@ module Itsi
           response.send_and_close(body.to_s)
         end
       ensure
+        RackEnvPool.checkin(env)
         response.close_write
         body.close if body.respond_to?(:close)
       end

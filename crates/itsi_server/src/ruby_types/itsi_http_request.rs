@@ -1,6 +1,6 @@
 use derive_more::Debug;
 use futures::StreamExt;
-use http::{header::CONTENT_LENGTH, request::Parts, Response, StatusCode, Version};
+use http::{header::CONTENT_LENGTH, request::Parts, HeaderValue, Response, StatusCode, Version};
 use http_body_util::{combinators::BoxBody, BodyExt, Empty};
 use itsi_error::CLIENT_CONNECTION_CLOSED;
 use itsi_rb_helpers::{funcall_no_ret, print_rb_backtrace, HeapValue};
@@ -15,8 +15,8 @@ use magnus::{
     Ruby, Value,
 };
 use std::{fmt, io::Write, sync::Arc, time::Instant};
-use tokio::sync::mpsc::{self};
-use tracing::error;
+use tokio::sync::{self, Notify};
+use tracing::{error, info};
 
 use super::{
     itsi_body_proxy::{big_bytes::BigBytes, ItsiBody, ItsiBodyProxy},
@@ -25,7 +25,6 @@ use super::{
 use crate::{
     default_responses::{INTERNAL_SERVER_ERROR_RESPONSE, SERVICE_UNAVAILABLE_RESPONSE},
     server::{
-        byte_frame::ByteFrame,
         http_message_types::{HttpRequest, HttpResponse},
         request_job::RequestJob,
         size_limited_incoming::MaxBodySizeReached,
@@ -35,6 +34,7 @@ use crate::{
 
 static ID_MESSAGE: LazyId = LazyId::new("message");
 static ID_CALL: LazyId = LazyId::new("call");
+static ZERO_HEADER_VALUE: HeaderValue = HeaderValue::from_static("0");
 
 #[derive(Debug)]
 #[magnus::wrap(class = "Itsi::HttpRequest", free_immediately, size)]
@@ -183,7 +183,7 @@ impl ItsiHttpRequest {
         nonblocking: bool,
     ) -> itsi_error::Result<HttpResponse> {
         match ItsiHttpRequest::new(hyper_request, context, script_name).await {
-            Ok((request, mut receiver)) => {
+            Ok((request, receiver)) => {
                 let shutdown_channel = context.service.shutdown_receiver.clone();
                 let response = request.response.clone();
                 let sender = if nonblocking {
@@ -203,14 +203,10 @@ impl ItsiHttpRequest {
                                 .await)
                         }
                     },
-                    _ => match receiver.recv().await {
-                        Some(first_frame) => Ok(response
-                            .build(first_frame, receiver, shutdown_channel)
-                            .await),
-                        None => Ok(response
-                            .build(ByteFrame::Empty, receiver, shutdown_channel)
-                            .await),
-                    },
+                    _ => {
+                        receiver.notified().await;
+                        Ok(response.build(shutdown_channel).await)
+                    }
                 }
             }
             Err(err_resp) => Ok(err_resp),
@@ -221,10 +217,12 @@ impl ItsiHttpRequest {
         request: HttpRequest,
         context: &HttpRequestContext,
         script_name: String,
-    ) -> Result<(ItsiHttpRequest, mpsc::Receiver<ByteFrame>), HttpResponse> {
+    ) -> Result<(ItsiHttpRequest, Arc<Notify>), HttpResponse> {
         let (parts, body) = request.into_parts();
         let parts = Arc::new(parts);
-        let body = if context.server_params.streamable_body {
+        let body = if parts.headers.get(CONTENT_LENGTH) == Some(&ZERO_HEADER_VALUE) {
+            ItsiBody::Empty
+        } else if context.server_params.streamable_body {
             ItsiBody::Stream(ItsiBodyProxy::new(body))
         } else {
             let mut body_bytes = BigBytes::new();
@@ -243,18 +241,19 @@ impl ItsiHttpRequest {
             }
             ItsiBody::Buffered(body_bytes)
         };
-        let response_channel = mpsc::channel::<ByteFrame>(100);
+
+        let response_ready_notify = Arc::new(sync::Notify::new());
         Ok((
             Self {
                 context: context.clone(),
                 version: parts.version,
-                response: ItsiHttpResponse::new(parts.clone(), response_channel.0),
+                response: ItsiHttpResponse::new(parts.clone(), response_ready_notify.clone()),
                 start: Instant::now(),
                 script_name,
                 body,
                 parts,
             },
-            response_channel.1,
+            response_ready_notify,
         ))
     }
 

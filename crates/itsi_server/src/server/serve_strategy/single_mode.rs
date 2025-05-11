@@ -59,7 +59,6 @@ impl SingleMode {
         executor
             .http1()
             .header_read_timeout(server_config.server_params.read().header_read_timeout)
-            .pipeline_flush(true)
             .timer(TokioTimer::new());
         executor
             .http2()
