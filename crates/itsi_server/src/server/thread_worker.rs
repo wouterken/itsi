@@ -433,9 +433,7 @@ impl ThreadWorker {
         let mut idle_counter = 0;
         call_without_gvl(|| loop {
             match receiver.recv_blocking() {
-                Ok(RequestJob::Shutdown) => {
-                    break;
-                }
+                Ok(RequestJob::Shutdown) => break,
                 Ok(request_job) => call_with_gvl(|ruby| {
                     self.process_one(&ruby, request_job);
                     while let Ok(request_job) = receiver.try_recv() {
@@ -452,9 +450,7 @@ impl ThreadWorker {
                         }
                     }
                 }),
-                Err(_) => {
-                    thread::sleep(Duration::from_micros(1));
-                }
+                Err(_) => break,
             };
             if terminated.load(Ordering::Relaxed) {
                 break;
