@@ -4,61 +4,62 @@
   "results": {
     "10": {
       "successRate": 1.0,
-      "total": 2.01,
+      "total": 5.0,
       "slowest": 0.02,
       "fastest": 0.0,
       "average": 0.0,
-      "requestsPerSec": 22305.09,
+      "requestsPerSec": 22882.46,
       "totalData": 0,
       "sizePerRequest": 0,
       "sizePerSec": 0.0,
       "errorDistribution": {},
-      "p95_latency": 0.003957
+      "p95_latency": 0.003871291
     },
     "50": {
       "successRate": 1.0,
-      "total": 2.01,
-      "slowest": 0.05,
+      "total": 5.83,
+      "slowest": 0.04,
       "fastest": 0.0,
       "average": 0.0,
-      "requestsPerSec": 21253.9,
-      "totalData": 0,
-      "sizePerRequest": 0,
-      "sizePerSec": 0.0,
-      "errorDistribution": {},
-      "p95_latency": 0.02171775
-    },
-    "100": {
-      "successRate": 1.0,
-      "total": 2.02,
-      "slowest": 0.08,
-      "fastest": 0.0,
-      "average": 0.01,
-      "requestsPerSec": 19683.9,
-      "totalData": 0,
-      "sizePerRequest": 0,
-      "sizePerSec": 0.0,
-      "errorDistribution": {},
-      "p95_latency": 0.048591791
-    },
-    "250": {
-      "successRate": 0.99,
-      "total": 5.12,
-      "slowest": 0.1,
-      "fastest": 0.0,
-      "average": 0.0,
-      "requestsPerSec": 8611.74,
+      "requestsPerSec": 21441.03,
       "totalData": 0,
       "sizePerRequest": 0,
       "sizePerSec": 0.0,
       "errorDistribution": {
-        "connection error": 150,
-        "error writing a body to connection": 1,
-        "operation was canceled": 2,
+        "timeout": 49
+      },
+      "p95_latency": 5.7125e-5
+    },
+    "100": {
+      "successRate": 1.0,
+      "total": 10.01,
+      "slowest": 0.04,
+      "fastest": 0.0,
+      "average": 0.0,
+      "requestsPerSec": 12918.13,
+      "totalData": 0,
+      "sizePerRequest": 0,
+      "sizePerSec": 0.0,
+      "errorDistribution": {
+        "timeout": 103
+      },
+      "p95_latency": 4.7333e-5
+    },
+    "250": {
+      "successRate": 1.0,
+      "total": 8.57,
+      "slowest": 3.57,
+      "fastest": 0.0,
+      "average": 0.0,
+      "requestsPerSec": 14404.9,
+      "totalData": 0,
+      "sizePerRequest": 0,
+      "sizePerSec": 0.0,
+      "errorDistribution": {
         "timeout": 249
       },
-      "p95_latency": 6.5542e-5
+      "p95_latency": 5.7792e-5
     }
   },
-  "timestamp": "2025-05-11T01:04:44Z"
+  "timestamp": "2025-05-12T02:14:12Z"
 }

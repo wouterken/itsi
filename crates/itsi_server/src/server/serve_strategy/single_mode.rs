@@ -45,6 +45,7 @@ pub struct SingleMode {
     pub status: RwLock<HashMap<u8, (u64, u64)>>,
 }
 
+#[derive(PartialEq, Debug)]
 pub enum RunningPhase {
     Running,
     ShutdownPending,
@@ -59,6 +60,7 @@ impl SingleMode {
         executor
             .http1()
             .header_read_timeout(server_config.server_params.read().header_read_timeout)
+            .pipeline_flush(true)
             .timer(TokioTimer::new());
         executor
             .http2()
@@ -287,11 +289,11 @@ impl SingleMode {
 
                 let shutdown_rx_for_acme_task = shutdown_receiver.clone();
                 let acme_task_listener_clone = listener.clone();
-                let after_accept_wait = if server_params.workers > 1{
-                 Some(Duration::from_micros(10 * server_params.workers as u64))}
-                else{
-                  None
-                };
+                // let after_accept_wait = if server_params.workers > 1{
+                //  Some(Duration::from_micros(10 * server_params.workers as u64))}
+                // else{
+                //   None
+                // };
                 listener_task_set.spawn(async move {
                     acme_task_listener_clone
                         .spawn_acme_event_task(shutdown_rx_for_acme_task)
@@ -305,9 +307,6 @@ impl SingleMode {
                                 match accept_result {
                                     Ok(accepted) => acceptor.serve_connection(accepted).await,
                                     Err(e) => debug!("Listener.accept failed: {:?}", e)
-                                }
-                                if let Some(wait_time) = after_accept_wait{
-                                  tokio::time::sleep(wait_time).await
                                 }
                             },
                             _ = shutdown_receiver.changed() => {

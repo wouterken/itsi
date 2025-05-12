@@ -14,18 +14,29 @@ module Itsi
     EMPTY_IO = StringIO.new("").tap { |io| io.set_encoding(Encoding::ASCII_8BIT) }
 
     RACK_HEADER_MAP = StandardHeaders::ALL.map do |header|
-      rack_form = if header == "content-type"
-                    "CONTENT_TYPE"
-                  elsif header == "content-length"
-                    "CONTENT_LENGTH"
-                  else
-                    "HTTP_#{header.upcase.gsub(/-/, "_")}"
-                  end
+      rack_form = \
+        if header == "content-type"
+          "CONTENT_TYPE"
+        elsif header == "content-length"
+          "CONTENT_LENGTH"
+        else
+          "HTTP_#{header.upcase.gsub(/-/, "_")}"
+        end
       [header, rack_form]
-    end.to_h.tap do |hm|
-      hm.default_proc = proc { |_, key| "HTTP_#{key.upcase.gsub(/-/, "_")}" }
-    end
+    end.to_h
 
+    RACK_HEADER_MAP.default_proc = proc { |_, key| "HTTP_#{key.upcase.gsub(/-/, "_")}" }
+
+    HTTP_09 = "HTTP/0.9"
+    HTTP_09_ARR = ["HTTP/0.9"].freeze
+    HTTP_10 = "HTTP/1.0"
+    HTTP_10_ARR = ["HTTP/1.0"].freeze
+    HTTP_11 = "HTTP/1.1"
+    HTTP_11_ARR = ["HTTP/1.1"].freeze
+    HTTP_20 = "HTTP/2.0"
+    HTTP_20_ARR = ["HTTP/2.0"].freeze
+    HTTP_30 = "HTTP/3.0"
+    HTTP_30_ARR = ["HTTP/3.0"].freeze
 
     def to_rack_env
       path = self.path
@@ -42,7 +53,14 @@ module Itsi
       env["HTTP_VERSION"] = env["SERVER_PROTOCOL"] = version
       env["itsi.request"] = self
       env["itsi.response"] = response
-      env["rack.version"] = [version]
+      env["rack.version"] = \
+        case version
+        when HTTP_09 then HTTP_09_ARR
+        when HTTP_10 then HTTP_10_ARR
+        when HTTP_11 then HTTP_11_ARR
+        when HTTP_20 then HTTP_20_ARR
+        when HTTP_30 then HTTP_30_ARR
+        end
       env["rack.url_scheme"] = scheme
       env["rack.input"] = build_input_io
       env["rack.hijack"] = method(:hijack)

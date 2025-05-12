@@ -4,65 +4,67 @@
   "results": {
     "10": {
       "successRate": 1.0,
-      "total": 2.0,
+      "total": 9.35,
       "slowest": 0.03,
       "fastest": 0.0,
       "average": 0.0,
-      "requestsPerSec": 3332.39,
-      "totalData": 80160,
+      "requestsPerSec": 1360.55,
+      "totalData": 152496,
       "sizePerRequest": 12,
-      "sizePerSec": 39988.68,
-      "errorDistribution": {},
-      "p95_latency": 0.003690583
+      "sizePerSec": 16313.72,
+      "errorDistribution": {
+        "timeout": 10
+      },
+      "p95_latency": 0.004165667
     },
     "50": {
-      "successRate": 0.99,
-      "total": 6.53,
-      "slowest": 0.05,
+      "successRate": 0.87,
+      "total": 5.15,
+      "slowest": 0.04,
       "fastest": 0.0,
-      "average": 0.01,
-      "requestsPerSec": 788.28,
-      "totalData": 61188,
+      "average": 0.0,
+      "requestsPerSec": 76.46,
+      "totalData": 4128,
       "sizePerRequest": 12,
-      "sizePerSec": 9367.54,
+      "sizePerSec": 801.04,
       "errorDistribution": {
         "timeout": 50
       },
-      "p95_latency": 0.017614625
+      "p95_latency": 0.004369417
     },
     "100": {
-      "successRate": 0.84,
-      "total": 5.16,
-      "slowest": 0.03,
+      "successRate": 0.03,
+      "total": 10.01,
+      "slowest": 0.2,
       "fastest": 0.0,
-      "average": 0.02,
-      "requestsPerSec": 122.4,
-      "totalData": 6384,
+      "average": 0.01,
+      "requestsPerSec": 736.52,
+      "totalData": 2220,
       "sizePerRequest": 12,
-      "sizePerSec": 1236.44,
+      "sizePerSec": 221.85,
       "errorDistribution": {
-        "timeout": 100
+        "Can't assign requested address (os error 49)": 7084,
+        "timeout": 101
       },
-      "p95_latency": 0.024955625
+      "p95_latency": 0.022264125
     },
     "250": {
-      "successRate": 0.06,
-      "total": 6.9,
-      "slowest": 2.0,
-      "fastest": 0.13,
-      "average": 1.0,
-      "requestsPerSec": 456.6,
-      "totalData": 2400,
+      "successRate": 0.03,
+      "total": 8.06,
+      "slowest": 2.53,
+      "fastest": 0.0,
+      "average": 0.65,
+      "requestsPerSec": 1767.35,
+      "totalData": 5424,
       "sizePerRequest": 12,
-      "sizePerSec": 347.67,
+      "sizePerSec": 673.27,
       "errorDistribution": {
-        "Can't assign requested address (os error 49)": 2819,
-        "connection error": 8,
-        "operation was canceled": 1,
-        "timeout": 124
+        "Can't assign requested address (os error 49)": 13336,
+        "connection error": 208,
+        "timeout": 242
       },
-      "p95_latency": 1.997625959
+      "p95_latency": 2.3160969160000002
     }
   },
-  "timestamp": "2025-05-11T00:58:08Z"
+  "timestamp": "2025-05-12T02:00:23Z"
 }

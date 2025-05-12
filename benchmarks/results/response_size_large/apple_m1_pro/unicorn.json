@@ -4,61 +4,62 @@
   "results": {
     "10": {
       "successRate": 1.0,
-      "total": 2.01,
-      "slowest": 0.01,
+      "total": 5.01,
+      "slowest": 0.03,
       "fastest": 0.0,
       "average": 0.01,
-      "requestsPerSec": 1444.01,
-      "totalData": 14622556000,
+      "requestsPerSec": 1398.25,
+      "totalData": 35318088000,
       "sizePerRequest": 5044000,
-      "sizePerSec": 7283568272.68,
+      "sizePerSec": 7052756531.26,
       "errorDistribution": {},
-      "p95_latency": 0.008261792
+      "p95_latency": 0.008261208
     },
     "50": {
       "successRate": 1.0,
-      "total": 2.03,
-      "slowest": 0.06,
+      "total": 10.0,
+      "slowest": 0.09,
       "fastest": 0.0,
-      "average": 0.03,
-      "requestsPerSec": 1426.39,
-      "totalData": 14617512000,
+      "average": 0.04,
+      "requestsPerSec": 678.6,
+      "totalData": 34223540000,
       "sizePerRequest": 5044000,
-      "sizePerSec": 7194690477.83,
-      "errorDistribution": {},
-      "p95_latency": 0.040160209
+      "sizePerSec": 3420823380.97,
+      "errorDistribution": {
+        "timeout": 4
+      },
+      "p95_latency": 0.041905583
     },
     "100": {
-      "successRate": 1.0,
-      "total": 2.06,
-      "slowest": 0.1,
+      "successRate": 0.23,
+      "total": 5.02,
+      "slowest": 0.02,
       "fastest": 0.0,
-      "average": 0.07,
-      "requestsPerSec": 1385.72,
-      "totalData": 14420796000,
+      "average": 0.01,
+      "requestsPerSec": 25.88,
+      "totalData": 151320000,
       "sizePerRequest": 5044000,
-      "sizePerSec": 6989585208.34,
-      "errorDistribution": {},
-      "p95_latency": 0.094066167
+      "sizePerSec": 30119869.15,
+      "errorDistribution": {
+        "timeout": 100
+      },
+      "p95_latency": 0.014787667000000001
     },
     "250": {
-      "successRate": 0.87,
-      "total": 3.58,
-      "slowest": 3.57,
-      "fastest": 0.01,
-      "average": 0.17,
-      "requestsPerSec": 902.07,
-      "totalData": 14198860000,
+      "successRate": 0.26,
+      "total": 5.06,
+      "slowest": 0.04,
+      "fastest": 0.0,
+      "average": 0.02,
+      "requestsPerSec": 66.56,
+      "totalData": 438828000,
       "sizePerRequest": 5044000,
-      "sizePerSec": 3961776299.36,
+      "sizePerSec": 86666765.8,
       "errorDistribution": {
-        "Connection reset by peer (os error 54)": 2,
-        "connection error": 409,
-        "error writing a body to connection": 4,
-        "operation was canceled": 3
+        "timeout": 250
       },
-      "p95_latency": 0.169384209
+      "p95_latency": 0.04197575
     }
   },
-  "timestamp": "2025-05-11T01:06:13Z"
+  "timestamp": "2025-05-12T02:17:04Z"
 }

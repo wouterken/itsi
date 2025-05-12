@@ -4,59 +4,59 @@
   "results": {
     "10": {
       "successRate": 1.0,
-      "total": 2.0,
+      "total": 5.0,
       "slowest": 0.0,
       "fastest": 0.0,
       "average": 0.0,
-      "requestsPerSec": 11765.65,
-      "totalData": 282828,
+      "requestsPerSec": 18218.11,
+      "totalData": 1093524,
       "sizePerRequest": 12,
-      "sizePerSec": 141187.83,
+      "sizePerSec": 218617.26,
       "errorDistribution": {},
-      "p95_latency": 0.001727666
+      "p95_latency": 0.0012715
     },
     "50": {
       "successRate": 1.0,
-      "total": 2.01,
-      "slowest": 0.01,
+      "total": 5.01,
+      "slowest": 0.0,
       "fastest": 0.0,
       "average": 0.0,
-      "requestsPerSec": 17978.71,
-      "totalData": 432696,
+      "requestsPerSec": 18887.81,
+      "totalData": 1134456,
       "sizePerRequest": 12,
-      "sizePerSec": 215744.57,
+      "sizePerSec": 226653.68,
       "errorDistribution": {},
-      "p95_latency": 0.004066292
+      "p95_latency": 0.003445625
     },
     "100": {
       "successRate": 1.0,
-      "total": 2.01,
+      "total": 5.01,
       "slowest": 0.02,
       "fastest": 0.0,
       "average": 0.01,
-      "requestsPerSec": 18553.37,
-      "totalData": 447108,
+      "requestsPerSec": 19115.93,
+      "totalData": 1148736,
       "sizePerRequest": 12,
-      "sizePerSec": 222640.49,
+      "sizePerSec": 229391.22,
       "errorDistribution": {},
-      "p95_latency": 0.006763208
+      "p95_latency": 0.006229458
     },
     "250": {
       "successRate": 1.0,
-      "total": 2.02,
-      "slowest": 0.13,
+      "total": 5.02,
+      "slowest": 0.12,
       "fastest": 0.0,
       "average": 0.01,
-      "requestsPerSec": 19302.58,
-      "totalData": 465144,
+      "requestsPerSec": 19054.82,
+      "totalData": 1145112,
       "sizePerRequest": 12,
-      "sizePerSec": 230726.2,
+      "sizePerSec": 228279.89,
       "errorDistribution": {
-        "Connection reset by peer (os error 54)": 18,
-        "connection error": 134
+        "Connection reset by peer (os error 54)": 2,
+        "connection error": 156
       },
-      "p95_latency": 0.014969209
+      "p95_latency": 0.015145125
     }
   },
-  "timestamp": "2025-05-11T01:01:09Z"
+  "timestamp": "2025-05-12T02:06:31Z"
 }

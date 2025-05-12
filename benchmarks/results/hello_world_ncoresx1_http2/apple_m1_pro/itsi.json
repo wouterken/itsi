@@ -5,58 +5,58 @@
     "10": {
       "successRate": 1.0,
       "total": 5.0,
-      "slowest": 0.09,
+      "slowest": 0.12,
       "fastest": 0.0,
       "average": 0.0,
-      "requestsPerSec": 142404.31,
-      "totalData": 7838842,
-      "sizePerRequest": 11,
-      "sizePerSec": 1566447.4,
+      "requestsPerSec": 150038.27,
+      "totalData": 53856,
+      "sizePerRequest": 0,
+      "sizePerSec": 10762.4,
       "errorDistribution": {},
-      "p95_latency": 0.002764
+      "p95_latency": 0.003088833
     },
     "50": {
       "successRate": 1.0,
       "total": 5.01,
-      "slowest": 0.16,
+      "slowest": 0.25,
       "fastest": 0.0,
       "average": 0.01,
-      "requestsPerSec": 155502.71,
-      "totalData": 8565722,
-      "sizePerRequest": 11,
-      "sizePerSec": 1710529.76,
+      "requestsPerSec": 157638.89,
+      "totalData": 22352,
+      "sizePerRequest": 0,
+      "sizePerSec": 4464.12,
       "errorDistribution": {},
-      "p95_latency": 0.018322334
+      "p95_latency": 0.016147417
     },
     "100": {
       "successRate": 1.0,
       "total": 5.01,
-      "slowest": 0.33,
+      "slowest": 0.18,
       "fastest": 0.0,
       "average": 0.01,
-      "requestsPerSec": 168234.68,
-      "totalData": 9267786,
-      "sizePerRequest": 11,
-      "sizePerSec": 1850581.5,
+      "requestsPerSec": 159440.81,
+      "totalData": 15125,
+      "sizePerRequest": 0,
+      "sizePerSec": 3019.61,
       "errorDistribution": {},
-      "p95_latency": 0.034948917
+      "p95_latency": 0.038443375
     },
     "250": {
       "successRate": 1.0,
-      "total": 5.02,
-      "slowest": 0.38,
+      "total": 5.03,
+      "slowest": 0.25,
       "fastest": 0.0,
       "average": 0.02,
-      "requestsPerSec": 170761.73,
-      "totalData": 9404648,
-      "sizePerRequest": 11,
-      "sizePerSec": 1874520.22,
+      "requestsPerSec": 165942.75,
+      "totalData": 7634,
+      "sizePerRequest": 0,
+      "sizePerSec": 1518.78,
       "errorDistribution": {
-        "connection error": 1711,
-        "operation was canceled": 49
+        "connection error": 1615,
+        "operation was canceled": 145
       },
-      "p95_latency": 0.11090425
+      "p95_latency": 0.086911459
     }
   },
-  "timestamp": "2025-05-11T02:47:50Z"
+  "timestamp": "2025-05-12T00:34:00Z"
 }

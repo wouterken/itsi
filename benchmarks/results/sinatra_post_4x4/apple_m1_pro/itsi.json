@@ -4,58 +4,58 @@
   "results": {
     "10": {
       "successRate": 1.0,
-      "total": 2.01,
-      "slowest": 0.01,
+      "total": 5.0,
+      "slowest": 0.0,
       "fastest": 0.0,
       "average": 0.0,
-      "requestsPerSec": 5716.2,
-      "totalData": 137592,
+      "requestsPerSec": 14510.82,
+      "totalData": 871044,
       "sizePerRequest": 12,
-      "sizePerSec": 68594.41,
+      "sizePerSec": 174129.81,
       "errorDistribution": {},
-      "p95_latency": 0.002703041
+      "p95_latency": 0.001453
     },
     "50": {
       "successRate": 1.0,
-      "total": 2.01,
-      "slowest": 0.02,
+      "total": 5.01,
+      "slowest": 0.01,
       "fastest": 0.0,
       "average": 0.0,
-      "requestsPerSec": 12630.13,
-      "totalData": 304080,
+      "requestsPerSec": 17169.2,
+      "totalData": 1031496,
       "sizePerRequest": 12,
-      "sizePerSec": 151561.56,
+      "sizePerSec": 206030.39,
       "errorDistribution": {},
-      "p95_latency": 0.007467625
+      "p95_latency": 0.008003792
     },
     "100": {
       "successRate": 1.0,
-      "total": 2.01,
-      "slowest": 0.02,
+      "total": 5.01,
+      "slowest": 0.01,
       "fastest": 0.0,
       "average": 0.01,
-      "requestsPerSec": 14459.91,
-      "totalData": 349308,
+      "requestsPerSec": 18185.98,
+      "totalData": 1093572,
       "sizePerRequest": 12,
-      "sizePerSec": 173518.98,
+      "sizePerSec": 218231.82,
       "errorDistribution": {},
-      "p95_latency": 0.013250667
+      "p95_latency": 0.010877875
     },
     "250": {
       "successRate": 1.0,
-      "total": 2.02,
-      "slowest": 0.03,
+      "total": 5.02,
+      "slowest": 0.02,
       "fastest": 0.0,
       "average": 0.01,
-      "requestsPerSec": 17156.86,
-      "totalData": 415008,
+      "requestsPerSec": 18118.29,
+      "totalData": 1089432,
       "sizePerRequest": 12,
-      "sizePerSec": 205223.64,
+      "sizePerSec": 217158.74,
       "errorDistribution": {
-        "connection error": 111
+        "connection error": 109
       },
-      "p95_latency": 0.024741458
+      "p95_latency": 0.017734083
     }
   },
-  "timestamp": "2025-05-11T01:01:20Z"
+  "timestamp": "2025-05-12T02:06:53Z"
 }

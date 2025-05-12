@@ -4,56 +4,58 @@
   "results": {
     "10": {
       "successRate": 1.0,
-      "total": 2.02,
-      "slowest": 0.1,
+      "total": 5.0,
+      "slowest": 0.01,
       "fastest": 0.0,
       "average": 0.0,
-      "requestsPerSec": 24039.39,
-      "totalData": 581400,
+      "requestsPerSec": 25081.26,
+      "totalData": 1505604,
       "sizePerRequest": 12,
-      "sizePerSec": 288472.64,
+      "sizePerSec": 300975.11,
       "errorDistribution": {},
-      "p95_latency": 7.37459e-4
+      "p95_latency": 7.06292e-4
     },
     "50": {
       "successRate": 1.0,
-      "total": 2.0,
-      "slowest": 0.05,
+      "total": 5.01,
+      "slowest": 0.02,
       "fastest": 0.0,
       "average": 0.0,
-      "requestsPerSec": 24917.53,
-      "totalData": 599316,
+      "requestsPerSec": 25734.68,
+      "totalData": 1545912,
       "sizePerRequest": 12,
-      "sizePerSec": 299010.4,
+      "sizePerSec": 308816.21,
       "errorDistribution": {},
-      "p95_latency": 0.00509775
+      "p95_latency": 0.003708125
     },
     "100": {
       "successRate": 1.0,
-      "total": 2.01,
-      "slowest": 0.16,
+      "total": 5.01,
+      "slowest": 0.11,
       "fastest": 0.0,
       "average": 0.0,
-      "requestsPerSec": 22405.41,
-      "totalData": 539784,
+      "requestsPerSec": 24888.36,
+      "totalData": 1495596,
       "sizePerRequest": 12,
-      "sizePerSec": 268864.95,
+      "sizePerSec": 298660.32,
       "errorDistribution": {},
-      "p95_latency": 0.006971333
+      "p95_latency": 0.006600833
     },
     "250": {
       "successRate": 1.0,
-      "total": 2.02,
-      "slowest": 0.18,
+      "total": 5.02,
+      "slowest": 0.12,
       "fastest": 0.0,
       "average": 0.01,
-      "requestsPerSec": 22386.0,
-      "totalData": 541920,
+      "requestsPerSec": 24070.06,
+      "totalData": 1447680,
       "sizePerRequest": 12,
-      "sizePerSec": 268631.96,
-      "errorDistribution": {},
-      "p95_latency": 0.020522375
+      "sizePerSec": 288568.03,
+      "errorDistribution": {
+        "connection error": 114
+      },
+      "p95_latency": 0.018151584
     }
   },
-  "timestamp": "2025-05-11T01:01:56Z"
+  "timestamp": "2025-05-12T02:08:19Z"
 }

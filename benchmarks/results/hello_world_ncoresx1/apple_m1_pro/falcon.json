@@ -8,12 +8,12 @@
       "slowest": 0.13,
       "fastest": 0.0,
       "average": 0.0,
-      "requestsPerSec": 43899.58,
-      "totalData": 8126569,
+      "requestsPerSec": 44511.44,
+      "totalData": 8239752,
       "sizePerRequest": 37,
-      "sizePerSec": 1624284.29,
+      "sizePerSec": 1646923.43,
       "errorDistribution": {},
-      "p95_latency": 4.61292e-4
+      "p95_latency": 4.42833e-4
     },
     "50": {
       "successRate": 1.0,
@@ -21,25 +21,25 @@
       "slowest": 0.13,
       "fastest": 0.0,
       "average": 0.0,
-      "requestsPerSec": 59254.71,
-      "totalData": 10969057,
+      "requestsPerSec": 57207.21,
+      "totalData": 10589622,
       "sizePerRequest": 37,
-      "sizePerSec": 2192424.13,
+      "sizePerSec": 2116666.76,
       "errorDistribution": {},
-      "p95_latency": 0.001484166
+      "p95_latency": 0.001658166
     },
     "100": {
       "successRate": 1.0,
       "total": 5.0,
-      "slowest": 0.25,
+      "slowest": 0.13,
       "fastest": 0.0,
       "average": 0.0,
-      "requestsPerSec": 60481.14,
-      "totalData": 11200196,
+      "requestsPerSec": 60255.07,
+      "totalData": 11158238,
       "sizePerRequest": 37,
-      "sizePerSec": 2237802.18,
+      "sizePerSec": 2229437.45,
       "errorDistribution": {},
-      "p95_latency": 0.003058459
+      "p95_latency": 0.003040042
     },
     "250": {
       "successRate": 1.0,
@@ -47,16 +47,17 @@
       "slowest": 0.13,
       "fastest": 0.0,
       "average": 0.0,
-      "requestsPerSec": 61334.09,
-      "totalData": 11355559,
+      "requestsPerSec": 60789.06,
+      "totalData": 11253069,
       "sizePerRequest": 37,
-      "sizePerSec": 2267720.84,
+      "sizePerSec": 2247303.43,
       "errorDistribution": {
-        "Connection reset by peer (os error 54)": 9,
-        "connection error": 213
+        "Connection reset by peer (os error 54)": 24,
+        "connection error": 229,
+        "error writing a body to connection": 3
       },
-      "p95_latency": 0.007778875
+      "p95_latency": 0.007394708
     }
   },
-  "timestamp": "2025-05-11T05:14:05Z"
+  "timestamp": "2025-05-12T00:31:02Z"
 }

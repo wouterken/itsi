@@ -4,63 +4,62 @@
   "results": {
     "10": {
       "successRate": 1.0,
-      "total": 2.0,
-      "slowest": 0.02,
+      "total": 5.0,
+      "slowest": 0.03,
       "fastest": 0.0,
       "average": 0.0,
-      "requestsPerSec": 16366.65,
-      "totalData": 426296,
+      "requestsPerSec": 16386.33,
+      "totalData": 1066091,
       "sizePerRequest": 13,
-      "sizePerSec": 212766.41,
+      "sizePerSec": 213022.23,
       "errorDistribution": {},
-      "p95_latency": 0.003930416
+      "p95_latency": 0.00391075
     },
     "50": {
       "successRate": 1.0,
-      "total": 2.01,
+      "total": 8.8,
       "slowest": 0.06,
       "fastest": 0.0,
       "average": 0.0,
-      "requestsPerSec": 15954.22,
-      "totalData": 416403,
+      "requestsPerSec": 9195.76,
+      "totalData": 1051453,
       "sizePerRequest": 13,
-      "sizePerSec": 207404.83,
-      "errorDistribution": {},
-      "p95_latency": 0.028084666
+      "sizePerSec": 119476.97,
+      "errorDistribution": {
+        "timeout": 46
+      },
+      "p95_latency": 0.027892083
     },
     "100": {
       "successRate": 1.0,
-      "total": 2.01,
-      "slowest": 0.07,
+      "total": 10.01,
+      "slowest": 0.03,
       "fastest": 0.0,
-      "average": 0.01,
-      "requestsPerSec": 16229.4,
-      "totalData": 424463,
+      "average": 0.0,
+      "requestsPerSec": 8262.75,
+      "totalData": 1073397,
       "sizePerRequest": 13,
-      "sizePerSec": 210982.14,
-      "errorDistribution": {},
-      "p95_latency": 0.058453541
+      "sizePerSec": 107285.85,
+      "errorDistribution": {
+        "timeout": 100
+      },
+      "p95_latency": 3.2475e-4
     },
     "250": {
-      "successRate": 0.98,
-      "total": 7.0,
-      "slowest": 3.53,
+      "successRate": 1.0,
+      "total": 5.44,
+      "slowest": 0.44,
       "fastest": 0.0,
-      "average": 0.02,
-      "requestsPerSec": 4689.37,
-      "totalData": 419848,
+      "average": 0.0,
+      "requestsPerSec": 15189.68,
+      "totalData": 1070836,
       "sizePerRequest": 13,
-      "sizePerSec": 59951.99,
+      "sizePerSec": 196877.93,
       "errorDistribution": {
-        "Connection reset by peer (os error 54)": 15,
-        "Invalid argument (os error 22)": 1,
-        "connection error": 458,
-        "error writing a body to connection": 10,
-        "operation was canceled": 7,
-        "timeout": 53
+        "timeout": 246
       },
-      "p95_latency": 0.0780275
+      "p95_latency": 3.23958e-4
     }
   },
-  "timestamp": "2025-05-11T00:55:16Z"
+  "timestamp": "2025-05-12T01:54:54Z"
 }

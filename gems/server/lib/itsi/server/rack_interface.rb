@@ -42,13 +42,13 @@ module Itsi
 
         response.reserve_headers(headers.size)
 
-        headers.each do |key, value|
-          if value.is_a?(Array)
+        for key, value in headers
+          case value
+          when String then response[key] = value
+          when Array
             value.each do |v|
               response[key] = v
             end
-          elsif value.is_a?(String)
-            response[key] = value
           end
         end
 
@@ -56,15 +56,15 @@ module Itsi
         # As soon as we start setting the response
         # the server will begin to stream it to the client.
 
-        # If we're partially hijacked or returned a streaming body,
-        # stream this response.
 
         if body_streamer
+          # If we're partially hijacked or returned a streaming body,
+          # stream this response.
           body_streamer.call(response)
 
-        # If we're enumerable with more than one chunk
-        # also stream, otherwise write in a single chunk
         elsif body.respond_to?(:each) || body.respond_to?(:to_ary)
+          # If we're enumerable with more than one chunk
+          # also stream, otherwise write in a single chunk
           unless body.respond_to?(:each)
             body = body.to_ary
             raise "Body #to_ary didn't return an array" unless body.is_a?(Array)
@@ -83,7 +83,6 @@ module Itsi
         end
       ensure
         RackEnvPool.checkin(env)
-        response.close_write
         body.close if body.respond_to?(:close)
       end
 

@@ -4,56 +4,58 @@
   "results": {
     "10": {
       "successRate": 1.0,
-      "total": 2.01,
-      "slowest": 0.09,
+      "total": 5.01,
+      "slowest": 0.04,
       "fastest": 0.0,
-      "average": 0.01,
-      "requestsPerSec": 789.1,
-      "totalData": 20644,
+      "average": 0.0,
+      "requestsPerSec": 2749.7,
+      "totalData": 179036,
       "sizePerRequest": 13,
-      "sizePerSec": 10258.35,
+      "sizePerSec": 35746.04,
       "errorDistribution": {},
-      "p95_latency": 0.012891208
+      "p95_latency": 0.011977708
     },
     "50": {
       "successRate": 1.0,
-      "total": 2.01,
-      "slowest": 0.05,
+      "total": 5.01,
+      "slowest": 0.02,
       "fastest": 0.0,
       "average": 0.01,
-      "requestsPerSec": 8767.95,
-      "totalData": 228774,
+      "requestsPerSec": 6394.8,
+      "totalData": 416312,
       "sizePerRequest": 13,
-      "sizePerSec": 113983.31,
+      "sizePerSec": 83132.36,
       "errorDistribution": {},
-      "p95_latency": 0.011520917
+      "p95_latency": 0.01436275
     },
     "100": {
       "successRate": 1.0,
-      "total": 2.01,
-      "slowest": 0.06,
+      "total": 5.02,
+      "slowest": 0.03,
       "fastest": 0.0,
       "average": 0.01,
-      "requestsPerSec": 8720.1,
-      "totalData": 228319,
+      "requestsPerSec": 8297.6,
+      "totalData": 541788,
       "sizePerRequest": 13,
-      "sizePerSec": 113361.25,
+      "sizePerSec": 107868.77,
       "errorDistribution": {},
-      "p95_latency": 0.011738875
+      "p95_latency": 0.018148792
     },
     "250": {
       "successRate": 1.0,
-      "total": 2.02,
-      "slowest": 0.08,
-      "fastest": 0.0,
-      "average": 0.03,
-      "requestsPerSec": 9210.33,
-      "totalData": 242190,
+      "total": 5.04,
+      "slowest": 0.06,
+      "fastest": 0.01,
+      "average": 0.04,
+      "requestsPerSec": 6464.48,
+      "totalData": 422734,
       "sizePerRequest": 13,
-      "sizePerSec": 119734.35,
-      "errorDistribution": {},
-      "p95_latency": 0.035700542
+      "sizePerSec": 83942.67,
+      "errorDistribution": {
+        "connection error": 37
+      },
+      "p95_latency": 0.040884
     }
   },
-  "timestamp": "2025-05-11T00:54:25Z"
+  "timestamp": "2025-05-12T01:53:14Z"
 }

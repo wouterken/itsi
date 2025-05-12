@@ -17,8 +17,7 @@ use std::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         Arc,
     },
-    thread,
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 use tokio::{runtime::Builder as RuntimeBuilder, sync::watch};
 use tracing::instrument;
@@ -433,6 +432,7 @@ impl ThreadWorker {
         let mut idle_counter = 0;
         call_without_gvl(|| loop {
             match receiver.recv_blocking() {
+                Err(_) => break,
                 Ok(RequestJob::Shutdown) => break,
                 Ok(request_job) => call_with_gvl(|ruby| {
                     self.process_one(&ruby, request_job);
@@ -450,7 +450,6 @@ impl ThreadWorker {
                         }
                     }
                 }),
-                Err(_) => break,
             };
             if terminated.load(Ordering::Relaxed) {
                 break;

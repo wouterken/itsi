@@ -16,7 +16,7 @@ use magnus::{
 };
 use std::{fmt, io::Write, sync::Arc, time::Instant};
 use tokio::sync::{self, Notify};
-use tracing::{error, info};
+use tracing::error;
 
 use super::{
     itsi_body_proxy::{big_bytes::BigBytes, ItsiBody, ItsiBodyProxy},
@@ -162,7 +162,7 @@ impl ItsiHttpRequest {
     pub fn internal_error(ruby: &Ruby, response: ItsiHttpResponse, err: Error) {
         if Self::is_connection_closed_err(ruby, &err) {
             debug!("Connection closed by client");
-            response.close();
+            response.close().ok();
         } else if let Some(rb_err) = err.value() {
             print_rb_backtrace(rb_err);
             response.internal_server_error(err.to_string());
@@ -184,7 +184,6 @@ impl ItsiHttpRequest {
     ) -> itsi_error::Result<HttpResponse> {
         match ItsiHttpRequest::new(hyper_request, context, script_name).await {
             Ok((request, receiver)) => {
-                let shutdown_channel = context.service.shutdown_receiver.clone();
                 let response = request.response.clone();
                 let sender = if nonblocking {
                     &context.nonblocking_sender
@@ -205,7 +204,7 @@ impl ItsiHttpRequest {
                     },
                     _ => {
                         receiver.notified().await;
-                        Ok(response.build(shutdown_channel).await)
+                        Ok(response.get_response().await)
                     }
                 }
             }
@@ -247,7 +246,11 @@ impl ItsiHttpRequest {
             Self {
                 context: context.clone(),
                 version: parts.version,
-                response: ItsiHttpResponse::new(parts.clone(), response_ready_notify.clone()),
+                response: ItsiHttpResponse::new(
+                    parts.clone(),
+                    response_ready_notify.clone(),
+                    context.service.shutdown_receiver.clone(),
+                ),
                 start: Instant::now(),
                 script_name,
                 body,

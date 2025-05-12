@@ -4,61 +4,59 @@
   "results": {
     "10": {
       "successRate": 1.0,
-      "total": 2.0,
+      "total": 5.0,
       "slowest": 0.0,
       "fastest": 0.0,
       "average": 0.0,
-      "requestsPerSec": 7487.87,
-      "totalData": 194935,
+      "requestsPerSec": 7692.79,
+      "totalData": 500383,
       "sizePerRequest": 13,
-      "sizePerSec": 97342.29,
+      "sizePerSec": 100006.23,
       "errorDistribution": {},
-      "p95_latency": 0.001663917
+      "p95_latency": 0.00161575
     },
     "50": {
       "successRate": 1.0,
-      "total": 2.01,
+      "total": 5.01,
       "slowest": 0.04,
       "fastest": 0.0,
       "average": 0.01,
-      "requestsPerSec": 7759.35,
-      "totalData": 202670,
+      "requestsPerSec": 7783.96,
+      "totalData": 506714,
       "sizePerRequest": 13,
-      "sizePerSec": 100871.49,
+      "sizePerSec": 101191.47,
       "errorDistribution": {},
-      "p95_latency": 0.007261083
+      "p95_latency": 0.007118625
     },
     "100": {
       "successRate": 1.0,
-      "total": 2.02,
+      "total": 5.02,
       "slowest": 0.16,
       "fastest": 0.0,
       "average": 0.01,
-      "requestsPerSec": 7717.36,
-      "totalData": 202202,
+      "requestsPerSec": 7773.49,
+      "totalData": 506870,
       "sizePerRequest": 13,
-      "sizePerSec": 100325.71,
+      "sizePerSec": 101055.31,
       "errorDistribution": {},
-      "p95_latency": 0.013953333
+      "p95_latency": 0.013562292
     },
     "250": {
       "successRate": 0.99,
-      "total": 2.04,
-      "slowest": 0.93,
-      "fastest": 0.01,
+      "total": 5.03,
+      "slowest": 0.85,
+      "fastest": 0.0,
       "average": 0.03,
-      "requestsPerSec": 7621.37,
-      "totalData": 199225,
+      "requestsPerSec": 7786.84,
+      "totalData": 505921,
       "sizePerRequest": 13,
-      "sizePerSec": 97763.68,
+      "sizePerSec": 100487.9,
       "errorDistribution": {
-        "Connection reset by peer (os error 54)": 2,
-        "connection error": 202,
-        "error writing a body to connection": 1,
-        "operation was canceled": 1
+        "connection error": 284,
+        "error writing a body to connection": 3
       },
-      "p95_latency": 0.035185209
+      "p95_latency": 0.033500125
     }
   },
-  "timestamp": "2025-05-11T00:53:32Z"
+  "timestamp": "2025-05-12T01:51:29Z"
 }

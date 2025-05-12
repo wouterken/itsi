@@ -1,0 +1,64 @@
+{
+  "server": "falcon",
+  "test_case": "response_size_small_http2",
+  "results": {
+    "10": {
+      "successRate": 1.0,
+      "total": 5.03,
+      "slowest": 0.04,
+      "fastest": 0.0,
+      "average": 0.03,
+      "requestsPerSec": 5261.04,
+      "totalData": 49398953,
+      "sizePerRequest": 1867,
+      "sizePerSec": 9822362.44,
+      "errorDistribution": {},
+      "p95_latency": 0.032709875
+    },
+    "50": {
+      "successRate": 1.0,
+      "total": 5.15,
+      "slowest": 0.41,
+      "fastest": 0.0,
+      "average": 0.16,
+      "requestsPerSec": 4883.85,
+      "totalData": 46938247,
+      "sizePerRequest": 1867,
+      "sizePerSec": 9118145.81,
+      "errorDistribution": {},
+      "p95_latency": 0.173068708
+    },
+    "100": {
+      "successRate": 1.0,
+      "total": 5.29,
+      "slowest": 1.36,
+      "fastest": 0.0,
+      "average": 0.33,
+      "requestsPerSec": 4701.16,
+      "totalData": 46437891,
+      "sizePerRequest": 1867,
+      "sizePerSec": 8777058.89,
+      "errorDistribution": {},
+      "p95_latency": 0.358591458
+    },
+    "250": {
+      "successRate": 0.87,
+      "total": 5.8,
+      "slowest": 4.89,
+      "fastest": 0.01,
+      "average": 0.76,
+      "requestsPerSec": 5333.81,
+      "totalData": 50142019,
+      "sizePerRequest": 1867,
+      "sizePerSec": 8642696.5,
+      "errorDistribution": {
+        "Connection reset by peer (os error 54)": 226,
+        "Invalid argument (os error 22)": 2,
+        "connection error": 1996,
+        "operation was canceled": 1864
+      },
+      "p95_latency": 3.061141875
+    }
+  },
+  "timestamp": "2025-05-12T02:25:52Z"
+}

@@ -98,7 +98,7 @@ def run_benchmark(test_name, test_case, server_config_file_path, server)
           result_output
         end
 
-      binding.b if interrupted?
+      binding.b if interrupted? # rubocop:disable Lint/Debugger
 
       [level, parsed_result]
     end.to_h

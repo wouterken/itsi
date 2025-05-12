@@ -4,58 +4,58 @@
   "results": {
     "10": {
       "successRate": 1.0,
-      "total": 2.0,
+      "total": 5.0,
       "slowest": 0.0,
       "fastest": 0.0,
       "average": 0.0,
-      "requestsPerSec": 7479.86,
-      "totalData": 194727,
+      "requestsPerSec": 7197.28,
+      "totalData": 468143,
       "sizePerRequest": 13,
-      "sizePerSec": 97238.22,
+      "sizePerSec": 93564.59,
       "errorDistribution": {},
-      "p95_latency": 0.001727916
+      "p95_latency": 0.001753583
     },
     "50": {
       "successRate": 1.0,
-      "total": 2.01,
+      "total": 5.01,
       "slowest": 0.01,
       "fastest": 0.0,
       "average": 0.01,
-      "requestsPerSec": 7382.79,
-      "totalData": 192933,
+      "requestsPerSec": 7134.53,
+      "totalData": 464620,
       "sizePerRequest": 13,
-      "sizePerSec": 95976.31,
+      "sizePerSec": 92748.86,
       "errorDistribution": {},
-      "p95_latency": 0.007585167
+      "p95_latency": 0.007859834
     },
     "100": {
       "successRate": 1.0,
-      "total": 2.01,
-      "slowest": 0.03,
+      "total": 5.01,
+      "slowest": 0.02,
       "fastest": 0.0,
       "average": 0.01,
-      "requestsPerSec": 7391.49,
-      "totalData": 193544,
+      "requestsPerSec": 7248.09,
+      "totalData": 472498,
       "sizePerRequest": 13,
-      "sizePerSec": 96089.33,
+      "sizePerSec": 94225.17,
       "errorDistribution": {},
-      "p95_latency": 0.014324916
+      "p95_latency": 0.0146965
     },
     "250": {
-      "successRate": 0.99,
-      "total": 2.04,
+      "successRate": 1.0,
+      "total": 5.04,
       "slowest": 0.04,
       "fastest": 0.01,
       "average": 0.03,
-      "requestsPerSec": 7533.88,
-      "totalData": 197847,
+      "requestsPerSec": 7266.29,
+      "totalData": 474461,
       "sizePerRequest": 13,
-      "sizePerSec": 97174.25,
+      "sizePerSec": 94180.46,
       "errorDistribution": {
-        "connection error": 120
+        "connection error": 109
       },
-      "p95_latency": 0.034279167
+      "p95_latency": 0.036005334
     }
   },
-  "timestamp": "2025-05-11T00:53:42Z"
+  "timestamp": "2025-05-12T01:51:52Z"
 }

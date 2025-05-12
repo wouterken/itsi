@@ -4,59 +4,58 @@
   "results": {
     "10": {
       "successRate": 1.0,
-      "total": 2.0,
-      "slowest": 0.07,
+      "total": 5.0,
+      "slowest": 0.0,
       "fastest": 0.0,
       "average": 0.0,
-      "requestsPerSec": 10527.09,
-      "totalData": 800812,
+      "requestsPerSec": 11577.11,
+      "totalData": 2200732,
       "sizePerRequest": 38,
-      "sizePerSec": 400029.31,
+      "sizePerSec": 439930.23,
       "errorDistribution": {},
-      "p95_latency": 0.001867166
+      "p95_latency": 0.001627125
     },
     "50": {
       "successRate": 1.0,
-      "total": 2.01,
-      "slowest": 0.26,
+      "total": 5.01,
+      "slowest": 0.01,
       "fastest": 0.0,
-      "average": 0.01,
-      "requestsPerSec": 8579.41,
-      "totalData": 654246,
+      "average": 0.0,
+      "requestsPerSec": 12062.17,
+      "totalData": 2294972,
       "sizePerRequest": 38,
-      "sizePerSec": 326017.76,
+      "sizePerSec": 458362.61,
       "errorDistribution": {},
-      "p95_latency": 0.006613667
+      "p95_latency": 0.005612458
     },
     "100": {
       "successRate": 1.0,
-      "total": 2.09,
-      "slowest": 0.21,
+      "total": 5.01,
+      "slowest": 0.03,
       "fastest": 0.0,
       "average": 0.01,
-      "requestsPerSec": 9756.44,
-      "totalData": 776188,
+      "requestsPerSec": 12007.33,
+      "totalData": 2286232,
       "sizePerRequest": 38,
-      "sizePerSec": 370744.66,
+      "sizePerSec": 456278.42,
       "errorDistribution": {},
-      "p95_latency": 0.012053916
+      "p95_latency": 0.010569625
     },
     "250": {
-      "successRate": 0.99,
-      "total": 2.02,
-      "slowest": 0.21,
+      "successRate": 1.0,
+      "total": 5.02,
+      "slowest": 0.17,
       "fastest": 0.0,
       "average": 0.02,
-      "requestsPerSec": 11859.27,
-      "totalData": 901550,
+      "requestsPerSec": 11742.77,
+      "totalData": 2230182,
       "sizePerRequest": 38,
-      "sizePerSec": 445915.74,
+      "sizePerSec": 444083.87,
       "errorDistribution": {
-        "Connection reset by peer (os error 54)": 1,
-        "connection error": 251
+        "connection error": 283
       },
-      "p95_latency": 0.024423958
+      "p95_latency": 0.02521425
     }
   },
-  "timestamp": "2025-05-11T01:00:58Z"
+  "timestamp": "2025-05-12T02:06:08Z"
 }

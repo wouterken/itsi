@@ -4,66 +4,66 @@
   "results": {
     "10": {
       "successRate": 1.0,
-      "total": 2.0,
+      "total": 5.0,
       "slowest": 1.0,
       "fastest": 1.0,
       "average": 1.0,
-      "requestsPerSec": 159.79,
-      "totalData": 1760,
+      "requestsPerSec": 159.89,
+      "totalData": 7040,
       "sizePerRequest": 11,
-      "sizePerSec": 878.86,
+      "sizePerSec": 1407.07,
       "errorDistribution": {
         "aborted due to deadline": 160
       },
-      "p95_latency": 1.001747334
+      "p95_latency": 1.003342041
     },
     "50": {
       "successRate": 1.0,
-      "total": 2.0,
+      "total": 5.01,
       "slowest": 1.01,
       "fastest": 1.0,
       "average": 1.0,
-      "requestsPerSec": 798.13,
-      "totalData": 8800,
+      "requestsPerSec": 799.07,
+      "totalData": 35200,
       "sizePerRequest": 11,
-      "sizePerSec": 4389.73,
+      "sizePerSec": 7031.86,
       "errorDistribution": {
         "aborted due to deadline": 800
       },
-      "p95_latency": 1.007482292
+      "p95_latency": 1.011219125
     },
     "100": {
       "successRate": 1.0,
-      "total": 2.01,
+      "total": 5.01,
       "slowest": 1.02,
       "fastest": 1.0,
       "average": 1.01,
-      "requestsPerSec": 1594.85,
-      "totalData": 17600,
+      "requestsPerSec": 1597.58,
+      "totalData": 70400,
       "sizePerRequest": 11,
-      "sizePerSec": 8771.69,
+      "sizePerSec": 14058.67,
       "errorDistribution": {
         "aborted due to deadline": 1600
       },
-      "p95_latency": 1.019744167
+      "p95_latency": 1.018223042
     },
     "250": {
-      "successRate": 0.67,
-      "total": 2.01,
-      "slowest": 1.05,
+      "successRate": 0.91,
+      "total": 5.01,
+      "slowest": 1.08,
       "fastest": 1.0,
       "average": 1.02,
-      "requestsPerSec": 4950.71,
-      "totalData": 44000,
+      "requestsPerSec": 4322.82,
+      "totalData": 176000,
       "sizePerRequest": 11,
-      "sizePerSec": 21888.19,
+      "sizePerSec": 35118.95,
       "errorDistribution": {
         "aborted due to deadline": 4000,
-        "connection error": 1941,
-        "operation was canceled": 11
+        "connection error": 1341,
+        "operation was canceled": 323
       },
-      "p95_latency": 1.03926925
+      "p95_latency": 1.038797333
     }
   },
-  "timestamp": "2025-05-11T01:02:59Z"
+  "timestamp": "2025-05-12T02:10:25Z"
 }

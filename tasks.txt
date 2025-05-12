@@ -1,10 +1,38 @@
+-- One shot single response. Only create stream if truly necessary
+-- Diagnose and Fix broken reload (not restart) functionality (and write a spec for it)
+-- Parameterize and test HTTP1 opts
+-- Double check rack env stream close is actually safe
+-- Try separate queue per worker instead of single shared queue.
+  -- Try tokio versus async channel
+
+-- Try better pinning logic. Pin All Ruby workers to Core WORKER_OFFSET*2, Hyper to WORKER_OFFSET*1 (When pinning is enabled)
+
+-- Request backlog size supports nil (should be unbounded in this case)
+
+-- Test rebind logic
+-- Retry parent acceptor
+-- Benchmark/htop workers in multi-workers
+
+- Complete Benchmarks
+-- Add IO Party test cases
+-- Add static file test cases
+
+
+- ACME:
+  - HTTP-01 challenge
+  - Live cert reload (Maybe on-demand?)
+
+- Add way to opt non Itsi.rb files into LSP
+
+- First class Rackless Websockets
+
+- Fat binary gems
+
 Tasks:
 - Static ruby build
-- Add way to opt non Itsi.rb files into LSP
 - OTel
 - Even faster Hash creation for Rack
 - Image resizer
-- First class Rackless Websockets
 - Print out warning if we can detect that a location block will never be hit.
 - Built in obs Dashboard + Stats
 - WASM pluggable middleware

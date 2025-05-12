@@ -24,66 +24,49 @@ use std::{
 use tokio::{
     io::AsyncReadExt,
     net::UnixStream as TokioUnixStream,
-    sync::{
-        mpsc::{self, Receiver, Sender},
-        watch, Notify,
-    },
+    sync::{mpsc::Sender, watch, Notify},
 };
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::io::ReaderStream;
-use tracing::{info, warn};
+use tracing::warn;
 
-use crate::server::{
-    byte_frame::ByteFrame, http_message_types::HttpResponse,
-    serve_strategy::single_mode::RunningPhase,
-};
+use crate::server::{http_message_types::HttpResponse, serve_strategy::single_mode::RunningPhase};
 
 #[magnus::wrap(class = "Itsi::HttpResponse", free_immediately, size)]
 #[derive(Debug, Clone)]
 pub struct ItsiHttpResponse {
     pub data: Arc<RwLock<ResponseData>>,
     pub response_ready_notify: Arc<Notify>,
+    pub shutdown_rx: watch::Receiver<RunningPhase>,
     pub parts: Arc<Parts>,
-    pub body_state: Arc<RwLock<BodyState>>,
-}
-
-#[derive(Debug)]
-enum BodyState {
-    Pending,
-    Full(RwLock<Option<Full<Bytes>>>),
-    Stream {
-        rx: RwLock<Option<Receiver<ByteFrame>>>,
-        tx: Sender<ByteFrame>,
-    },
-    Closed,
-}
-
-enum BodyType {
-    Full,
-    Stream,
-    Empty,
 }
 
 #[derive(Debug)]
 pub struct ResponseData {
     pub response: Option<HttpResponse>,
+    pub frame_writer: Option<Sender<Bytes>>,
     pub hijacked_socket: Option<UnixStream>,
 }
 
 impl ItsiHttpResponse {
-    pub fn new(parts: Arc<Parts>, response_ready_notify: Arc<Notify>) -> Self {
+    pub fn new(
+        parts: Arc<Parts>,
+        response_ready_notify: Arc<Notify>,
+        shutdown_rx: watch::Receiver<RunningPhase>,
+    ) -> Self {
         Self {
             parts,
             response_ready_notify,
-            body_state: Arc::new(RwLock::new(BodyState::Pending)),
+            shutdown_rx,
             data: Arc::new(RwLock::new(ResponseData {
                 response: Some(Response::new(BoxBody::new(Empty::new()))),
+                frame_writer: None,
                 hijacked_socket: None,
             })),
         }
     }
 
-    pub async fn build(&self, shutdown_rx: watch::Receiver<RunningPhase>) -> HttpResponse {
+    pub async fn get_response(&self) -> HttpResponse {
         if self.is_hijacked() {
             return match self.process_hijacked_response().await {
                 Ok(result) => result,
@@ -94,58 +77,7 @@ impl ItsiHttpResponse {
             };
         }
 
-        let mut response = self.data.write().response.take().unwrap();
-
-        match &*self.body_state.write() {
-            BodyState::Pending => {}
-            BodyState::Full(full) => {
-                *response.body_mut() = BoxBody::new(full.write().take().unwrap());
-            }
-            BodyState::Stream { rx, tx } => {
-                let frame_stream = unfold(
-                    (ReceiverStream::new(rx.write().take().unwrap()), shutdown_rx),
-                    |(mut receiver, mut shutdown_rx)| async move {
-                        if let RunningPhase::ShutdownPending = *shutdown_rx.borrow() {
-                            return None;
-                        }
-                        loop {
-                            tokio::select! {
-                                maybe_bytes = receiver.next() => {
-                                  match maybe_bytes {
-                                    Some(ByteFrame::Data(bytes)) | Some(ByteFrame::End(bytes)) => {
-                                      return Some((Ok(Frame::data(bytes)), (receiver, shutdown_rx)));
-                                    }
-                                    _ => {
-                                      return None;
-                                    }
-                                  }
-                                },
-                                _ = shutdown_rx.changed() => {
-                                    match *shutdown_rx.borrow() {
-                                        RunningPhase::ShutdownPending => {
-                                            warn!("Disconnecting streaming client.");
-                                            return None;
-                                        },
-                                        _ => continue,
-                                    }
-                                }
-                            }
-                        }
-                    },
-                );
-
-                *response.body_mut() = BoxBody::new(StreamBody::new(frame_stream))
-            }
-            BodyState::Closed => {}
-        };
-
-        response
-    }
-
-    pub fn close(&self) -> MagnusResult<()> {
-        self.close_write()?;
-        self.close_read()?;
-        Ok(())
+        self.data.write().response.take().unwrap()
     }
 
     async fn two_way_bridge(upgraded: Upgraded, local: TokioUnixStream) -> io::Result<()> {
@@ -292,38 +224,71 @@ impl ItsiHttpResponse {
         self.close_write().ok();
         if let Some(ref mut response) = self.data.write().response {
             *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+            self.response_ready_notify.notify_one();
         }
     }
 
+    pub fn send_frame(&self, frame: Bytes) -> MagnusResult<()> {
+        {
+            let mut data_guard = self.data.write();
+            if data_guard.frame_writer.is_none() && data_guard.response.is_some() {
+                if let Some(ref mut response) = data_guard.response {
+                    let (writer, reader) = tokio::sync::mpsc::channel(5);
+                    let mut shutdown_rx = self.shutdown_rx.clone();
+                    let mut stream = ReceiverStream::new(reader);
+
+                    let frame_stream = async_stream::stream! {
+                        loop {
+                            tokio::select! {
+                                maybe_bytes = stream.next() => {
+                                    match maybe_bytes {
+                                        Some(bytes) => {
+                                            yield Ok(Frame::data(bytes));
+                                        }
+                                        _ => break,
+                                    }
+                                },
+                                _ = shutdown_rx.changed() => {
+                                    if *shutdown_rx.borrow() == RunningPhase::ShutdownPending {
+                                        warn!("Disconnecting streaming client.");
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    };
+
+                    *response.body_mut() = BoxBody::new(StreamBody::new(frame_stream));
+                    data_guard.frame_writer.replace(writer);
+                    self.response_ready_notify.notify_one();
+                }
+            }
+        }
+        if let Some(frame_writer) = self.data.read().frame_writer.as_ref() {
+            frame_writer
+                .blocking_send(frame)
+                .map_err(|_| itsi_error::ItsiError::ClientConnectionClosed)?
+        }
+        Ok(())
+    }
+
     pub fn send_and_close(&self, frame: Bytes) -> MagnusResult<()> {
-        if matches!(*self.body_state.read(), BodyState::Stream { .. }) {
+        if self.data.read().frame_writer.is_some() {
             self.send_frame(frame)?;
             self.close()?;
-        } else if matches!(*self.body_state.read(), BodyState::Pending) {
-            *self.body_state.write() = BodyState::Full(RwLock::new(Some(Full::new(frame))));
+            return Ok(());
+        }
+        if let Some(ref mut response) = self.data.write().response {
+            *response.body_mut() = BoxBody::new(Full::new(frame));
             self.response_ready_notify.notify_one();
         }
 
         Ok(())
     }
 
-    pub fn send_frame(&self, frame: Bytes) -> MagnusResult<()> {
-        let mut state = self.body_state.write();
-
-        if let BodyState::Stream { tx, .. } = &mut *state {
-            self.send_frame_into(ByteFrame::Data(frame), &tx)?;
-            return Ok(());
-        };
-
-        let (tx, rx) = tokio::sync::mpsc::channel::<ByteFrame>(3);
-        *state = BodyState::Stream {
-            rx: RwLock::new(Some(rx)),
-            tx: tx.clone(),
-        };
-        self.response_ready_notify.notify_one();
-        self.send_frame_into(ByteFrame::Data(frame), &tx)?;
-
-        Ok(())
+    pub fn close_write(&self) -> MagnusResult<bool> {
+        self.data.write().frame_writer.take();
+        Ok(true)
     }
 
     pub fn recv_frame(&self) {
@@ -335,26 +300,17 @@ impl ItsiHttpResponse {
     }
 
     pub fn is_closed(&self) -> bool {
-        matches!(*self.body_state.read(), BodyState::Closed)
-    }
-
-    pub fn send_frame_into(
-        &self,
-        frame: ByteFrame,
-        writer: &mpsc::Sender<ByteFrame>,
-    ) -> MagnusResult<()> {
-        Ok(writer
-            .blocking_send(frame)
-            .map_err(|_| itsi_error::ItsiError::ClientConnectionClosed)?)
+        self.data.read().response.is_none() && self.data.read().frame_writer.is_none()
     }
 
     pub fn is_hijacked(&self) -> bool {
         self.data.read().hijacked_socket.is_some()
     }
 
-    pub fn close_write(&self) -> MagnusResult<bool> {
-        *self.body_state.write() = BodyState::Closed;
-        Ok(true)
+    pub fn close(&self) -> MagnusResult<()> {
+        self.close_write()?;
+        self.close_read()?;
+        Ok(())
     }
 
     pub fn accept_str(&self) -> &str {
@@ -474,7 +430,8 @@ impl ItsiHttpResponse {
         let stream = unsafe { UnixStream::from_raw_fd(fd) };
 
         self.data.write().hijacked_socket = Some(stream);
-        self.close();
+        self.response_ready_notify.notify_one();
+        self.close()?;
         Ok(())
     }
 }

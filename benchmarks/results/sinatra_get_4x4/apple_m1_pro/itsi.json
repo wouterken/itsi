@@ -4,58 +4,58 @@
   "results": {
     "10": {
       "successRate": 1.0,
-      "total": 2.0,
+      "total": 5.0,
       "slowest": 0.0,
       "fastest": 0.0,
       "average": 0.0,
-      "requestsPerSec": 11764.85,
-      "totalData": 306137,
+      "requestsPerSec": 16960.93,
+      "totalData": 1103154,
       "sizePerRequest": 13,
-      "sizePerSec": 152943.09,
+      "sizePerSec": 220492.12,
       "errorDistribution": {},
-      "p95_latency": 0.001239084
+      "p95_latency": 0.001136625
     },
     "50": {
       "successRate": 1.0,
-      "total": 2.01,
+      "total": 5.01,
       "slowest": 0.01,
       "fastest": 0.0,
       "average": 0.0,
-      "requestsPerSec": 18934.35,
-      "totalData": 493623,
+      "requestsPerSec": 18504.74,
+      "totalData": 1204398,
       "sizePerRequest": 13,
-      "sizePerSec": 246146.55,
+      "sizePerSec": 240561.66,
       "errorDistribution": {},
-      "p95_latency": 0.004234167
+      "p95_latency": 0.006986125
     },
     "100": {
       "successRate": 1.0,
-      "total": 2.01,
+      "total": 5.01,
       "slowest": 0.01,
       "fastest": 0.0,
       "average": 0.01,
-      "requestsPerSec": 18979.89,
-      "totalData": 495690,
+      "requestsPerSec": 18932.67,
+      "totalData": 1232660,
       "sizePerRequest": 13,
-      "sizePerSec": 246738.6,
+      "sizePerSec": 246124.69,
       "errorDistribution": {},
-      "p95_latency": 0.008449292
+      "p95_latency": 0.008765208
     },
     "250": {
       "successRate": 1.0,
-      "total": 2.02,
-      "slowest": 0.03,
+      "total": 5.02,
+      "slowest": 0.04,
       "fastest": 0.0,
       "average": 0.01,
-      "requestsPerSec": 18690.33,
-      "totalData": 489151,
+      "requestsPerSec": 18702.91,
+      "totalData": 1220011,
       "sizePerRequest": 13,
-      "sizePerSec": 242246.8,
+      "sizePerSec": 242868.72,
       "errorDistribution": {
-        "connection error": 113
+        "connection error": 104
       },
-      "p95_latency": 0.020156917
+      "p95_latency": 0.027003833
     }
   },
-  "timestamp": "2025-05-11T00:56:16Z"
+  "timestamp": "2025-05-12T01:56:53Z"
 }
