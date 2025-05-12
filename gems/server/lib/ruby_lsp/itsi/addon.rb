@@ -22,14 +22,14 @@ module RubyLsp
 
 
       def create_completion_listener(response_builder, node_context, dispatcher, uri)
-        return unless uri.to_s.end_with?("Itsi.rb")
+        return unless uri.to_s =~ /itsi.rb$/i
         @in_itsi_file = true
         CompletionListener.new(response_builder, node_context, dispatcher, uri)
       end
 
       def create_hover_listener(response_builder, node_context, dispatcher)
         hl = dispatcher.listeners[:on_call_node_enter].find { |c| c.is_a?(RubyLsp::Listeners::Hover) }
-        return unless hl.instance_variable_get("@path").to_s.end_with?("Itsi.rb")
+        return unless hl.instance_variable_get("@path").to_s =~ /itsi.rb$/i
         HoverListener.new(response_builder, node_context, dispatcher)
       end
     end

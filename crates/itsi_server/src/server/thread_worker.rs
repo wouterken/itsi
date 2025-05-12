@@ -17,8 +17,7 @@ use std::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         Arc,
     },
-    thread,
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 use tokio::{runtime::Builder as RuntimeBuilder, sync::watch};
 use tracing::instrument;
@@ -430,60 +429,61 @@ impl ThreadWorker {
         receiver: Arc<async_channel::Receiver<RequestJob>>,
         terminated: Arc<AtomicBool>,
     ) {
-        let ruby = Ruby::get().unwrap();
         let mut idle_counter = 0;
-        let self_ref = self.clone();
         call_without_gvl(|| loop {
-            if receiver.is_empty() {
-                if let Some(oob_gc_threshold) = params.oob_gc_responses_threshold {
-                    idle_counter = (idle_counter + 1) % oob_gc_threshold;
-                    if idle_counter == 0 {
-                        call_with_gvl(|_ruby| {
-                            ruby.gc_start();
-                        });
-                    }
-                };
-            }
             match receiver.recv_blocking() {
-                Ok(RequestJob::ProcessHttpRequest(request, app_proc)) => {
-                    self_ref.request_id.fetch_add(1, Ordering::Relaxed);
-                    self_ref.current_request_start.store(
-                        SystemTime::now()
-                            .duration_since(UNIX_EPOCH)
-                            .unwrap()
-                            .as_secs(),
-                        Ordering::Relaxed,
-                    );
-                    call_with_gvl(|_ruby| {
-                        request.process(&ruby, app_proc).ok();
-                    });
-                    if terminated.load(Ordering::Relaxed) {
-                        break;
+                Err(_) => break,
+                Ok(RequestJob::Shutdown) => break,
+                Ok(request_job) => call_with_gvl(|ruby| {
+                    self.process_one(&ruby, request_job);
+                    while let Ok(request_job) = receiver.try_recv() {
+                        if matches!(request_job, RequestJob::Shutdown) {
+                            terminated.store(true, Ordering::Relaxed);
+                            break;
+                        }
+                        self.process_one(&ruby, request_job);
                     }
-                }
-                Ok(RequestJob::ProcessGrpcRequest(request, app_proc)) => {
-                    self_ref.request_id.fetch_add(1, Ordering::Relaxed);
-                    self_ref.current_request_start.store(
-                        SystemTime::now()
-                            .duration_since(UNIX_EPOCH)
-                            .unwrap()
-                            .as_secs(),
-                        Ordering::Relaxed,
-                    );
-                    call_with_gvl(|_ruby| {
-                        request.process(&ruby, app_proc).ok();
-                    });
-                    if terminated.load(Ordering::Relaxed) {
-                        break;
+                    if let Some(thresh) = params.oob_gc_responses_threshold {
+                        idle_counter = (idle_counter + 1) % thresh;
+                        if idle_counter == 0 {
+                            ruby.gc_start();
+                        }
                     }
-                }
-                Ok(RequestJob::Shutdown) => {
-                    break;
-                }
-                Err(_) => {
-                    thread::sleep(Duration::from_micros(1));
-                }
+                }),
+            };
+            if terminated.load(Ordering::Relaxed) {
+                break;
             }
         });
+    }
+
+    fn process_one(self: &Arc<Self>, ruby: &Ruby, job: RequestJob) {
+        match job {
+            RequestJob::ProcessHttpRequest(request, app_proc) => {
+                self.request_id.fetch_add(1, Ordering::Relaxed);
+                self.current_request_start.store(
+                    SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs(),
+                    Ordering::Relaxed,
+                );
+                request.process(ruby, app_proc).ok();
+            }
+
+            RequestJob::ProcessGrpcRequest(request, app_proc) => {
+                self.request_id.fetch_add(1, Ordering::Relaxed);
+                self.current_request_start.store(
+                    SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs(),
+                    Ordering::Relaxed,
+                );
+                request.process(ruby, app_proc).ok();
+            }
+
+            RequestJob::Shutdown => unreachable!(),
+        }
     }
 }

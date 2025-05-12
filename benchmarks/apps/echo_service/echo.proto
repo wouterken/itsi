@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package echo;
+
+import "google/type/money.proto";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/any.proto";
+
+service EchoService {
+  // Simple unary method
+  rpc Echo(EchoRequest) returns (EchoResponse) {}
+  
+  // Server streaming method
+  rpc EchoStream(EchoRequest) returns (stream EchoResponse) {}
+  
+  // Client streaming method
+  rpc EchoCollect(stream EchoRequest) returns (EchoResponse) {}
+  
+  // Bidirectional streaming method
+  rpc EchoBidirectional(stream EchoRequest) returns (stream EchoResponse) {}
+
+  // New endpoint demonstrating Google's common protobuf types
+  rpc ProcessPayment(PaymentRequest) returns (PaymentResponse) {}
+}
+
+message EchoRequest {
+  string message = 1;
+}
+
+message EchoResponse {
+  string message = 1;
+  int32 count = 2;
+}
+
+// New messages demonstrating Google's common protobuf types
+message PaymentRequest {
+  string customer_id = 1;
+  google.type.Money amount = 2;
+  google.protobuf.Timestamp payment_time = 3;
+  // Optional field using google.protobuf.Any for additional metadata
+  google.protobuf.Any metadata = 4;
+}
+
+message PaymentResponse {
+  string transaction_id = 1;
+  google.protobuf.Timestamp processed_at = 2;
+  PaymentStatus status = 3;
+  // Optional error message
+  optional string error_message = 4;
+}
+
+enum PaymentStatus {
+  PAYMENT_STATUS_UNSPECIFIED = 0;
+  PAYMENT_STATUS_SUCCESS = 1;
+  PAYMENT_STATUS_FAILED = 2;
+  PAYMENT_STATUS_PENDING = 3;
+} 

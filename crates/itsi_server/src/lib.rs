@@ -58,6 +58,7 @@ fn init(ruby: &Ruby) -> Result<()> {
     request.define_method("rack_protocol", method!(ItsiHttpRequest::rack_protocol, 0))?;
     request.define_method("host", method!(ItsiHttpRequest::host, 0))?;
     request.define_method("headers", method!(ItsiHttpRequest::headers, 0))?;
+    request.define_method("each_header", method!(ItsiHttpRequest::each_header, 0))?;
     request.define_method("uri", method!(ItsiHttpRequest::uri, 0))?;
     request.define_method("header", method!(ItsiHttpRequest::header, 1))?;
     request.define_method("[]", method!(ItsiHttpRequest::header, 1))?;
@@ -80,6 +81,10 @@ fn init(ruby: &Ruby) -> Result<()> {
 
     let response = ruby.get_inner(&ITSI_RESPONSE);
     response.define_method("[]=", method!(ItsiHttpResponse::add_header, 2))?;
+    response.define_method(
+        "reserve_headers",
+        method!(ItsiHttpResponse::reserve_headers, 1),
+    )?;
     response.define_method("add_header", method!(ItsiHttpResponse::add_header, 2))?;
     response.define_method("add_headers", method!(ItsiHttpResponse::add_headers, 1))?;
     response.define_method("status=", method!(ItsiHttpResponse::set_status, 1))?;

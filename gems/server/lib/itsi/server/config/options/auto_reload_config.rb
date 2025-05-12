@@ -14,11 +14,15 @@ module Itsi
         end
 
         def build!
+          return if @auto_reloading
+          src = caller.find{|l| !(l =~ /lib\/itsi\/server\/config/) }.split(":").first
+
           location.instance_eval do
             return if @auto_reloading
 
             if @included
               @included.each do |file|
+                next if  "#{file}.rb" == src
                 if ENV["BUNDLE_BIN_PATH"]
                   watch "#{file}.rb", [%w[bundle exec itsi restart]]
                 else
@@ -29,9 +33,9 @@ module Itsi
             @auto_reloading = true
 
             if ENV["BUNDLE_BIN_PATH"]
-              watch "Itsi.rb", [%w[bundle exec itsi restart]]
+              watch src, [%w[bundle exec itsi restart]]
             else
-              watch "Itsi.rb", [%w[itsi restart]]
+              watch src, [%w[itsi restart]]
             end
           end
         end

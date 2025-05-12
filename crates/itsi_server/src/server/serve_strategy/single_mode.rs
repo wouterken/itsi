@@ -45,6 +45,7 @@ pub struct SingleMode {
     pub status: RwLock<HashMap<u8, (u64, u64)>>,
 }
 
+#[derive(PartialEq, Debug)]
 pub enum RunningPhase {
     Running,
     ShutdownPending,
@@ -59,7 +60,7 @@ impl SingleMode {
         executor
             .http1()
             .header_read_timeout(server_config.server_params.read().header_read_timeout)
-            .writev(true)
+            .pipeline_flush(true)
             .timer(TokioTimer::new());
         executor
             .http2()
@@ -253,91 +254,95 @@ impl SingleMode {
             return Ok(());
         }
         let runtime = self.build_runtime();
-        let result = runtime.block_on(
-          async  {
-              let mut listener_task_set = JoinSet::new();
-              let server_params = self.server_config.server_params.read().clone();
-              if let Err(err) = server_params.initialize_middleware().await {
-                  error!("Failed to initialize middleware: {}", err);
-                  return Err(ItsiError::new("Failed to initialize middleware"))
-              }
-              let tokio_listeners = server_params.listeners.lock()
-                  .drain(..)
-                  .map(|list| {
-                    Arc::new(list.into_tokio_listener())
-                  })
-                  .collect::<Vec<_>>();
+        let result = runtime.block_on(async {
+            let mut listener_task_set = JoinSet::new();
+            let server_params = self.server_config.server_params.read().clone();
+            if let Err(err) = server_params.initialize_middleware().await {
+                error!("Failed to initialize middleware: {}", err);
+                return Err(ItsiError::new("Failed to initialize middleware"));
+            }
+            let tokio_listeners = server_params
+                .listeners
+                .lock()
+                .drain(..)
+                .map(|list| Arc::new(list.into_tokio_listener()))
+                .collect::<Vec<_>>();
 
-              tokio_listeners.iter().cloned().for_each(|listener| {
-                  let shutdown_sender = shutdown_sender.clone();
-                  let job_sender = job_sender.clone();
-                  let nonblocking_sender = nonblocking_sender.clone();
+            tokio_listeners.iter().cloned().for_each(|listener| {
+                let shutdown_sender = shutdown_sender.clone();
+                let job_sender = job_sender.clone();
+                let nonblocking_sender = nonblocking_sender.clone();
 
-                  let mut lifecycle_rx = self.lifecycle_channel.subscribe();
-                  let mut shutdown_receiver = shutdown_sender.subscribe();
-                  let mut acceptor = Acceptor{
-                      acceptor_args: Arc::new(
-                        AcceptorArgs{
-                          strategy: self.clone(),
-                          listener_info: listener.listener_info(),
-                          shutdown_receiver: shutdown_sender.subscribe(),
-                          job_sender: job_sender.clone(),
-                          nonblocking_sender: nonblocking_sender.clone(),
-                          server_params: server_params.clone()
+                let mut lifecycle_rx = self.lifecycle_channel.subscribe();
+                let mut shutdown_receiver = shutdown_sender.subscribe();
+                let mut acceptor = Acceptor {
+                    acceptor_args: Arc::new(AcceptorArgs {
+                        strategy: self.clone(),
+                        listener_info: listener.listener_info(),
+                        shutdown_receiver: shutdown_sender.subscribe(),
+                        job_sender: job_sender.clone(),
+                        nonblocking_sender: nonblocking_sender.clone(),
+                        server_params: server_params.clone(),
+                    }),
+                    join_set: JoinSet::new(),
+                };
+
+                let shutdown_rx_for_acme_task = shutdown_receiver.clone();
+                let acme_task_listener_clone = listener.clone();
+                // let after_accept_wait = if server_params.workers > 1{
+                //  Some(Duration::from_micros(10 * server_params.workers as u64))}
+                // else{
+                //   None
+                // };
+                listener_task_set.spawn(async move {
+                    acme_task_listener_clone
+                        .spawn_acme_event_task(shutdown_rx_for_acme_task)
+                        .await;
+                });
+
+                listener_task_set.spawn(async move {
+                    loop {
+                        tokio::select! {
+                            accept_result = listener.accept() => {
+                                match accept_result {
+                                    Ok(accepted) => acceptor.serve_connection(accepted).await,
+                                    Err(e) => debug!("Listener.accept failed: {:?}", e)
+                                }
+                            },
+                            _ = shutdown_receiver.changed() => {
+                                debug!("Shutdown requested via receiver");
+                                break;
+                            },
+                            lifecycle_event = lifecycle_rx.recv() => {
+                                match lifecycle_event {
+                                    Ok(LifecycleEvent::Shutdown) => {
+                                        debug!("Received LifecycleEvent::Shutdown");
+                                        let _ = shutdown_sender.send(RunningPhase::ShutdownPending);
+                                        for _ in 0..worker_count {
+                                            let _ = job_sender.send_blocking(RequestJob::Shutdown);
+                                            let _ = nonblocking_sender.send_blocking(RequestJob::Shutdown);
+                                        }
+                                        break;
+                                    },
+                                    Err(e) =>  error!("Error receiving lifecycle event: {:?}", e),
+                                    _ => ()
+                                }
+                            }
                         }
-                      ),
-                      join_set: JoinSet::new()
-                  };
+                    }
+                    acceptor.join().await;
+                });
+            });
 
-                  let shutdown_rx_for_acme_task = shutdown_receiver.clone();
-                  let acme_task_listener_clone = listener.clone();
-                  listener_task_set.spawn(async move {
-                      acme_task_listener_clone.spawn_acme_event_task(shutdown_rx_for_acme_task).await;
-                  });
-
-                  listener_task_set.spawn(async move {
-                      loop {
-                          tokio::select! {
-                              accept_result = listener.accept() => {
-                                  match accept_result {
-                                      Ok(accepted) => acceptor.serve_connection(accepted).await,
-                                      Err(e) => debug!("Listener.accept failed: {:?}", e)
-                                  }
-                              },
-                              _ = shutdown_receiver.changed() => {
-                                  debug!("Shutdown requested via receiver");
-                                  break;
-                              },
-                              lifecycle_event = lifecycle_rx.recv() => {
-                                  match lifecycle_event {
-                                      Ok(LifecycleEvent::Shutdown) => {
-                                          debug!("Received LifecycleEvent::Shutdown");
-                                          let _ = shutdown_sender.send(RunningPhase::ShutdownPending);
-                                          for _ in 0..worker_count {
-                                              let _ = job_sender.send(RequestJob::Shutdown).await;
-                                              let _ = nonblocking_sender.send(RequestJob::Shutdown).await;
-                                          }
-                                          break;
-                                      },
-                                      Err(e) =>  error!("Error receiving lifecycle event: {:?}", e),
-                                      _ => ()
-                                  }
-                              }
-                          }
-                      }
-                      acceptor.join().await;
-                  });
-              });
-
-              if self.is_single_mode() {
+            if self.is_single_mode() {
                 self.invoke_hook("after_start");
-              }
+            }
 
-              while let Some(_res) = listener_task_set.join_next().await {}
-              drop(tokio_listeners);
+            while let Some(_res) = listener_task_set.join_next().await {}
+            drop(tokio_listeners);
 
-              Ok::<(), ItsiError>(())
-          });
+            Ok::<(), ItsiError>(())
+        });
 
         debug!("Single mode runtime exited.");
 

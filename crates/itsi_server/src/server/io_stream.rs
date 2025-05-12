@@ -34,12 +34,12 @@ pub enum IoStream {
 }
 
 impl IoStream {
-    pub fn addr(&self) -> SockAddr {
+    pub fn addr(&self) -> String {
         match self {
-            IoStream::Tcp { addr, .. } => addr.clone(),
-            IoStream::TcpTls { addr, .. } => addr.clone(),
-            IoStream::Unix { addr, .. } => addr.clone(),
-            IoStream::UnixTls { addr, .. } => addr.clone(),
+            IoStream::Tcp { addr, .. } => addr.to_string(),
+            IoStream::TcpTls { addr, .. } => addr.to_string(),
+            IoStream::Unix { addr, .. } => addr.to_string(),
+            IoStream::UnixTls { addr, .. } => addr.to_string(),
         }
     }
 }
