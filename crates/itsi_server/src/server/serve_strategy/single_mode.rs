@@ -289,11 +289,11 @@ impl SingleMode {
 
                 let shutdown_rx_for_acme_task = shutdown_receiver.clone();
                 let acme_task_listener_clone = listener.clone();
-                // let after_accept_wait = if server_params.workers > 1{
-                //  Some(Duration::from_micros(10 * server_params.workers as u64))}
-                // else{
-                //   None
-                // };
+                let after_accept_wait = if server_params.workers > 1{
+                 Some(Duration::from_nanos(10 * server_params.workers as u64))}
+                else{
+                  None
+                };
                 listener_task_set.spawn(async move {
                     acme_task_listener_clone
                         .spawn_acme_event_task(shutdown_rx_for_acme_task)
@@ -307,6 +307,9 @@ impl SingleMode {
                                 match accept_result {
                                     Ok(accepted) => acceptor.serve_connection(accepted).await,
                                     Err(e) => debug!("Listener.accept failed: {:?}", e)
+                                }
+                                if let Some(after_accept_wait) = after_accept_wait{
+                                  tokio::time::sleep(after_accept_wait).await;
                                 }
                             },
                             _ = shutdown_receiver.changed() => {
