@@ -142,7 +142,7 @@ def run_benchmark(
         workers: workers,
         http2: http2,
         concurrency: concurrency,
-        **(workers == 1 ? {rss_mb: (server.rss / 1024.0 / 1024.0).round(2) } : {}),
+        **(workers == 1 ? {rss_mb: (server.rss / (1024.0 * 1024.0)).round(2) } : {}),
         results: combine_results(result_outputs),
         timestamp: Time.now.utc.iso8601
       }

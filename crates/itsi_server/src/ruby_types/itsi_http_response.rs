@@ -30,7 +30,7 @@ use tokio::{
 };
 
 use tokio_util::io::ReaderStream;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 use crate::server::{http_message_types::HttpResponse, serve_strategy::single_mode::RunningPhase};
 
@@ -255,7 +255,7 @@ impl ItsiHttpResponse {
                                         while let Some(bytes) = reader.recv().await{
                                           yield Ok(Frame::data(bytes));
                                         }
-                                        warn!("Disconnecting streaming client.");
+                                        debug!("Disconnecting streaming client.");
                                         break;
                                     }
                                 }

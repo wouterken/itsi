@@ -64,7 +64,7 @@ impl ItsiServer {
         Ok(if server_config.server_params.read().workers > 1 {
             ServeStrategy::Cluster(Arc::new(ClusterMode::new(server_config.clone())))
         } else {
-            ServeStrategy::Single(Arc::new(SingleMode::new(server_config.clone())?))
+            ServeStrategy::Single(Arc::new(SingleMode::new(server_config.clone(), 0)?))
         })
     }
 

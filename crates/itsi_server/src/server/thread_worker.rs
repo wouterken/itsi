@@ -3,13 +3,12 @@ use itsi_error::ItsiError;
 use itsi_rb_helpers::{
     call_with_gvl, call_without_gvl, create_ruby_thread, kill_threads, HeapValue,
 };
-use itsi_tracing::{debug, error, warn};
+use itsi_tracing::{debug, error};
 use magnus::{
     error::Result,
     value::{InnerValue, Lazy, LazyId, Opaque, ReprValue},
     Module, RClass, Ruby, Thread, Value,
 };
-use nix::unistd::Pid;
 use parking_lot::{Mutex, RwLock};
 use std::{
     ops::Deref,
@@ -34,7 +33,7 @@ use super::request_job::RequestJob;
 pub struct ThreadWorker {
     pub params: Arc<ServerParams>,
     pub id: u8,
-    pub name: String,
+    pub worker_id: usize,
     pub request_id: AtomicU64,
     pub current_request_start: AtomicU64,
     pub receiver: Arc<async_channel::Receiver<RequestJob>>,
@@ -63,8 +62,11 @@ type ThreadWorkerBuildResult = Result<(
     Sender<RequestJob>,
 )>;
 
-#[instrument(name = "boot", parent=None, skip(params, pid))]
-pub fn build_thread_workers(params: Arc<ServerParams>, pid: Pid) -> ThreadWorkerBuildResult {
+#[instrument(name = "boot", parent=None, skip(params, worker_id))]
+pub fn build_thread_workers(
+    params: Arc<ServerParams>,
+    worker_id: usize,
+) -> ThreadWorkerBuildResult {
     let blocking_thread_count = params.threads;
     let nonblocking_thread_count = params.scheduler_threads;
     let ruby_thread_request_backlog_size: usize = params
@@ -82,7 +84,7 @@ pub fn build_thread_workers(params: Arc<ServerParams>, pid: Pid) -> ThreadWorker
             ThreadWorker::new(
                 params.clone(),
                 id,
-                format!("{:?}#{:?}", pid, id),
+                worker_id,
                 blocking_receiver_ref.clone(),
                 blocking_sender_ref.clone(),
                 if nonblocking_thread_count.is_some() {
@@ -105,7 +107,7 @@ pub fn build_thread_workers(params: Arc<ServerParams>, pid: Pid) -> ThreadWorker
             workers.push(ThreadWorker::new(
                 params.clone(),
                 id,
-                format!("{:?}#{:?}", pid, id),
+                worker_id,
                 nonblocking_receiver_ref.clone(),
                 nonblocking_sender_ref.clone(),
                 Some(scheduler_class),
@@ -140,7 +142,7 @@ impl ThreadWorker {
     pub fn new(
         params: Arc<ServerParams>,
         id: u8,
-        name: String,
+        worker_id: usize,
         receiver: Arc<async_channel::Receiver<RequestJob>>,
         sender: Sender<RequestJob>,
         scheduler_class: Option<Opaque<Value>>,
@@ -148,9 +150,9 @@ impl ThreadWorker {
         let worker = Arc::new(Self {
             params,
             id,
+            worker_id,
             request_id: AtomicU64::new(0),
             current_request_start: AtomicU64::new(0),
-            name,
             receiver,
             sender,
             thread: RwLock::new(None),
@@ -180,24 +182,22 @@ impl ThreadWorker {
     }
 
     pub fn run(self: Arc<Self>) -> Result<()> {
-        let name = self.name.clone();
         let receiver = self.receiver.clone();
         let terminated = self.terminated.clone();
         let scheduler_class = self.scheduler_class;
         let params = self.params.clone();
         let self_ref = self.clone();
-        let id = self.id;
+        let worker_id = self.worker_id;
         call_with_gvl(|_| {
             *self.thread.write() = Some(
                 create_ruby_thread(move || {
                     if params.pin_worker_cores {
-                        core_affinity::set_for_current(CORE_IDS[(id as usize) % CORE_IDS.len()]);
+                        core_affinity::set_for_current(CORE_IDS[worker_id % CORE_IDS.len()]);
                     }
                     debug!("Ruby thread worker started");
                     if let Some(scheduler_class) = scheduler_class {
                         if let Err(err) = self_ref.fiber_accept_loop(
                             params,
-                            name,
                             receiver,
                             scheduler_class,
                             terminated,
@@ -205,7 +205,7 @@ impl ThreadWorker {
                             error!("Error in fiber_accept_loop: {:?}", err);
                         }
                     } else {
-                        self_ref.accept_loop(params, name, receiver, terminated);
+                        self_ref.accept_loop(params, receiver, terminated);
                     }
                 })
                 .ok_or_else(|| {
@@ -261,9 +261,14 @@ impl ThreadWorker {
                         }
                     }
                 }
+
                 for _ in 0..MAX_BATCH_SIZE {
                     if let Ok(req) = receiver.try_recv() {
+                        let should_break = matches!(req, RequestJob::Shutdown);
                         batch.push(req);
+                        if should_break {
+                            break;
+                        }
                     } else {
                         break;
                     }
@@ -306,7 +311,9 @@ impl ThreadWorker {
                                     ItsiGrpcCall::internal_error(ruby, response, err)
                                 }
                             }
-                            RequestJob::Shutdown => return true,
+                            RequestJob::Shutdown => {
+                                return true;
+                            }
                         }
                     }
                     false
@@ -338,15 +345,14 @@ impl ThreadWorker {
                 if yield_result.is_err() {
                     break;
                 }
-            })
+            });
         })
     }
 
-    #[instrument(skip_all, fields(thread_worker=name))]
+    #[instrument(skip_all, fields(thread_worker=format!("{}:{}", self.id, self.worker_id)))]
     pub fn fiber_accept_loop(
         self: Arc<Self>,
         params: Arc<ServerParams>,
-        name: String,
         receiver: Arc<async_channel::Receiver<RequestJob>>,
         scheduler_class: Opaque<Value>,
         terminated: Arc<AtomicBool>,
@@ -421,11 +427,10 @@ impl ThreadWorker {
         });
     }
 
-    #[instrument(skip_all, fields(thread_worker=id))]
+    #[instrument(skip_all, fields(thread_worker=format!("{}:{}", self.id, self.worker_id)))]
     pub fn accept_loop(
         self: Arc<Self>,
         params: Arc<ServerParams>,
-        id: String,
         receiver: Arc<async_channel::Receiver<RequestJob>>,
         terminated: Arc<AtomicBool>,
     ) {

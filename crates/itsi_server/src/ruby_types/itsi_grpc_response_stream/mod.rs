@@ -234,7 +234,7 @@ impl ItsiGrpcResponseStream {
                             _ = shutdown_rx.changed() => {
                                 match *shutdown_rx.borrow() {
                                     RunningPhase::ShutdownPending => {
-                                        warn!("Disconnecting streaming client.");
+                                        debug!("Disconnecting streaming client.");
                                         return None;
                                     },
                                     _ => continue,

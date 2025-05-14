@@ -38,6 +38,7 @@ use tokio::{
 use tracing::instrument;
 
 pub struct SingleMode {
+    pub worker_id: usize,
     pub executor: Builder<TokioExecutor>,
     pub server_config: Arc<ItsiServerConfig>,
     pub(crate) lifecycle_channel: broadcast::Sender<LifecycleEvent>,
@@ -54,7 +55,7 @@ pub enum RunningPhase {
 
 impl SingleMode {
     #[instrument(parent=None, skip_all)]
-    pub fn new(server_config: Arc<ItsiServerConfig>) -> Result<Self> {
+    pub fn new(server_config: Arc<ItsiServerConfig>, worker_id: usize) -> Result<Self> {
         server_config.server_params.read().preload_ruby()?;
         let mut executor = Builder::new(TokioExecutor::new());
         executor
@@ -71,12 +72,17 @@ impl SingleMode {
             .max_send_buf_size(16 * 1024 * 1024);
 
         Ok(Self {
+            worker_id,
             executor,
             server_config,
             lifecycle_channel: SIGNAL_HANDLER_CHANNEL.0.clone(),
             restart_requested: AtomicBool::new(false),
             status: RwLock::new(HashMap::new()),
         })
+    }
+
+    pub fn is_zero_worker(&self) -> bool {
+        self.worker_id == 0
     }
 
     pub fn build_runtime(&self) -> Runtime {
@@ -228,13 +234,15 @@ impl SingleMode {
 
     #[instrument(name="worker", parent=None, skip(self), fields(pid=format!("{}", Pid::this())))]
     pub fn run(self: Arc<Self>) -> Result<()> {
-        let (thread_workers, job_sender, nonblocking_sender) =
-            build_thread_workers(self.server_config.server_params.read().clone(), Pid::this())
-                .inspect_err(|e| {
-                    if let Some(err_val) = e.value() {
-                        print_rb_backtrace(err_val);
-                    }
-                })?;
+        let (thread_workers, job_sender, nonblocking_sender) = build_thread_workers(
+            self.server_config.server_params.read().clone(),
+            self.worker_id,
+        )
+        .inspect_err(|e| {
+            if let Some(err_val) = e.value() {
+                print_rb_backtrace(err_val);
+            }
+        })?;
 
         let worker_count = thread_workers.len();
         info!(
@@ -245,6 +253,7 @@ impl SingleMode {
         let shutdown_timeout = self.server_config.server_params.read().shutdown_timeout;
         let (shutdown_sender, _) = watch::channel(RunningPhase::Running);
         let monitor_thread = self.clone().start_monitors(thread_workers.clone());
+        let is_zero_worker = self.is_zero_worker();
         if monitor_thread.is_none() {
             error!("Failed to start monitor thread");
             return Err(ItsiError::new("Failed to start monitor thread"));
@@ -265,7 +274,7 @@ impl SingleMode {
                 .listeners
                 .lock()
                 .drain(..)
-                .map(|list| Arc::new(list.into_tokio_listener()))
+                .map(|list| Arc::new(list.into_tokio_listener(is_zero_worker)))
                 .collect::<Vec<_>>();
 
             tokio_listeners.iter().cloned().for_each(|listener| {

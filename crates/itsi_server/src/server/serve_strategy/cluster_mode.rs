@@ -8,7 +8,7 @@ use magnus::Value;
 use nix::{libc::exit, unistd::Pid};
 
 use std::{
-    sync::{atomic::AtomicUsize, Arc},
+    sync::Arc,
     time::{Duration, Instant},
 };
 use tokio::{
@@ -23,15 +23,14 @@ pub(crate) struct ClusterMode {
     pub lifecycle_channel: broadcast::Sender<LifecycleEvent>,
 }
 
-static WORKER_ID: AtomicUsize = AtomicUsize::new(0);
 static CHILD_SIGNAL_SENDER: parking_lot::Mutex<Option<watch::Sender<()>>> =
     parking_lot::Mutex::new(None);
 
 impl ClusterMode {
     pub fn new(server_config: Arc<ItsiServerConfig>) -> Self {
         let process_workers = (0..server_config.server_params.read().workers)
-            .map(|_| ProcessWorker {
-                worker_id: WORKER_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            .map(|id| ProcessWorker {
+                worker_id: id as usize,
                 ..Default::default()
             })
             .collect();
@@ -58,6 +57,22 @@ impl ClusterMode {
         if let Some(hook) = self.server_config.server_params.read().hooks.get(hook_name) {
             call_with_gvl(|_| hook.call::<_, Value>(()).ok());
         }
+    }
+
+    fn next_worker_id(&self) -> usize {
+        let mut taken: Vec<_> = self
+            .process_workers
+            .lock()
+            .iter()
+            .map(|w| w.worker_id)
+            .collect();
+        taken.sort_unstable();
+        for (expected, &id) in taken.iter().enumerate() {
+            if id != expected {
+                return expected;
+            }
+        }
+        taken.len()
     }
 
     #[allow(clippy::await_holding_lock)]
@@ -112,7 +127,7 @@ impl ClusterMode {
                 while workers_to_load > 0 {
                     let mut workers = self.process_workers.lock();
                     let worker = ProcessWorker {
-                        worker_id: WORKER_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+                        worker_id: self.next_worker_id(),
                         ..Default::default()
                     };
                     let worker_clone = worker.clone();
@@ -130,7 +145,7 @@ impl ClusterMode {
             LifecycleEvent::IncreaseWorkers => {
                 let mut workers = self.process_workers.lock();
                 let worker = ProcessWorker {
-                    worker_id: WORKER_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+                    worker_id: self.next_worker_id(),
                     ..Default::default()
                 };
                 let worker_clone = worker.clone();
@@ -275,10 +290,20 @@ impl ClusterMode {
     pub fn run(self: Arc<Self>) -> Result<()> {
         info!("Starting in Cluster mode");
         self.invoke_hook("before_fork");
+
         self.process_workers
             .lock()
             .iter()
             .try_for_each(|worker| worker.boot(Arc::clone(&self)))?;
+
+        if cfg!(target_os = "linux") {
+            self.server_config
+                .server_params
+                .write()
+                .listeners
+                .lock()
+                .drain(..);
+        };
 
         let (sender, mut receiver) = watch::channel(());
         *CHILD_SIGNAL_SENDER.lock() = Some(sender);
