@@ -1,13 +1,11 @@
 use bytes::Bytes;
 use http::header::CONTENT_TYPE;
 use http::Response;
-use http_body_util::{combinators::BoxBody, Full};
 use serde::{Deserialize, Deserializer};
-use std::convert::Infallible;
 use std::path::PathBuf;
 use tracing::warn;
 
-use crate::server::http_message_types::{HttpResponse, ResponseFormat};
+use crate::server::http_message_types::{HttpBody, HttpResponse, ResponseFormat};
 use crate::services::static_file_server::ROOT_STATIC_FILE_SERVER;
 mod default_responses;
 
@@ -19,7 +17,7 @@ pub enum ContentSource {
     File(PathBuf),
     #[serde(rename(deserialize = "static"))]
     #[serde(skip_deserializing)]
-    Static(Full<Bytes>),
+    Static(Bytes),
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -144,13 +142,13 @@ impl ErrorResponse {
         code: u16,
         source: &Option<ContentSource>,
         accept: ResponseFormat,
-    ) -> BoxBody<Bytes, Infallible> {
+    ) -> HttpBody {
         match source {
             Some(ContentSource::Inline(text)) => {
-                return BoxBody::new(Full::new(Bytes::from(text.clone())));
+                return HttpBody::full(Bytes::from(text.clone()));
             }
             Some(ContentSource::Static(text)) => {
-                return BoxBody::new(text.clone());
+                return HttpBody::full(text.clone());
             }
             Some(ContentSource::File(path)) => {
                 // Convert the PathBuf to a &str (assumes valid UTF-8).

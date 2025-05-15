@@ -14,7 +14,7 @@ use super::{string_rewrite::StringRewrite, ErrorResponse, FromValue, MiddlewareL
 use crate::{
     server::{
         binds::bind::{Bind, BindAddress},
-        http_message_types::{HttpRequest, HttpResponse, RequestExt, ResponseFormat},
+        http_message_types::{HttpBody, HttpRequest, HttpResponse, RequestExt, ResponseFormat},
         size_limited_incoming::MaxBodySizeReached,
     },
     services::itsi_http_service::HttpRequestContext,
@@ -373,19 +373,17 @@ impl MiddlewareLayer for Proxy {
                 for (hn, hv) in response.headers() {
                     builder = builder.header(hn, hv);
                 }
-                let response = builder.body(BoxBody::new(StreamBody::new(
-                    response
-                        .bytes_stream()
-                        .map_ok(Frame::data)
-                        .map_err(|_| -> Infallible { unreachable!("We handle IO errors above") }),
-                )));
+                let response =
+                    builder.body(HttpBody::stream(response.bytes_stream().map_err(
+                        |_| -> Infallible { unreachable!("We handle IO errors above") },
+                    )));
                 response.unwrap_or(error_response)
             }
             Err(e) => {
                 debug!(target: "middleware::proxy", "Error {:?} received", e);
                 if let Some(inner) = e.source() {
                     if inner.downcast_ref::<MaxBodySizeReached>().is_some() {
-                        let mut max_body_response = Response::new(BoxBody::new(Empty::new()));
+                        let mut max_body_response = Response::new(HttpBody::empty());
                         *max_body_response.status_mut() = StatusCode::PAYLOAD_TOO_LARGE;
                         return Ok(Either::Right(max_body_response));
                     }

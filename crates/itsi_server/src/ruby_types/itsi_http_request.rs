@@ -24,7 +24,7 @@ use super::{
 use crate::{
     default_responses::{INTERNAL_SERVER_ERROR_RESPONSE, SERVICE_UNAVAILABLE_RESPONSE},
     server::{
-        http_message_types::{HttpRequest, HttpResponse},
+        http_message_types::{HttpBody, HttpRequest, HttpResponse},
         request_job::RequestJob,
         size_limited_incoming::MaxBodySizeReached,
     },
@@ -207,7 +207,7 @@ impl ItsiHttpRequest {
                                 Ok(result) => Ok(result),
                                 Err(e) => {
                                     error!("Error processing hijacked response: {}", e);
-                                    Ok(Response::new(BoxBody::new(Empty::new())))
+                                    Ok(Response::new(HttpBody::empty()))
                                 }
                             }
                         }
@@ -248,7 +248,7 @@ impl ItsiHttpRequest {
                 match chunk {
                     Ok(byte_array) => body_bytes.write_all(&byte_array).unwrap(),
                     Err(e) => {
-                        let mut err_resp = Response::new(BoxBody::new(Empty::new()));
+                        let mut err_resp = Response::new(HttpBody::empty());
                         if e.downcast_ref::<MaxBodySizeReached>().is_some() {
                             *err_resp.status_mut() = StatusCode::PAYLOAD_TOO_LARGE;
                         }

@@ -1,5 +1,5 @@
 use crate::{
-    server::http_message_types::{HttpRequest, HttpResponse},
+    server::http_message_types::{HttpBody, HttpRequest, HttpResponse},
     services::itsi_http_service::HttpRequestContext,
 };
 
@@ -10,7 +10,7 @@ use bytes::{Bytes, BytesMut};
 use either::Either;
 use futures::TryStreamExt;
 use http::{header, HeaderValue, Response, StatusCode};
-use http_body_util::{combinators::BoxBody, BodyExt, Empty, Full};
+use http_body_util::BodyExt;
 use hyper::body::Body;
 use magnus::error::Result;
 use serde::Deserialize;
@@ -113,7 +113,7 @@ impl MiddlewareLayer for ETag {
                 .await
             {
                 Ok(bytes_mut) => bytes_mut.freeze(),
-                Err(_) => return Response::from_parts(parts, BoxBody::new(Empty::new())),
+                Err(_) => return Response::from_parts(parts, HttpBody::empty()),
             };
 
             let computed_etag = match self.algorithm {
@@ -139,14 +139,14 @@ impl MiddlewareLayer for ETag {
                 parts.headers.insert(header::ETAG, value);
             }
 
-            body = Full::new(full_bytes).boxed();
+            body = HttpBody::full(full_bytes);
             formatted_etag
         };
 
         if let Some(if_none_match) = context.get_if_none_match() {
             if if_none_match == etag_value || if_none_match == "*" {
                 // Return 304 Not Modified without the body
-                let mut not_modified = Response::new(BoxBody::new(Empty::new()));
+                let mut not_modified = Response::new(HttpBody::empty());
                 *not_modified.status_mut() = StatusCode::NOT_MODIFIED;
                 // Copy headers we want to preserve
                 for (name, value) in parts.headers.iter() {

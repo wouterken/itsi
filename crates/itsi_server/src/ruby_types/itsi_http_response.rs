@@ -32,7 +32,10 @@ use tokio::{
 use tokio_util::io::ReaderStream;
 use tracing::{debug, info, warn};
 
-use crate::server::{http_message_types::HttpResponse, serve_strategy::single_mode::RunningPhase};
+use crate::server::{
+    http_message_types::{HttpBody, HttpResponse},
+    serve_strategy::single_mode::RunningPhase,
+};
 
 #[magnus::wrap(class = "Itsi::HttpResponse", free_immediately, size)]
 #[derive(Debug, Clone)]
@@ -76,7 +79,7 @@ impl ItsiHttpResponse {
                 shutdown_rx,
                 response_sender: RwLock::new(Some(response_sender)),
                 frame_writer: RwLock::new(None),
-                response: RwLock::new(Some(Response::new(BoxBody::new(Empty::new())))),
+                response: RwLock::new(Some(Response::new(HttpBody::empty()))),
                 hijacked_socket: RwLock::new(None),
             }),
         }
@@ -166,14 +169,14 @@ impl ItsiHttpResponse {
                     Err(e) => eprintln!("upgrade error: {:?}", e),
                 }
             });
-            Response::new(BoxBody::new(Empty::new()))
+            Response::new(HttpBody::empty())
         } else {
             let stream = ReaderStream::new(reader);
             let boxed_body = if headers
                 .get(TRANSFER_ENCODING)
                 .is_some_and(|h| h == "chunked")
             {
-                BoxBody::new(StreamBody::new(unfold(
+                HttpBody::stream(unfold(
                     (stream, Vec::new()),
                     |(mut stream, mut buf)| async move {
                         loop {
@@ -194,7 +197,7 @@ impl ItsiHttpResponse {
                                 if buf.starts_with(b"\r\n") {
                                     buf.drain(..2);
                                 }
-                                return Some((Ok(Frame::data(Bytes::from(data))), (stream, buf)));
+                                return Some((Ok(Bytes::from(data)), (stream, buf)));
                             }
                             match stream.next().await {
                                 Some(Ok(chunk)) => buf.extend_from_slice(&chunk),
@@ -202,15 +205,11 @@ impl ItsiHttpResponse {
                             }
                         }
                     },
-                )))
+                ))
             } else {
-                BoxBody::new(StreamBody::new(stream.map(
-                    |result: std::result::Result<Bytes, io::Error>| {
-                        result
-                            .map(Frame::data)
-                            .map_err(|e| unreachable!("unexpected io error: {:?}", e))
-                    },
-                )))
+                HttpBody::stream(stream.map(|result: std::result::Result<Bytes, io::Error>| {
+                    result.map_err(|e| unreachable!("unexpected io error: {:?}", e))
+                }))
             };
             Response::new(boxed_body)
         };
@@ -244,7 +243,7 @@ impl ItsiHttpResponse {
                                 maybe_bytes = reader.recv() => {
                                     match maybe_bytes {
                                         Some(bytes) => {
-                                            yield Ok(Frame::data(bytes));
+                                            yield Ok(bytes);
                                         }
                                         _ => break,
                                     }
@@ -253,7 +252,7 @@ impl ItsiHttpResponse {
                                     if *shutdown_rx.borrow() == RunningPhase::ShutdownPending {
                                         reader.close();
                                         while let Some(bytes) = reader.recv().await{
-                                          yield Ok(Frame::data(bytes));
+                                          yield Ok(bytes);
                                         }
                                         debug!("Disconnecting streaming client.");
                                         break;
@@ -263,7 +262,7 @@ impl ItsiHttpResponse {
                         }
                     };
 
-                    *response.body_mut() = BoxBody::new(StreamBody::new(frame_stream));
+                    *response.body_mut() = HttpBody::stream(frame_stream);
                     self.frame_writer.write().replace(writer);
                     if let Some(sender) = self.response_sender.write().take() {
                         sender.send(ResponseFrame::HttpResponse(response)).ok();
@@ -287,7 +286,11 @@ impl ItsiHttpResponse {
             return Ok(());
         }
         if let Some(mut response) = self.response.write().take() {
-            *response.body_mut() = BoxBody::new(Full::new(frame));
+            if frame.is_empty() {
+                *response.body_mut() = HttpBody::empty();
+            } else {
+                *response.body_mut() = HttpBody::full(frame);
+            }
             if let Some(sender) = self.response_sender.write().take() {
                 sender.send(ResponseFrame::HttpResponse(response)).ok();
             }

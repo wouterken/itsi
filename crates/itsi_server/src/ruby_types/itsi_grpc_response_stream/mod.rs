@@ -1,6 +1,6 @@
 use super::itsi_grpc_call::CompressionAlgorithm;
 use crate::prelude::*;
-use crate::server::http_message_types::HttpResponse;
+use crate::server::http_message_types::{HttpBody, HttpResponse};
 use crate::server::size_limited_incoming::SizeLimitedIncoming;
 use crate::server::{byte_frame::ByteFrame, serve_strategy::single_mode::RunningPhase};
 use bytes::Bytes;
@@ -11,8 +11,8 @@ use http::{
     header::{HeaderName, HeaderValue},
     HeaderMap, Response,
 };
-use http_body_util::{combinators::BoxBody, BodyDataStream, BodyExt, Empty, Full, StreamBody};
-use hyper::body::{Frame, Incoming};
+use http_body_util::{BodyDataStream, BodyExt};
+use hyper::body::Incoming;
 use magnus::error::Result as MagnusResult;
 use nix::unistd::pipe;
 use parking_lot::Mutex;
@@ -161,7 +161,7 @@ impl ItsiGrpcResponseStream {
                 response_headers,
                 incoming_reader: Some(pipe_read),
                 response_sender,
-                response: Some(Response::new(BoxBody::new(Empty::new()))),
+                response: Some(Response::new(HttpBody::empty())),
                 trailer_tx,
                 trailer_rx: Some(trailer_rx),
             })),
@@ -207,12 +207,12 @@ impl ItsiGrpcResponseStream {
         let rx = self.inner.lock().trailer_rx.take().unwrap();
         *response.version_mut() = Version::HTTP_2;
         *response.headers_mut() = self.inner.lock().response_headers.clone();
-        *response.body_mut() = if matches!(first_frame, ByteFrame::Empty) {
-            BoxBody::new(Empty::new())
+        let body_with_trailers = if matches!(first_frame, ByteFrame::Empty) {
+            HttpBody::empty()
         } else if matches!(first_frame, ByteFrame::End(_)) {
-            BoxBody::new(Full::new(first_frame.into()))
+            HttpBody::full(first_frame.into())
         } else {
-            let initial_frame = tokio_stream::once(Ok(Frame::data(Bytes::from(first_frame))));
+            let initial_frame = tokio_stream::once(Ok(Bytes::from(first_frame)));
             let frame_stream = unfold(
                 (ReceiverStream::new(receiver), shutdown_rx),
                 |(mut receiver, mut shutdown_rx)| async move {
@@ -224,7 +224,7 @@ impl ItsiGrpcResponseStream {
                             maybe_bytes = receiver.next() => {
                               match maybe_bytes {
                                 Some(ByteFrame::Data(bytes)) | Some(ByteFrame::End(bytes)) => {
-                                  return Some((Ok(Frame::data(bytes)), (receiver, shutdown_rx)));
+                                  return Some((Ok(bytes), (receiver, shutdown_rx)));
                                 }
                                 _ => {
                                   return None;
@@ -246,15 +246,16 @@ impl ItsiGrpcResponseStream {
             );
 
             let combined_stream = initial_frame.chain(frame_stream);
-            BoxBody::new(StreamBody::new(combined_stream))
+            HttpBody::stream(combined_stream)
         }
         .with_trailers(async move {
             match rx.await {
                 Ok(trailers) => Some(Ok(trailers)),
                 Err(_err) => None,
             }
-        })
-        .boxed();
+        });
+
+        *response.body_mut() = body_with_trailers;
         response
     }
 
