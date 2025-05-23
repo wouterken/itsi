@@ -13,16 +13,12 @@ use std::{
 
 use super::size_limited_incoming::SizeLimitedIncoming;
 
-/* -------------------------------------------------------------------------
- * Low‑level concrete body without trailers
- * ---------------------------------------------------------------------- */
-
 type Inner = Either<Full<Bytes>, Empty<Bytes>>;
 
 type BoxStream =
     Pin<Box<dyn Stream<Item = Result<Frame<Bytes>, Infallible>> + Send + Sync + 'static>>;
 
-struct PlainBody(Either<StreamBody<BoxStream>, Inner>);
+pub struct PlainBody(Either<StreamBody<BoxStream>, Inner>);
 
 impl fmt::Debug for PlainBody {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -71,10 +67,6 @@ impl PlainBody {
     }
 }
 
-/* -------------------------------------------------------------------------
- * Public body type used at API boundaries (plain or with trailers)
- * ---------------------------------------------------------------------- */
-
 type BoxTrailers = Pin<
     Box<dyn std::future::Future<Output = Option<Result<http::HeaderMap, DynErr>>> + Send + Sync>,
 >;
@@ -117,10 +109,6 @@ impl Body for HttpBody {
     }
 }
 
-/* -------------------------------------------------------------------------
- * Constructors & helpers (public API)
- * ---------------------------------------------------------------------- */
-
 impl HttpBody {
     pub fn stream<S>(s: S) -> Self
     where
@@ -152,12 +140,7 @@ impl HttpBody {
     }
 }
 
-/* -------------------------------------------------------------------------
- * Aliases & request helpers
- * ---------------------------------------------------------------------- */
-
 pub type HttpResponse = http::Response<HttpBody>;
-
 pub type HttpRequest = Request<SizeLimitedIncoming<Incoming>>;
 
 pub trait ConversionExt {
@@ -170,10 +153,6 @@ impl ConversionExt for Request<Incoming> {
         Request::from_parts(parts, SizeLimitedIncoming::new(body))
     }
 }
-
-/* -------------------------------------------------------------------------
- * Misc unchanged helpers
- * ---------------------------------------------------------------------- */
 
 pub trait RequestExt {
     fn content_type(&self) -> Option<&str>;

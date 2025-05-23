@@ -66,7 +66,6 @@ impl Acceptor {
                             debug!("Connection closed abruptly: {:?}", res);
                         }
                     }
-                    serve.as_mut().graceful_shutdown();
                 },
                 // A lifecycle event triggers shutdown.
                 _ = shutdown_channel.changed() => {
@@ -84,6 +83,7 @@ impl Acceptor {
 
     pub async fn join(&mut self) {
         // Join all acceptor tasks with timeout
+
         let deadline = tokio::time::Instant::now()
             + Duration::from_secs_f64(self.server_params.shutdown_timeout);
         let sleep_until = tokio::time::sleep_until(deadline);
@@ -92,6 +92,7 @@ impl Acceptor {
                 while (self.join_set.join_next().await).is_some() {}
             } => {},
             _ = sleep_until => {
+                self.join_set.abort_all();
                 debug!("Shutdown timeout reached; abandoning remaining acceptor tasks.");
             }
         }

@@ -11,7 +11,7 @@ use http::{
     header::{HeaderName, HeaderValue},
     HeaderMap, Response,
 };
-use http_body_util::{BodyDataStream, BodyExt};
+use http_body_util::BodyDataStream;
 use hyper::body::Incoming;
 use magnus::error::Result as MagnusResult;
 use nix::unistd::pipe;

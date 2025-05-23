@@ -40,7 +40,7 @@ class BenchmarkCase
     @static_files_root = nil
     @https = false
     @grpc = false
-    @parallel_requests = 16# frozen_string_literal: true
+    @parallel_requests = 16
     @nonblocking = false
     @requires = %i[ruby]
     @use_yjit = true

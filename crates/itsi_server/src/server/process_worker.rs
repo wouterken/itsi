@@ -88,7 +88,7 @@ impl ProcessWorker {
                             .pin_worker_cores
                         {
                             core_affinity::set_for_current(
-                                CORE_IDS[self.worker_id % CORE_IDS.len()],
+                                CORE_IDS[(2 * self.worker_id) % CORE_IDS.len()],
                             );
                         }
                         Arc::new(single_mode).run().ok();
@@ -166,7 +166,7 @@ impl ProcessWorker {
     }
 
     pub(crate) fn boot_if_dead(&self, cluster_template: Arc<ClusterMode>) -> bool {
-        if !self.is_alive() {
+        if !self.is_alive() && self.child_pid.lock().is_some() {
             if self.just_started() {
                 error!(
                     "Worker in crash loop {:?}. Refusing to restart",
@@ -202,7 +202,6 @@ impl ProcessWorker {
         let child_pid = *self.child_pid.lock();
         if let Some(pid) = child_pid {
             if self.is_alive() {
-                info!("Worker still alive, sending SIGKILL {}", pid);
                 if let Err(e) = kill(pid, SIGKILL) {
                     error!("Failed to force kill process {}: {}", pid, e);
                 }

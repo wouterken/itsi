@@ -4,7 +4,7 @@ use crate::{
         lifecycle_event::LifecycleEvent,
         request_job::RequestJob,
         serve_strategy::acceptor::{Acceptor, AcceptorArgs},
-        signal::{SHUTDOWN_REQUESTED, SIGNAL_HANDLER_CHANNEL},
+        signal::{send_lifecycle_event, subscribe_runtime_to_signals, SHUTDOWN_REQUESTED},
         thread_worker::{build_thread_workers, ThreadWorker},
     },
 };
@@ -29,10 +29,7 @@ use std::{
 };
 use tokio::{
     runtime::{Builder as RuntimeBuilder, Runtime},
-    sync::{
-        broadcast,
-        watch::{self},
-    },
+    sync::watch::{self},
     task::JoinSet,
 };
 use tracing::instrument;
@@ -41,7 +38,6 @@ pub struct SingleMode {
     pub worker_id: usize,
     pub executor: Builder<TokioExecutor>,
     pub server_config: Arc<ItsiServerConfig>,
-    pub(crate) lifecycle_channel: broadcast::Sender<LifecycleEvent>,
     pub restart_requested: AtomicBool,
     pub status: RwLock<HashMap<u8, (u64, u64)>>,
 }
@@ -57,25 +53,34 @@ impl SingleMode {
     #[instrument(parent=None, skip_all)]
     pub fn new(server_config: Arc<ItsiServerConfig>, worker_id: usize) -> Result<Self> {
         server_config.server_params.read().preload_ruby()?;
-        let mut executor = Builder::new(TokioExecutor::new());
-        executor
-            .http1()
-            .header_read_timeout(server_config.server_params.read().header_read_timeout)
-            .pipeline_flush(true)
-            .timer(TokioTimer::new());
-        executor
-            .http2()
-            .max_concurrent_streams(100)
-            .max_local_error_reset_streams(100)
-            .enable_connect_protocol()
-            .max_header_list_size(10 * 1024 * 1024)
-            .max_send_buf_size(16 * 1024 * 1024);
+        let executor = {
+            let mut executor = Builder::new(TokioExecutor::new());
+            let server_params = server_config.server_params.read();
+            let mut http1_executor = executor.http1();
+
+            http1_executor
+                .header_read_timeout(server_params.header_read_timeout)
+                .pipeline_flush(server_params.pipeline_flush)
+                .timer(TokioTimer::new());
+
+            if let Some(writev) = server_params.writev {
+                http1_executor.writev(writev);
+            }
+
+            executor
+                .http2()
+                .max_concurrent_streams(server_params.max_concurrent_streams)
+                .max_local_error_reset_streams(server_params.max_local_error_reset_streams)
+                .max_header_list_size(server_params.max_header_list_size)
+                .max_send_buf_size(server_params.max_send_buf_size)
+                .enable_connect_protocol();
+            executor
+        };
 
         Ok(Self {
             worker_id,
             executor,
             server_config,
-            lifecycle_channel: SIGNAL_HANDLER_CHANNEL.0.clone(),
             restart_requested: AtomicBool::new(false),
             status: RwLock::new(HashMap::new()),
         })
@@ -110,7 +115,7 @@ impl SingleMode {
 
     pub fn stop(&self) -> Result<()> {
         SHUTDOWN_REQUESTED.store(true, std::sync::atomic::Ordering::SeqCst);
-        self.lifecycle_channel.send(LifecycleEvent::Shutdown).ok();
+        send_lifecycle_event(LifecycleEvent::Shutdown);
         Ok(())
     }
 
@@ -189,7 +194,7 @@ impl SingleMode {
                         .unwrap();
                     let receiver = self.clone();
                     monitor_runtime.block_on({
-                        let mut lifecycle_rx = receiver.lifecycle_channel.subscribe();
+                        let mut lifecycle_rx = subscribe_runtime_to_signals();
                         let receiver = receiver.clone();
                         let thread_workers = thread_workers.clone();
                         async move {
@@ -208,11 +213,8 @@ impl SingleMode {
                                   }
                                   lifecycle_event = lifecycle_rx.recv() => {
                                       match lifecycle_event {
-                                          Ok(LifecycleEvent::Restart) => {
+                                          Ok(LifecycleEvent::Restart) | Ok(LifecycleEvent::Reload) => {
                                               receiver.restart().await.ok();
-                                          }
-                                          Ok(LifecycleEvent::Reload) => {
-                                              receiver.reload().await.ok();
                                           }
                                           Ok(LifecycleEvent::Shutdown) => {
                                             break;
@@ -282,7 +284,7 @@ impl SingleMode {
                 let job_sender = job_sender.clone();
                 let nonblocking_sender = nonblocking_sender.clone();
 
-                let mut lifecycle_rx = self.lifecycle_channel.subscribe();
+                let mut lifecycle_rx = subscribe_runtime_to_signals();
                 let mut shutdown_receiver = shutdown_sender.subscribe();
                 let mut acceptor = Acceptor {
                     acceptor_args: Arc::new(AcceptorArgs {
@@ -298,11 +300,17 @@ impl SingleMode {
 
                 let shutdown_rx_for_acme_task = shutdown_receiver.clone();
                 let acme_task_listener_clone = listener.clone();
-                let after_accept_wait = if server_params.workers > 1{
-                 Some(Duration::from_nanos(10 * server_params.workers as u64))}
-                else{
-                  None
+
+                let mut after_accept_wait: Option<Duration> = None::<Duration>;
+
+                if cfg!(target_os = "macos") {
+                    after_accept_wait = if server_params.workers > 1 {
+                        Some(Duration::from_nanos(10 * server_params.workers as u64))
+                    } else {
+                        None
+                    };
                 };
+
                 listener_task_set.spawn(async move {
                     acme_task_listener_clone
                         .spawn_acme_event_task(shutdown_rx_for_acme_task)
@@ -311,14 +319,18 @@ impl SingleMode {
 
                 listener_task_set.spawn(async move {
                     loop {
+                        // Process any pending signals before select
                         tokio::select! {
                             accept_result = listener.accept() => {
+                                info!("New connection accepted");
                                 match accept_result {
                                     Ok(accepted) => acceptor.serve_connection(accepted).await,
                                     Err(e) => debug!("Listener.accept failed: {:?}", e)
                                 }
-                                if let Some(after_accept_wait) = after_accept_wait{
-                                  tokio::time::sleep(after_accept_wait).await;
+                                if cfg!(target_os = "macos") {
+                                  if let Some(after_accept_wait) = after_accept_wait{
+                                    tokio::time::sleep(after_accept_wait).await;
+                                  }
                                 }
                             },
                             _ = shutdown_receiver.changed() => {
@@ -330,13 +342,12 @@ impl SingleMode {
                                     Ok(LifecycleEvent::Shutdown) => {
                                         debug!("Received LifecycleEvent::Shutdown");
                                         let _ = shutdown_sender.send(RunningPhase::ShutdownPending);
-                                        for _ in 0..worker_count {
-                                            let _ = job_sender.send_blocking(RequestJob::Shutdown);
-                                            let _ = nonblocking_sender.send_blocking(RequestJob::Shutdown);
-                                        }
                                         break;
                                     },
-                                    Err(e) =>  error!("Error receiving lifecycle event: {:?}", e),
+                                    Err(e) => {
+                                      error!("Error receiving lifecycle event: {:?}", e);
+                                      break
+                                    },
                                     _ => ()
                                 }
                             }
@@ -358,14 +369,14 @@ impl SingleMode {
 
         debug!("Single mode runtime exited.");
 
+        for _i in 0..thread_workers.len() {
+            job_sender.send_blocking(RequestJob::Shutdown).unwrap();
+            nonblocking_sender
+                .send_blocking(RequestJob::Shutdown)
+                .unwrap();
+        }
         if result.is_err() {
-            for _i in 0..thread_workers.len() {
-                job_sender.send_blocking(RequestJob::Shutdown).unwrap();
-                nonblocking_sender
-                    .send_blocking(RequestJob::Shutdown)
-                    .unwrap();
-            }
-            self.lifecycle_channel.send(LifecycleEvent::Shutdown).ok();
+            send_lifecycle_event(LifecycleEvent::Shutdown);
         }
 
         shutdown_sender.send(RunningPhase::Shutdown).ok();
@@ -400,26 +411,6 @@ impl SingleMode {
 
     pub fn is_single_mode(&self) -> bool {
         self.server_config.server_params.read().workers == 1
-    }
-    /// Attempts to reload the config "live"
-    /// Not that when running in single mode this will not unload
-    /// old code. If you need a clean restart, use the `restart` (SIGHUP) method instead
-    pub async fn reload(&self) -> Result<()> {
-        if !self.server_config.check_config().await {
-            return Ok(());
-        }
-        let should_reexec = self.server_config.clone().reload(false)?;
-        if should_reexec {
-            if self.is_single_mode() {
-                self.invoke_hook("before_restart");
-            }
-            self.server_config.dup_fds()?;
-            self.server_config.reload_exec()?;
-        }
-        self.restart_requested.store(true, Ordering::SeqCst);
-        self.stop()?;
-        self.server_config.server_params.read().preload_ruby()?;
-        Ok(())
     }
 
     pub fn invoke_hook(&self, hook_name: &str) {

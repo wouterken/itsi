@@ -33,6 +33,7 @@ def run_benchmark(
 )
   server.run!(server_config_file_path, test_case, threads, workers) do |workloads|
     puts Paint["\n=== Running #{test_name} on #{server.name}", :cyan, :bold]
+
     warmup_cmds = workloads.map do |url, method, data|
       if test_case.grpc?
         "ghz --duration-stop=ignore --cpus=2 -z #{test_case.warmup_duration}s -c50 --call #{test_case.call} --stream-call-count=5 -d #{data} --insecure #{URI(url).host}:#{URI(url).port} --proto #{test_case.proto} -O json"
@@ -106,7 +107,7 @@ def run_benchmark(
           summary = result_json['summary']
           p95_latency = result_json['latencyPercentiles']['p95']
           gross_rps = summary['requestsPerSec'].round(2)
-          failure_rate = (1 - summary['successRate'])
+          failure_rate = (1 - summary['successRate'].to_f)
           net_rps = (gross_rps * (1 - failure_rate)).round(2)
           failure = failure_rate.*(100.0).round(2)
 
@@ -238,6 +239,12 @@ def save_result(result, test_name, server_name)
   File.write(path, JSON.pretty_generate(result))
 end
 
+def result_exists?(test_name, server_name)
+  path_prefix = File.join("results", cpu_label, test_name)
+  FileUtils.mkdir_p(path_prefix)
+  File.exist? File.join(path_prefix, "#{server_name}.json")
+end
+
 filters = ARGV.map(&Regexp.method(:new))
 
 Dir.glob('test_cases/*/*.rb').each do |path|
@@ -249,12 +256,24 @@ Dir.glob('test_cases/*/*.rb').each do |path|
     test_case = BenchmarkCase.new(test_name)
     test_case.instance_eval(src)
 
+    if test_case.grpc? && !system("which ghz > /dev/null")
+      puts Paint["Skipping gRPC test because exec `ghz` not found", :yellow]
+      next
+    elsif !system("which oha > /dev/null")
+      puts Paint["Skipping HTTP test because exec `oha` not found", :yellow]
+      next
+    end
+
     Server::ALL.each do |server|
       results = []
       next if filters.any?{|filter| !(filter =~ server.name.to_s || filter =~ test_name.to_s) }
+      if result_exists?(test_name, server.name.to_s)
+        puts "Results already exist for #{test_name}/#{server.name}"
+        next
+      end unless ENV['RACK_BENCH_OVERWRITE_RESULTS']
       Array(test_case.threads).each do |threads|
         Array(test_case.workers).each do |workers|
-          [true, false].each do |http2|
+          [false, true].each do |http2|
             next unless server.exec_found?
             next unless test_case.requires.all?{|r| server.supports?(r) }
             next if http2 && !server.supports?(:http2)

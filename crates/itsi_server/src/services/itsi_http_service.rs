@@ -6,7 +6,7 @@ use crate::server::http_message_types::{
 use crate::server::lifecycle_event::LifecycleEvent;
 use crate::server::middleware_stack::MiddlewareLayer;
 use crate::server::serve_strategy::acceptor::AcceptorArgs;
-use crate::server::signal::send_lifecycle_event;
+use crate::server::signal::{send_lifecycle_event, SHUTDOWN_REQUESTED};
 use chrono::{self, DateTime, Local};
 use either::Either;
 use http::header::ACCEPT_ENCODING;
@@ -246,7 +246,11 @@ impl ItsiHttpService {
                     // If we're still running Ruby at this point, we can't just kill the
                     // thread as it might be in a critical section.
                     // Instead we must ask the worker to hot restart.
-                    if is_ruby_request.load(Ordering::Relaxed) {
+                    // But only if we're not already shutting down
+                    if is_ruby_request.load(Ordering::Relaxed) && 
+                       !SHUTDOWN_REQUESTED.load(Ordering::SeqCst) {
+                        // When we've detected a timeout, use the safer send_lifecycle_event
+                        // which will properly handle signal-safe state transitions
                         if is_single_mode {
                             // If we're in single mode, re-exec the whole process
                             send_lifecycle_event(LifecycleEvent::Restart);

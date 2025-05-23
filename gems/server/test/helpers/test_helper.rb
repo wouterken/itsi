@@ -25,17 +25,10 @@ def free_bind(protocol = "http", unix_socket: false)
   end
 end
 
-def server(app: nil, app_with_lint: nil, protocol: "http", bind: free_bind(protocol), itsi_rb: nil, cleanup: true,
-           timeout: 5, &blk)
+def server(
+  app: nil, app_with_lint: nil, protocol: "http", bind: free_bind(protocol), itsi_rb: nil, cleanup: true,
+           &blk)
   app ||= Rack::Lint.new(app_with_lint) if app_with_lint
-  itsi_rb ||= lambda do
-    # Inline Itsi.rb
-    bind bind
-    workers 1
-    threads 1
-    log_level :warn
-    run app if app
-  end
 
   cli_params = {}
   cli_params[:binds] = [bind] if bind
@@ -46,13 +39,18 @@ def server(app: nil, app_with_lint: nil, protocol: "http", bind: free_bind(proto
     sync.push(true)
   end
 
-  Itsi::Server.start_in_background_thread(cli_params, &itsi_rb)
+  Itsi::Server.start_in_background_thread(cli_params) do
+    bind bind
+    workers 1
+    threads 1
+    log_level :warn
+    run app if app
+    instance_exec(&itsi_rb) if itsi_rb
+  end
 
   sync.pop
   uri = URI(bind)
-  # Timeout.timeout(timeout) do
   RequestContext.new(uri, self).instance_exec(uri, &blk)
-  # end
 rescue StandardError => e
   puts e
   # puts e.message
@@ -119,6 +117,7 @@ class RequestContext
   def patch(path, data = "", headers = {})
     request = Net::HTTP::Patch.new(uri_for(path))
     request.body = data
+    headers.each { |k, v| request[k] = v }
     client.request(request)
   end
 

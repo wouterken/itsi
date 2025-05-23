@@ -44,9 +44,9 @@ module Itsi
               rate_limit key: "address", store_config: "in_memory", requests: 5, seconds: 10
               etag type: "strong", algorithm: "md5", min_body_size: 1024 * 1024
               compress min_size: 1024 * 1024, level: "fastest", algorithms: %w[zstd gzip br deflate],
-                        mime_types: %w[all], compress_streams: true
+                       mime_types: %w[all], compress_streams: true
               log_requests before: { level: "DEBUG", format: "[{request_id}] {method} {path_and_query} - {addr} " },
-                            after: { level: "DEBUG",
+                           after: { level: "DEBUG",
                                     format: "[{request_id}] └─ {status} in {response_time}" }
               nodelay false
               static_assets \
@@ -111,7 +111,7 @@ module Itsi
         end
 
         srv_config = {
-          workers: args.fetch(:workers) { itsifile_config.fetch(:workers, 1) },
+          workers: args.fetch(:workers) { itsifile_config.fetch(:workers, nil) },
           worker_memory_limit: args.fetch(:worker_memory_limit) { itsifile_config.fetch(:worker_memory_limit, nil) },
           silence: args.fetch(:silence) { itsifile_config.fetch(:silence, false) },
           shutdown_timeout: args.fetch(:shutdown_timeout) { itsifile_config.fetch(:shutdown_timeout, 5) },
@@ -132,7 +132,7 @@ module Itsi
           multithreaded_reactor: args.fetch(:multithreaded_reactor) do
             itsifile_config.fetch(:multithreaded_reactor, nil)
           end,
-          pin_worker_cores: args.fetch(:pin_worker_cores) { itsifile_config.fetch(:pin_worker_cores, true) },
+          pin_worker_cores: args.fetch(:pin_worker_cores) { itsifile_config.fetch(:pin_worker_cores, false) },
           scheduler_class: args.fetch(:scheduler_class) { itsifile_config.fetch(:scheduler_class, nil) },
           oob_gc_responses_threshold: args.fetch(:oob_gc_responses_threshold) do
             itsifile_config.fetch(:oob_gc_responses_threshold, nil)
@@ -144,9 +144,15 @@ module Itsi
           log_format: args.fetch(:log_format) { itsifile_config.fetch(:log_format, nil) },
           log_target: args.fetch(:log_target) { itsifile_config.fetch(:log_target, nil) },
           log_target_filters: args.fetch(:log_target_filters) { itsifile_config.fetch(:log_target_filters, nil) },
+          pipeline_flush: itsifile_config.fetch(:pipeline_flush, true),
+          writev: itsifile_config.fetch(:writev, false),
+          max_concurrent_streams: itsifile_config.fetch(:max_concurrent_streams, nil),
+          max_local_error_reset_streams: itsifile_config.fetch(:max_local_error_reset_streams, nil),
+          max_header_list_size: itsifile_config.fetch(:max_header_list_size, 2 * 1024 * 1024),
+          max_send_buf_size: itsifile_config.fetch(:max_send_buf_size, 400 * 1024),
           binds: args.fetch(:binds) { itsifile_config.fetch(:binds, ["http://0.0.0.0:3000"]) },
           middleware_loader: middleware_loader,
-          listeners: args.fetch(:listeners) { nil },
+          listeners: args.fetch(:listeners, nil),
           reuse_address: itsifile_config.fetch(:reuse_address, true),
           reuse_port: itsifile_config.fetch(:reuse_port, true),
           listen_backlog: itsifile_config.fetch(:listen_backlog, 1024),
@@ -227,10 +233,7 @@ module Itsi
 
       # Find config file path, if it exists.
       def self.config_file_path(config_file_path = nil)
-
-        if config_file_path && !File.exist?(config_file_path)
-          raise "Config file #{config_file_path} does not exist"
-        end
+        raise "Config file #{config_file_path} does not exist" if config_file_path && !File.exist?(config_file_path)
 
         config_file_path ||= \
           if File.exist?(ITSI_DEFAULT_CONFIG_FILE)

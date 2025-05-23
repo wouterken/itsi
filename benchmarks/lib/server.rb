@@ -61,8 +61,8 @@ class Server # rubocop:disable Style/Documentation
       end
       result = yield combinations
     rescue StandardError => e
-      puts Paint["Server failed to start: #{e.message}", :red, :bold]
-
+      puts Paint["Server failed to start: #{e.message}. `#{cmd}`", :red, :bold]
+      puts e
       return false
     end
 
@@ -81,9 +81,9 @@ class Server # rubocop:disable Style/Documentation
   end
 
   def rss
-    @pid ? ProcTable.ps(pid: @pid).rss : nil
+    @pid ? ProcTable.ps(pid: @pid).rss.to_i : 0
   rescue
-    nil
+    0
   end
 
   def stop!

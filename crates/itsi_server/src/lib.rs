@@ -72,6 +72,7 @@ fn init(ruby: &Ruby) -> Result<()> {
     request.define_method("url_encoded?", method!(ItsiHttpRequest::is_url_encoded, 0))?;
     request.define_method("multipart?", method!(ItsiHttpRequest::is_multipart, 0))?;
     request.define_method("url_params", method!(ItsiHttpRequest::url_params, 0))?;
+    request.define_method("server_error", method!(ItsiHttpRequest::error, 1))?;
 
     let body_proxy = ruby.get_inner(&ITSI_BODY_PROXY);
     body_proxy.define_method("gets", method!(ItsiBodyProxy::gets, 0))?;

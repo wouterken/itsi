@@ -192,7 +192,9 @@ impl ThreadWorker {
             *self.thread.write() = Some(
                 create_ruby_thread(move || {
                     if params.pin_worker_cores {
-                        core_affinity::set_for_current(CORE_IDS[worker_id % CORE_IDS.len()]);
+                        core_affinity::set_for_current(
+                            CORE_IDS[((2 * worker_id) + 1) % CORE_IDS.len()],
+                        );
                     }
                     debug!("Ruby thread worker started");
                     if let Some(scheduler_class) = scheduler_class {
@@ -440,13 +442,13 @@ impl ThreadWorker {
                 Err(_) => break,
                 Ok(RequestJob::Shutdown) => break,
                 Ok(request_job) => call_with_gvl(|ruby| {
-                    self.process_one(&ruby, request_job);
+                    self.process_one(&ruby, request_job, &terminated);
                     while let Ok(request_job) = receiver.try_recv() {
                         if matches!(request_job, RequestJob::Shutdown) {
                             terminated.store(true, Ordering::Relaxed);
                             break;
                         }
-                        self.process_one(&ruby, request_job);
+                        self.process_one(&ruby, request_job, &terminated);
                     }
                     if let Some(thresh) = params.oob_gc_responses_threshold {
                         idle_counter = (idle_counter + 1) % thresh;
@@ -462,9 +464,13 @@ impl ThreadWorker {
         });
     }
 
-    fn process_one(self: &Arc<Self>, ruby: &Ruby, job: RequestJob) {
+    fn process_one(self: &Arc<Self>, ruby: &Ruby, job: RequestJob, terminated: &Arc<AtomicBool>) {
         match job {
             RequestJob::ProcessHttpRequest(request, app_proc) => {
+                if terminated.load(Ordering::Relaxed) {
+                    request.response().unwrap().service_unavailable();
+                    return;
+                }
                 self.request_id.fetch_add(1, Ordering::Relaxed);
                 self.current_request_start.store(
                     SystemTime::now()
@@ -477,6 +483,10 @@ impl ThreadWorker {
             }
 
             RequestJob::ProcessGrpcRequest(request, app_proc) => {
+                if terminated.load(Ordering::Relaxed) {
+                    request.stream().unwrap().close().ok();
+                    return;
+                }
                 self.request_id.fetch_add(1, Ordering::Relaxed);
                 self.current_request_start.store(
                     SystemTime::now()

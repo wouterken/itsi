@@ -1,3 +1,7 @@
+use crate::server::{
+    http_message_types::{HttpBody, HttpResponse},
+    serve_strategy::single_mode::RunningPhase,
+};
 use bytes::{Buf, Bytes};
 use derive_more::Debug;
 use futures::stream::{unfold, StreamExt};
@@ -6,8 +10,8 @@ use http::{
     request::Parts,
     HeaderMap, HeaderName, HeaderValue, Request, Response, StatusCode,
 };
-use http_body_util::{combinators::BoxBody, Empty, Full, StreamBody};
-use hyper::{body::Frame, upgrade::Upgraded};
+use http_body_util::Empty;
+use hyper::upgrade::Upgraded;
 use hyper_util::rt::TokioIo;
 use itsi_error::Result;
 use itsi_rb_helpers::call_without_gvl;
@@ -28,14 +32,8 @@ use tokio::{
     net::UnixStream as TokioUnixStream,
     sync::{mpsc::Sender, oneshot::Sender as OneshotSender, watch},
 };
-
 use tokio_util::io::ReaderStream;
-use tracing::{debug, info, warn};
-
-use crate::server::{
-    http_message_types::{HttpBody, HttpResponse},
-    serve_strategy::single_mode::RunningPhase,
-};
+use tracing::{info, warn};
 
 #[magnus::wrap(class = "Itsi::HttpResponse", free_immediately, size)]
 #[derive(Debug, Clone)]
@@ -230,11 +228,21 @@ impl ItsiHttpResponse {
         }
     }
 
+    pub fn service_unavailable(&self) {
+        self.close_write().ok();
+        if let Some(mut response) = self.response.write().take() {
+            *response.status_mut() = StatusCode::SERVICE_UNAVAILABLE;
+            if let Some(sender) = self.response_sender.write().take() {
+                sender.send(ResponseFrame::HttpResponse(response)).ok();
+            }
+        }
+    }
+
     pub fn send_frame(&self, frame: Bytes) -> MagnusResult<()> {
         {
             if self.frame_writer.read().is_none() && self.response.read().is_some() {
                 if let Some(mut response) = self.response.write().take() {
-                    let (writer, mut reader) = tokio::sync::mpsc::channel(5);
+                    let (writer, mut reader) = tokio::sync::mpsc::channel::<Bytes>(5);
                     let mut shutdown_rx = self.shutdown_rx.clone();
 
                     let frame_stream = async_stream::stream! {
@@ -251,10 +259,9 @@ impl ItsiHttpResponse {
                                 _ = shutdown_rx.changed() => {
                                     if *shutdown_rx.borrow() == RunningPhase::ShutdownPending {
                                         reader.close();
-                                        while let Some(bytes) = reader.recv().await{
+                                        while let Ok(bytes) = reader.try_recv() {
                                           yield Ok(bytes);
                                         }
-                                        debug!("Disconnecting streaming client.");
                                         break;
                                     }
                                 }

@@ -1,4 +1,6 @@
-run Proc.new { |env|
+# frozen_string_literal: true
+
+run proc { |_env|
   body = Enumerator.new do |yielder|
     5.times do |i|
       yielder << "Chunk #{i + 1}\n"

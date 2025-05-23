@@ -24,8 +24,7 @@ use bytes::{Bytes, BytesMut};
 use either::Either;
 use futures::TryStreamExt;
 use http::{HeaderMap, Method, Response, StatusCode};
-use http_body_util::{combinators::BoxBody, BodyExt, Empty, StreamBody};
-use hyper::body::Frame;
+use http_body_util::BodyExt;
 use magnus::error::Result;
 use rand::Rng;
 use reqwest::{

@@ -1,5 +1,5 @@
 use crate::ruby_types::itsi_server::itsi_server_config::ItsiServerConfig;
-use crate::server::signal::SIGNAL_HANDLER_CHANNEL;
+use crate::server::signal::{subscribe_runtime_to_signals, unsubscribe_runtime};
 use crate::server::{lifecycle_event::LifecycleEvent, process_worker::ProcessWorker};
 use itsi_error::{ItsiError, Result};
 use itsi_rb_helpers::{call_with_gvl, call_without_gvl, create_ruby_thread};
@@ -7,24 +7,26 @@ use itsi_tracing::{error, info, warn};
 use magnus::Value;
 use nix::{libc::exit, unistd::Pid};
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
 use tokio::{
     runtime::{Builder as RuntimeBuilder, Runtime},
-    sync::{broadcast, watch, Mutex},
+    sync::{watch, Mutex},
     time::{self, sleep},
 };
 use tracing::{debug, instrument};
 pub(crate) struct ClusterMode {
     pub server_config: Arc<ItsiServerConfig>,
     pub process_workers: parking_lot::Mutex<Vec<ProcessWorker>>,
-    pub lifecycle_channel: broadcast::Sender<LifecycleEvent>,
 }
 
 static CHILD_SIGNAL_SENDER: parking_lot::Mutex<Option<watch::Sender<()>>> =
     parking_lot::Mutex::new(None);
+
+static RELOAD_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 
 impl ClusterMode {
     pub fn new(server_config: Arc<ItsiServerConfig>) -> Self {
@@ -38,7 +40,6 @@ impl ClusterMode {
         Self {
             server_config,
             process_workers: parking_lot::Mutex::new(process_workers),
-            lifecycle_channel: SIGNAL_HANDLER_CHANNEL.0.clone(),
         }
     }
 
@@ -60,19 +61,23 @@ impl ClusterMode {
     }
 
     fn next_worker_id(&self) -> usize {
-        let mut taken: Vec<_> = self
+        let mut ids: Vec<usize> = self
             .process_workers
             .lock()
             .iter()
             .map(|w| w.worker_id)
             .collect();
-        taken.sort_unstable();
-        for (expected, &id) in taken.iter().enumerate() {
+        self.next_available_id_in(&mut ids)
+    }
+
+    fn next_available_id_in(&self, list: &mut [usize]) -> usize {
+        list.sort_unstable();
+        for (expected, &id) in list.iter().enumerate() {
             if id != expected {
                 return expected;
             }
         }
-        taken.len()
+        list.len()
     }
 
     #[allow(clippy::await_holding_lock)]
@@ -112,34 +117,50 @@ impl ClusterMode {
                     self.shutdown().await.ok();
                     self.server_config.reload_exec()?;
                 }
-                let mut workers_to_load = self.server_config.server_params.read().workers;
-                let mut next_workers = Vec::new();
-                for worker in self.process_workers.lock().drain(..) {
-                    if workers_to_load == 0 {
-                        worker.graceful_shutdown(self.clone()).await
-                    } else {
-                        workers_to_load -= 1;
-                        worker.reboot(self.clone()).await?;
-                        next_workers.push(worker);
-                    }
+
+                if RELOAD_IN_PROGRESS
+                    .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+                    .is_err()
+                {
+                    warn!("Reload already in progress, ignoring request");
+                    return Ok(());
                 }
-                self.process_workers.lock().extend(next_workers);
-                while workers_to_load > 0 {
-                    let mut workers = self.process_workers.lock();
+                let workers_to_load = self.server_config.server_params.read().workers;
+                let mut next_workers = Vec::new();
+                let mut old_workers = self.process_workers.lock().drain(..).collect::<Vec<_>>();
+
+                // Spawn new workers
+                for i in 0..workers_to_load {
                     let worker = ProcessWorker {
-                        worker_id: self.next_worker_id(),
+                        worker_id: i as usize,
                         ..Default::default()
                     };
                     let worker_clone = worker.clone();
                     let self_clone = self.clone();
-                    create_ruby_thread(move || {
-                        call_without_gvl(move || {
-                            worker_clone.boot(self_clone).ok();
-                        })
+
+                    call_with_gvl(|_| {
+                        create_ruby_thread(move || {
+                            call_without_gvl(move || match worker_clone.boot(self_clone) {
+                                Err(err) => error!("Worker boot failed {:?}", err),
+                                _ => {}
+                            })
+                        });
                     });
-                    workers.push(worker);
-                    workers_to_load -= 1
+
+                    next_workers.push(worker);
+
+                    if let Some(old) = old_workers.pop() {
+                        old.graceful_shutdown(self.clone()).await;
+                    }
                 }
+
+                for worker in old_workers {
+                    worker.graceful_shutdown(self.clone()).await;
+                }
+
+                self.process_workers.lock().extend(next_workers);
+                RELOAD_IN_PROGRESS.store(false, Ordering::SeqCst);
+
                 Ok(())
             }
             LifecycleEvent::IncreaseWorkers => {
@@ -186,6 +207,10 @@ impl ClusterMode {
                 unsafe { exit(0) };
             }
             LifecycleEvent::ChildTerminated => {
+                if RELOAD_IN_PROGRESS.load(Ordering::SeqCst) {
+                    warn!("Reload already in progress, ignoring child signal");
+                    return Ok(());
+                }
                 CHILD_SIGNAL_SENDER.lock().as_ref().inspect(|i| {
                     i.send(()).ok();
                 });
@@ -308,10 +333,11 @@ impl ClusterMode {
         let (sender, mut receiver) = watch::channel(());
         *CHILD_SIGNAL_SENDER.lock() = Some(sender);
 
-        let mut lifecycle_rx = self.lifecycle_channel.subscribe();
         let self_ref = self.clone();
 
         self.build_runtime().block_on(async {
+          let mut lifecycle_rx = subscribe_runtime_to_signals();
+
           let self_ref = self_ref.clone();
           let memory_check_duration = if self_ref.server_config.server_params.read().worker_memory_limit.is_some(){
             time::Duration::from_secs(15)
@@ -363,11 +389,16 @@ impl ClusterMode {
                   }
 
                 },
-                Err(e) => error!("Error receiving lifecycle_event: {:?}", e),
+                Err(e) => {
+                  error!("Error receiving lifecycle_event: {:?}", e);
+                  break
+                },
               }
             }
           }
         });
+
+        unsubscribe_runtime();
         self.server_config
             .server_params
             .write()

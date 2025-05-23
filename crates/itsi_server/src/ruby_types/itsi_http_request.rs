@@ -1,7 +1,7 @@
 use derive_more::Debug;
 use futures::StreamExt;
 use http::{header::CONTENT_LENGTH, request::Parts, HeaderValue, Response, StatusCode, Version};
-use http_body_util::{combinators::BoxBody, BodyExt, Empty};
+use http_body_util::BodyExt;
 use itsi_error::CLIENT_CONNECTION_CLOSED;
 use itsi_rb_helpers::{funcall_no_ret, print_rb_backtrace, HeapValue};
 use itsi_tracing::debug;
@@ -170,7 +170,7 @@ impl ItsiHttpRequest {
         }
     }
 
-    pub fn error(self, message: String) {
+    pub fn error(&self, message: String) {
         self.response.internal_server_error(message);
     }
 

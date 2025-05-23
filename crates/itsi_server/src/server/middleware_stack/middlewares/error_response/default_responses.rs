@@ -1,7 +1,6 @@
 use super::{ContentSource, DefaultFormat, ErrorResponse};
 use crate::server::http_message_types::{HttpBody, ResponseFormat};
 use bytes::Bytes;
-use http_body_util::Full;
 
 impl DefaultFormat {
     pub fn response_for_code(&self, code: u16) -> ContentSource {
