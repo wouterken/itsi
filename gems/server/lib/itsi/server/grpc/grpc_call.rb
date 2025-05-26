@@ -190,6 +190,8 @@ module Itsi
       end
     end
 
+    alias_method :each, :each_remote_read
+
     def bidi_streamer?
       input_stream? && output_stream?
     end

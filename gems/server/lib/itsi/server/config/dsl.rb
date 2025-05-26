@@ -57,8 +57,6 @@ module Itsi
               @options[:nested_locations].each(&:call)
               if !(@middleware[:app] || @middleware[:static_assets])
                 @middleware[:app] = { app_proc: DEFAULT_APP[]}
-              elsif @middleware[:app]
-                @middleware[:app][:app_proc] = @middleware[:app]&.[](:preloader)&.call
               end
               [flatten_routes, Config.errors_to_error_lines(errors)]
             end
