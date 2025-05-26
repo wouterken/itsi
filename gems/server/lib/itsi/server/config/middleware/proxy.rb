@@ -7,7 +7,7 @@ module Itsi
             to: "${1:http://backend.example.com{path_and_query}",
             backends: [${2:"127.0.0.1:3001", "127.0.0.1:3002"}],
             backend_priority: ${3|"round_robin","ordered","random"|},
-            headers: { ${4| "X-Forwarded-For" => { rewrite: "{addr}" },|} },
+            headers: { ${4| "X-Forwarded-For" =>  "{addr}"|} },
             verify_ssl: ${5|true,false|},
             timeout: ${6|30,60|},
             tls_sni: ${7|true,false|},

@@ -247,8 +247,9 @@ impl ItsiHttpService {
                     // thread as it might be in a critical section.
                     // Instead we must ask the worker to hot restart.
                     // But only if we're not already shutting down
-                    if is_ruby_request.load(Ordering::Relaxed) && 
-                       !SHUTDOWN_REQUESTED.load(Ordering::SeqCst) {
+                    if is_ruby_request.load(Ordering::Relaxed)
+                        && !SHUTDOWN_REQUESTED.load(Ordering::SeqCst)
+                    {
                         // When we've detected a timeout, use the safer send_lifecycle_event
                         // which will properly handle signal-safe state transitions
                         if is_single_mode {

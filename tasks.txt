@@ -1,17 +1,23 @@
-Tasks:
+-- Implement Nginx, Thruster and Kamal Proxy front-ends
+-- Finish Benchmark UI
+
+- Later:
+-- Default favicon
+-- Later: ACME:
+  - HTTP-01 challenge
+  - Live cert reload (Maybe on-demand?)
+
+Later:
 - Static ruby build
-- Add way to opt non Itsi.rb files into LSP
-- OTel
-- Even faster Hash creation for Rack
-- Image resizer
 - First class Rackless Websockets
-- Print out warning if we can detect that a location block will never be hit.
+- Fat binary gems
+- OTel
+- Image resizer
 - Built in obs Dashboard + Stats
 - WASM pluggable middleware
 - Support UDP Proxy
 - Support Unix Socket Proxy
 - gRPC proxying
-- HTTP-01 Autocert
 - H3
 - OpenAPI gen
 - Finish Single acceptor mode (Optional)

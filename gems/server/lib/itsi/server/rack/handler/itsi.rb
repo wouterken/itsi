@@ -9,7 +9,8 @@ module Rack
         ::Itsi::Server.start(
           {
             binds: ["http://#{host}:#{port}"],
-            threads: 5
+            threads: 5,
+            workers: 1
           }
         ) do
           run app
