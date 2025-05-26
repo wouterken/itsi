@@ -390,7 +390,7 @@ impl ClusterMode {
 
                 },
                 Err(e) => {
-                  error!("Error receiving lifecycle_event: {:?}", e);
+                  debug!("Lifecycle channel closed: {:?}, exiting cluster monitor loop", e);
                   break
                 },
               }

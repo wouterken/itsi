@@ -1,4 +1,5 @@
 use crate::server::{
+    frame_stream::{BufferedStream, FrameStream},
     http_message_types::{HttpBody, HttpResponse},
     serve_strategy::single_mode::RunningPhase,
 };
@@ -26,6 +27,7 @@ use std::{
     os::{fd::FromRawFd, unix::net::UnixStream},
     str::FromStr,
     sync::Arc,
+    time::Duration,
 };
 use tokio::{
     io::AsyncReadExt,
@@ -242,34 +244,13 @@ impl ItsiHttpResponse {
         {
             if self.frame_writer.read().is_none() && self.response.read().is_some() {
                 if let Some(mut response) = self.response.write().take() {
-                    let (writer, mut reader) = tokio::sync::mpsc::channel::<Bytes>(5);
-                    let mut shutdown_rx = self.shutdown_rx.clone();
+                    let (writer, reader) = tokio::sync::mpsc::channel::<Bytes>(256);
+                    let shutdown_rx = self.shutdown_rx.clone();
+                    let frame_stream = FrameStream::new(reader, shutdown_rx.clone());
 
-                    let frame_stream = async_stream::stream! {
-                        loop {
-                            tokio::select! {
-                                maybe_bytes = reader.recv() => {
-                                    match maybe_bytes {
-                                        Some(bytes) => {
-                                            yield Ok(bytes);
-                                        }
-                                        _ => break,
-                                    }
-                                },
-                                _ = shutdown_rx.changed() => {
-                                    if *shutdown_rx.borrow() == RunningPhase::ShutdownPending {
-                                        reader.close();
-                                        while let Ok(bytes) = reader.try_recv() {
-                                          yield Ok(bytes);
-                                        }
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    };
-
-                    *response.body_mut() = HttpBody::stream(frame_stream);
+                    let buffered =
+                        BufferedStream::new(frame_stream, 32 * 1024, Duration::from_millis(10));
+                    *response.body_mut() = HttpBody::stream(buffered);
                     self.frame_writer.write().replace(writer);
                     if let Some(sender) = self.response_sender.write().take() {
                         sender.send(ResponseFrame::HttpResponse(response)).ok();
@@ -313,10 +294,6 @@ impl ItsiHttpResponse {
 
     pub fn recv_frame(&self) {
         // not implemented
-    }
-
-    pub fn flush(&self) {
-        // no-op
     }
 
     pub fn is_closed(&self) -> bool {

@@ -41,5 +41,9 @@ module Itsi
         close
       end
     end
+
+    def flush
+      # No-op. Our Rust server performs stream coalescing and automatically flushes on a tight interval.
+    end
   end
 end

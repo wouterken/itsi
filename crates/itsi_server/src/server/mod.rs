@@ -1,5 +1,6 @@
 pub mod binds;
 pub mod byte_frame;
+pub mod frame_stream;
 pub mod http_message_types;
 pub mod io_stream;
 pub mod lifecycle_event;

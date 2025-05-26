@@ -17,7 +17,8 @@ pub static SIGNAL_HANDLER_CHANNEL: Mutex<Option<broadcast::Sender<LifecycleEvent
 pub static PENDING_QUEUE: Mutex<VecDeque<LifecycleEvent>> = Mutex::new(VecDeque::new());
 
 pub fn subscribe_runtime_to_signals() -> broadcast::Receiver<LifecycleEvent> {
-    if let Some(sender) = SIGNAL_HANDLER_CHANNEL.lock().as_ref() {
+    let mut guard = SIGNAL_HANDLER_CHANNEL.lock();
+    if let Some(sender) = guard.as_ref() {
         return sender.subscribe();
     }
     let (sender, receiver) = broadcast::channel(5);
@@ -29,7 +30,7 @@ pub fn subscribe_runtime_to_signals() -> broadcast::Receiver<LifecycleEvent> {
         }
     });
 
-    SIGNAL_HANDLER_CHANNEL.lock().replace(sender);
+    guard.replace(sender);
 
     receiver
 }

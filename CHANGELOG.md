@@ -1,5 +1,7 @@
-## [0.2.17] - Unreleased
-- Add 5 threads by default in rack/handler
+## [0.2.17] - 2025-05-31
+- Enabled vectorized writes in IoSteam
+- Replaced all usage of heap-allocated BoxBody with HttpBody enums
+- Add 5 threads as default for rack/handler
 - Reserve header size ahead of time in rack interface
 - Avoid intermediate array allocation when populating Rack env headers.
 - Rewrite synchronous thread worker to avoid excessive GVL acquisition

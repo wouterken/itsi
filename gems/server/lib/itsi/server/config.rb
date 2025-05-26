@@ -149,7 +149,7 @@ module Itsi
           max_concurrent_streams: itsifile_config.fetch(:max_concurrent_streams, nil),
           max_local_error_reset_streams: itsifile_config.fetch(:max_local_error_reset_streams, nil),
           max_header_list_size: itsifile_config.fetch(:max_header_list_size, 2 * 1024 * 1024),
-          max_send_buf_size: itsifile_config.fetch(:max_send_buf_size, 400 * 1024),
+          max_send_buf_size: itsifile_config.fetch(:max_send_buf_size, 64 * 1024),
           binds: args.fetch(:binds) { itsifile_config.fetch(:binds, ["http://0.0.0.0:3000"]) },
           middleware_loader: middleware_loader,
           listeners: args.fetch(:listeners, nil),

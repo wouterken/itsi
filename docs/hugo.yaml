@@ -55,6 +55,9 @@ menu:
     - name: "Itsi Scheduler"
       pageRef: "/itsi_scheduler"
       weight: 2
+    - name: "Server Benchmarks"
+      pageRef: "/benchmarks"
+      weight: 2
     - name: "Github ↗"
       url: "https://github.com/wouterken/itsi"
       weight: 4

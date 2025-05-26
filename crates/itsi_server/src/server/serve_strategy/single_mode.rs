@@ -4,7 +4,10 @@ use crate::{
         lifecycle_event::LifecycleEvent,
         request_job::RequestJob,
         serve_strategy::acceptor::{Acceptor, AcceptorArgs},
-        signal::{send_lifecycle_event, subscribe_runtime_to_signals, SHUTDOWN_REQUESTED},
+        signal::{
+            send_lifecycle_event, subscribe_runtime_to_signals, unsubscribe_runtime,
+            SHUTDOWN_REQUESTED,
+        },
         thread_worker::{build_thread_workers, ThreadWorker},
     },
 };
@@ -222,6 +225,10 @@ impl SingleMode {
                                           Ok(LifecycleEvent::PrintInfo) => {
                                             receiver.print_info(thread_workers.clone()).await.ok();
                                           }
+                                          Err(e) => {
+                                            debug!("Lifecycle channel closed: {:?}, exiting single mode monitor loop", e);
+                                            break;
+                                          }
                                           _ => {}
                                       }
                                   }
@@ -322,7 +329,6 @@ impl SingleMode {
                         // Process any pending signals before select
                         tokio::select! {
                             accept_result = listener.accept() => {
-                                info!("New connection accepted");
                                 match accept_result {
                                     Ok(accepted) => acceptor.serve_connection(accepted).await,
                                     Err(e) => debug!("Listener.accept failed: {:?}", e)
@@ -345,7 +351,7 @@ impl SingleMode {
                                         break;
                                     },
                                     Err(e) => {
-                                      error!("Error receiving lifecycle event: {:?}", e);
+                                      debug!("Lifecycle channel closed: {:?}, exiting accept loop", e);
                                       break
                                     },
                                     _ => ()
@@ -381,6 +387,8 @@ impl SingleMode {
 
         shutdown_sender.send(RunningPhase::Shutdown).ok();
         runtime.shutdown_timeout(Duration::from_millis(100));
+        unsubscribe_runtime();
+
         debug!("Shutdown timeout finished.");
 
         let deadline = Instant::now() + Duration::from_secs_f64(shutdown_timeout);

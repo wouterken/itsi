@@ -24,12 +24,12 @@ module Itsi
           super(location, params)
           raise "Rackup file must be a string" unless app.is_a?(String)
 
-          @app = Itsi::Server::RackInterface.for(app)
+          @app = app
         end
 
         def build!
           app_args = {
-            preloader: -> { @app },
+            preloader: -> { Itsi::Server::RackInterface.for(@app) },
             sendfile: @params[:sendfile],
             nonblocking: @params[:nonblocking],
             script_name: @params[:script_name],
