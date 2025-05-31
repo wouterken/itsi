@@ -32,18 +32,8 @@ struct PatternGroup {
 /// component that contains a wildcard character.
 fn extract_and_canonicalize_base_dir(pattern: &str) -> PathBuf {
     if !(pattern.contains("*") || pattern.contains("?") || pattern.contains('[')) {
-        if let Ok(metadata) = fs::metadata(pattern) {
-            if metadata.is_dir() {
-                return fs::canonicalize(pattern).unwrap();
-            }
-            if metadata.is_file() {
-                return fs::canonicalize(pattern)
-                    .unwrap()
-                    .parent()
-                    .unwrap()
-                    .to_path_buf();
-            }
-        }
+        let base = PathBuf::from(".");
+        return fs::canonicalize(&base).unwrap_or(base);
     }
 
     let path = Path::new(pattern);
@@ -63,12 +53,11 @@ fn extract_and_canonicalize_base_dir(pattern: &str) -> PathBuf {
         base
     };
 
-    // Canonicalize to get the absolute path.
     fs::canonicalize(&base).unwrap_or(base)
 }
 
 /// Minimum time between triggering the same pattern group (debounce time)
-const DEBOUNCE_DURATION: Duration = Duration::from_millis(500);
+const DEBOUNCE_DURATION: Duration = Duration::from_millis(2000);
 
 pub fn watch_groups(pattern_groups: Vec<(String, Vec<Vec<String>>)>) -> Result<Option<OwnedFd>> {
     let (r_fd, w_fd): (OwnedFd, OwnedFd) = pipe().map_err(|e| {
@@ -145,13 +134,14 @@ pub fn watch_groups(pattern_groups: Vec<(String, Vec<Vec<String>>)>) -> Result<O
             notify::recommended_watcher(event_fn(sender)).expect("Failed to create watcher");
         for group in &groups {
             if watched_dirs.insert(group.base_dir.clone()) {
-                debug!("Watching {}{}", group.base_dir.display(), group.pattern);
+                debug!("Watching {}/{}", group.base_dir.display(), group.pattern);
                 watcher
                     .watch(&group.base_dir, RecursiveMode::Recursive)
                     .expect("Failed to add watch");
             }
         }
 
+        debug!("Monitored groups {:?}", groups.len());
         // Main event loop.
         for res in rx {
             match res {
@@ -159,6 +149,7 @@ pub fn watch_groups(pattern_groups: Vec<(String, Vec<Vec<String>>)>) -> Result<O
                     if !matches!(event.kind, EventKind::Modify(ModifyKind::Data(_))) {
                         continue;
                     }
+                    debug!("Event fired {:?}", event);
                     let now = Instant::now();
                     for group in &mut groups {
                         for path in event.paths.iter() {

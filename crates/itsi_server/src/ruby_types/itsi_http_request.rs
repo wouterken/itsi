@@ -1,31 +1,30 @@
 use derive_more::Debug;
 use futures::StreamExt;
-use http::{header::CONTENT_LENGTH, request::Parts, Response, StatusCode, Version};
-use http_body_util::{combinators::BoxBody, BodyExt, Empty};
+use http::{header::CONTENT_LENGTH, request::Parts, HeaderValue, Response, StatusCode, Version};
+use http_body_util::BodyExt;
 use itsi_error::CLIENT_CONNECTION_CLOSED;
-use itsi_rb_helpers::{print_rb_backtrace, HeapValue};
-use itsi_tracing::{debug, error};
+use itsi_rb_helpers::{funcall_no_ret, print_rb_backtrace, HeapValue};
+use itsi_tracing::debug;
 use magnus::{
-    block::Proc,
+    block::{yield_values, Proc},
     error::{ErrorType, Result as MagnusResult},
-    Error, RHash, Symbol,
+    Error, IntoValue, RHash, Symbol,
 };
 use magnus::{
     value::{LazyId, ReprValue},
     Ruby, Value,
 };
 use std::{fmt, io::Write, sync::Arc, time::Instant};
-use tokio::sync::mpsc::{self};
+use tracing::error;
 
 use super::{
     itsi_body_proxy::{big_bytes::BigBytes, ItsiBody, ItsiBodyProxy},
-    itsi_http_response::ItsiHttpResponse,
+    itsi_http_response::{ItsiHttpResponse, ResponseFrame},
 };
 use crate::{
     default_responses::{INTERNAL_SERVER_ERROR_RESPONSE, SERVICE_UNAVAILABLE_RESPONSE},
     server::{
-        byte_frame::ByteFrame,
-        http_message_types::{HttpRequest, HttpResponse},
+        http_message_types::{HttpBody, HttpRequest, HttpResponse},
         request_job::RequestJob,
         size_limited_incoming::MaxBodySizeReached,
     },
@@ -33,11 +32,13 @@ use crate::{
 };
 
 static ID_MESSAGE: LazyId = LazyId::new("message");
+static ID_CALL: LazyId = LazyId::new("call");
+static ZERO_HEADER_VALUE: HeaderValue = HeaderValue::from_static("0");
 
 #[derive(Debug)]
 #[magnus::wrap(class = "Itsi::HttpRequest", free_immediately, size)]
 pub struct ItsiHttpRequest {
-    pub parts: Parts,
+    pub parts: Arc<Parts>,
     #[debug(skip)]
     pub body: ItsiBody,
     pub version: Version,
@@ -148,8 +149,10 @@ impl ItsiHttpRequest {
 
     pub fn process(self, ruby: &Ruby, app_proc: Arc<HeapValue<Proc>>) -> magnus::error::Result<()> {
         let response = self.response.clone();
-        let result = app_proc.call::<_, Value>((self,));
-        if let Err(err) = result {
+
+        if let Err(err) =
+            funcall_no_ret(app_proc.as_value(), *ID_CALL, [self.into_value_with(ruby)])
+        {
             Self::internal_error(ruby, response, err);
         }
         Ok(())
@@ -158,7 +161,7 @@ impl ItsiHttpRequest {
     pub fn internal_error(ruby: &Ruby, response: ItsiHttpResponse, err: Error) {
         if Self::is_connection_closed_err(ruby, &err) {
             debug!("Connection closed by client");
-            response.close();
+            response.close().ok();
         } else if let Some(rb_err) = err.value() {
             print_rb_backtrace(rb_err);
             response.internal_server_error(err.to_string());
@@ -167,7 +170,7 @@ impl ItsiHttpRequest {
         }
     }
 
-    pub fn error(self, message: String) {
+    pub fn error(&self, message: String) {
         self.response.internal_server_error(message);
     }
 
@@ -179,9 +182,7 @@ impl ItsiHttpRequest {
         nonblocking: bool,
     ) -> itsi_error::Result<HttpResponse> {
         match ItsiHttpRequest::new(hyper_request, context, script_name).await {
-            Ok((request, mut receiver)) => {
-                let shutdown_channel = context.service.shutdown_receiver.clone();
-                let response = request.response.clone();
+            Ok((request, receiver)) => {
                 let sender = if nonblocking {
                     &context.nonblocking_sender
                 } else {
@@ -192,20 +193,30 @@ impl ItsiHttpRequest {
                         async_channel::TrySendError::Full(_) => Ok(SERVICE_UNAVAILABLE_RESPONSE
                             .to_http_response(context.accept)
                             .await),
-                        async_channel::TrySendError::Closed(err) => {
-                            error!("Error occurred: {:?}", err);
+                        async_channel::TrySendError::Closed(_) => {
+                            error!("Channel closed while sending request job");
                             Ok(INTERNAL_SERVER_ERROR_RESPONSE
                                 .to_http_response(context.accept)
                                 .await)
                         }
                     },
-                    _ => match receiver.recv().await {
-                        Some(first_frame) => Ok(response
-                            .build(first_frame, receiver, shutdown_channel)
-                            .await),
-                        None => Ok(response
-                            .build(ByteFrame::Empty, receiver, shutdown_channel)
-                            .await),
+                    Ok(_) => match receiver.await {
+                        Ok(ResponseFrame::HttpResponse(response)) => Ok(response),
+                        Ok(ResponseFrame::HijackedResponse(response)) => {
+                            match response.process_hijacked_response().await {
+                                Ok(result) => Ok(result),
+                                Err(e) => {
+                                    error!("Error processing hijacked response: {}", e);
+                                    Ok(Response::new(HttpBody::empty()))
+                                }
+                            }
+                        }
+                        Err(_) => {
+                            error!("Failed to receive response from receiver");
+                            Ok(INTERNAL_SERVER_ERROR_RESPONSE
+                                .to_http_response(context.accept)
+                                .await)
+                        }
                     },
                 }
             }
@@ -217,9 +228,18 @@ impl ItsiHttpRequest {
         request: HttpRequest,
         context: &HttpRequestContext,
         script_name: String,
-    ) -> Result<(ItsiHttpRequest, mpsc::Receiver<ByteFrame>), HttpResponse> {
+    ) -> Result<
+        (
+            ItsiHttpRequest,
+            tokio::sync::oneshot::Receiver<ResponseFrame>,
+        ),
+        HttpResponse,
+    > {
         let (parts, body) = request.into_parts();
-        let body = if context.server_params.streamable_body {
+        let parts = Arc::new(parts);
+        let body = if parts.headers.get(CONTENT_LENGTH) == Some(&ZERO_HEADER_VALUE) {
+            ItsiBody::Empty
+        } else if context.server_params.streamable_body {
             ItsiBody::Stream(ItsiBodyProxy::new(body))
         } else {
             let mut body_bytes = BigBytes::new();
@@ -228,7 +248,7 @@ impl ItsiHttpRequest {
                 match chunk {
                     Ok(byte_array) => body_bytes.write_all(&byte_array).unwrap(),
                     Err(e) => {
-                        let mut err_resp = Response::new(BoxBody::new(Empty::new()));
+                        let mut err_resp = Response::new(HttpBody::empty());
                         if e.downcast_ref::<MaxBodySizeReached>().is_some() {
                             *err_resp.status_mut() = StatusCode::PAYLOAD_TOO_LARGE;
                         }
@@ -238,18 +258,22 @@ impl ItsiHttpRequest {
             }
             ItsiBody::Buffered(body_bytes)
         };
-        let response_channel = mpsc::channel::<ByteFrame>(100);
+        let (sender, receiver) = tokio::sync::oneshot::channel::<ResponseFrame>();
         Ok((
             Self {
                 context: context.clone(),
                 version: parts.version,
-                response: ItsiHttpResponse::new(parts.clone(), response_channel.0),
+                response: ItsiHttpResponse::new(
+                    parts.clone(),
+                    sender,
+                    context.service.shutdown_receiver.clone(),
+                ),
                 start: Instant::now(),
                 script_name,
                 body,
                 parts,
             },
-            response_channel.1,
+            receiver,
         ))
     }
 
@@ -326,6 +350,13 @@ impl ItsiHttpRequest {
             .iter()
             .map(|(hn, hv)| (hn.as_str(), hv.to_str().unwrap_or("")))
             .collect::<Vec<(&str, &str)>>())
+    }
+
+    pub(crate) fn each_header(&self) -> MagnusResult<()> {
+        self.parts.headers.iter().for_each(|(hn, hv)| {
+            yield_values::<_, Value>((hn.as_str(), hv.to_str().unwrap_or(""))).ok();
+        });
+        Ok(())
     }
 
     pub(crate) fn uri(&self) -> MagnusResult<String> {

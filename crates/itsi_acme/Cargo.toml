@@ -2,7 +2,7 @@
 name = "itsi_acme"
 version = "0.1.0"
 authors = [
-  "wouterkem <wc@pico.net.nz>",
+  "wouterken <wc@pico.net.nz>",
   "dignifiedquire <me@dignifiedquire.com>",
   "Florian Uekermann <florian@uekermann.me>",
 ]

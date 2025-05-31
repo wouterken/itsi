@@ -164,7 +164,12 @@ if ENV['COMP_LINE'] || ARGV.include?('--completion')
   exit
 end
 
-parser.parse!
+begin
+  parser.parse!
+rescue StandardError => e
+  puts e.message
+  exit
+end
 
 case (command = ARGV.shift)
 when *COMMANDS.keys

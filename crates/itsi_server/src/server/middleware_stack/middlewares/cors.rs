@@ -1,12 +1,11 @@
 use super::{FromValue, MiddlewareLayer};
 use crate::{
-    server::http_message_types::{HttpRequest, HttpResponse, RequestExt},
+    server::http_message_types::{HttpBody, HttpRequest, HttpResponse, RequestExt},
     services::itsi_http_service::HttpRequestContext,
 };
 
 use async_trait::async_trait;
 use http::{HeaderMap, Method, Response};
-use http_body_util::{combinators::BoxBody, Empty};
 use itsi_error::ItsiError;
 use magnus::error::Result;
 use serde::Deserialize;
@@ -273,7 +272,7 @@ impl MiddlewareLayer for Cors {
             let mut response_builder = Response::builder().status(204);
             *response_builder.headers_mut().unwrap() = headers;
             let response = response_builder
-                .body(BoxBody::new(Empty::new()))
+                .body(HttpBody::empty())
                 .map_err(ItsiError::new)?;
             return Ok(either::Either::Right(response));
         }

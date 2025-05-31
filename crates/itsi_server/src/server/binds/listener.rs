@@ -9,7 +9,7 @@ use super::bind_protocol::BindProtocol;
 use super::tls::ItsiTlsAcceptor;
 use itsi_error::{ItsiError, Result};
 use itsi_tracing::info;
-use socket2::{Domain, Protocol, Socket, Type};
+use socket2::{Domain, Protocol, SockRef, Socket, Type};
 use std::fmt::Display;
 use std::net::{IpAddr, SocketAddr, TcpListener};
 use std::os::fd::{AsRawFd, FromRawFd, RawFd};
@@ -274,15 +274,53 @@ impl Display for Listener {
 }
 
 impl Listener {
-    pub fn into_tokio_listener(self) -> TokioListener {
+    pub fn rebind_listener(listener: TcpListener) -> TcpListener {
+        let sock = SockRef::from(&listener);
+        let (reuse_address, reuse_port) = (
+            sock.reuse_address().unwrap_or(true),
+            sock.reuse_port().unwrap_or(true),
+        );
+
+        if !reuse_address || !reuse_port {
+            return listener;
+        }
+
+        let (ip, port) = sock
+            .local_addr()
+            .unwrap()
+            .as_socket()
+            .map(|addr| (addr.ip(), addr.port()))
+            .unwrap();
+
+        let socket_opts = SocketOpts {
+            reuse_address: sock.reuse_address().unwrap_or(true), // default: true
+            reuse_port: sock.reuse_port().unwrap_or(false),      // default: false
+            nodelay: sock.nodelay().unwrap_or(false),            // default: false
+            recv_buffer_size: sock.recv_buffer_size().unwrap_or(0),
+            send_buffer_size: sock.send_buffer_size().unwrap_or(0),
+            listen_backlog: 1024, // cannot query – pick sane default
+        };
+
+        connect_tcp_socket(ip, port, &socket_opts).unwrap()
+    }
+
+    pub fn into_tokio_listener(self, no_rebind: bool) -> TokioListener {
         match self {
-            Listener::Tcp(listener) => {
+            Listener::Tcp(mut listener) => {
+                if cfg!(target_os = "linux") && !no_rebind {
+                    listener = Listener::rebind_listener(listener);
+                }
                 TokioListener::Tcp(TokioTcpListener::from_std(listener).unwrap())
             }
-            Listener::TcpTls((listener, acceptor)) => TokioListener::TcpTls(
-                TokioTcpListener::from_std(listener).unwrap(),
-                acceptor.clone(),
-            ),
+            Listener::TcpTls((mut listener, acceptor)) => {
+                if cfg!(target_os = "linux") && !no_rebind {
+                    listener = Listener::rebind_listener(listener);
+                }
+                TokioListener::TcpTls(
+                    TokioTcpListener::from_std(listener).unwrap(),
+                    acceptor.clone(),
+                )
+            }
             Listener::Unix(listener) => {
                 TokioListener::Unix(TokioUnixListener::from_std(listener).unwrap())
             }

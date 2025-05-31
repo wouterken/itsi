@@ -1,6 +1,6 @@
 use super::itsi_grpc_response_stream::ItsiGrpcResponseStream;
 use crate::prelude::*;
-use crate::server::http_message_types::{HttpRequest, HttpResponse};
+use crate::server::http_message_types::{HttpBody, HttpRequest, HttpResponse};
 use crate::server::{byte_frame::ByteFrame, request_job::RequestJob};
 use crate::services::itsi_http_service::HttpRequestContext;
 use async_compression::futures::bufread::{GzipDecoder, GzipEncoder, ZlibDecoder, ZlibEncoder};
@@ -8,7 +8,7 @@ use bytes::Bytes;
 use derive_more::Debug;
 use futures::{executor::block_on, io::Cursor, AsyncReadExt};
 use http::{request::Parts, Response, StatusCode};
-use http_body_util::{combinators::BoxBody, BodyExt, Empty};
+use http_body_util::BodyExt;
 use itsi_error::CLIENT_CONNECTION_CLOSED;
 use itsi_rb_helpers::{print_rb_backtrace, HeapValue};
 use itsi_tracing::debug;
@@ -139,7 +139,7 @@ impl ItsiGrpcCall {
         {
             Err(err) => {
                 error!("Error occurred: {}", err);
-                let mut response = Response::new(BoxBody::new(Empty::new()));
+                let mut response = Response::new(HttpBody::empty());
                 *response.status_mut() = StatusCode::BAD_REQUEST;
                 Ok(response)
             }
@@ -147,7 +147,7 @@ impl ItsiGrpcCall {
                 Some(first_frame) => Ok(response_stream
                     .build_response(first_frame, receiver, shutdown_channel)
                     .await),
-                None => Ok(Response::new(BoxBody::new(Empty::new()))),
+                None => Ok(Response::new(HttpBody::empty())),
             },
         }
     }

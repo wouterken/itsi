@@ -12,7 +12,7 @@ module Itsi
           end
         end
         lambda do |request|
-          Server.respond(request, app.call(request.to_rack_env))
+          Server.respond(request, app.call(env = request.to_rack_env), env)
         end
       end
 
@@ -20,14 +20,14 @@ module Itsi
       # Here we build the env, and invoke the Rack app's call method.
       # We then turn the Rack response into something Itsi server understands.
       def call(app, request)
-        respond request, app.call(request.to_rack_env)
+        respond request, app.call(env = request.to_rack_env), env
       end
 
       # Itsi responses are asynchronous and can be streamed.
       # Response chunks are sent using response.send_frame
       # and the response is finished using response.close_write.
       # If only a single chunk is written, you can use the #send_and_close method.
-      def respond(request, (status, headers, body))
+      def respond(request, (status, headers, body), env)
         response = request.response
 
         # Don't try and respond if we've been hijacked.
@@ -39,13 +39,16 @@ module Itsi
 
         # 2. Set Headers
         body_streamer = streaming_body?(body) ? body : headers.delete("rack.hijack")
-        headers.each do |key, value|
-          if value.is_a?(Array)
+
+        response.reserve_headers(headers.size)
+
+        for key, value in headers
+          case value
+          when String then response[key] = value
+          when Array
             value.each do |v|
               response[key] = v
             end
-          elsif value.is_a?(String)
-            response[key] = value
           end
         end
 
@@ -53,15 +56,15 @@ module Itsi
         # As soon as we start setting the response
         # the server will begin to stream it to the client.
 
-        # If we're partially hijacked or returned a streaming body,
-        # stream this response.
 
         if body_streamer
+          # If we're partially hijacked or returned a streaming body,
+          # stream this response.
           body_streamer.call(response)
 
-        # If we're enumerable with more than one chunk
-        # also stream, otherwise write in a single chunk
         elsif body.respond_to?(:each) || body.respond_to?(:to_ary)
+          # If we're enumerable with more than one chunk
+          # also stream, otherwise write in a single chunk
           unless body.respond_to?(:each)
             body = body.to_ary
             raise "Body #to_ary didn't return an array" unless body.is_a?(Array)
@@ -78,8 +81,10 @@ module Itsi
         else
           response.send_and_close(body.to_s)
         end
+      rescue EOFError
+        response.close
       ensure
-        response.close_write
+        RackEnvPool.checkin(env)
         body.close if body.respond_to?(:close)
       end
 

@@ -25,6 +25,7 @@ pub struct ItsiBodyProxy {
 pub enum ItsiBody {
     Buffered(BigBytes),
     Stream(ItsiBodyProxy),
+    Empty,
 }
 
 impl ItsiBody {
@@ -32,6 +33,7 @@ impl ItsiBody {
         match self {
             ItsiBody::Buffered(bytes) => bytes.as_value(),
             ItsiBody::Stream(proxy) => Some(proxy.clone().into_value()),
+            ItsiBody::Empty => None,
         }
     }
 }
