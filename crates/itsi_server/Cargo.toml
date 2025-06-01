@@ -1,6 +1,6 @@
 [package]
 name = "itsi-server"
-version = "0.2.16"
+version = "0.2.17"
 edition = "2021"
 authors = ["Wouter Coppieters <wc@pico.net.nz>"]
 license = "MIT"
@@ -90,3 +90,5 @@ argon2 = "0.5.3"
 core_affinity = "0.8.3"
 memchr = "2.7.4"
 quick_cache = "0.6.13"
+smallvec = "1.15.0"
+futures-util = "0.3.31"

@@ -2,7 +2,7 @@ use crate::{
     default_responses::NOT_FOUND_RESPONSE,
     prelude::*,
     server::{
-        http_message_types::{HttpRequest, HttpResponse, RequestExt, ResponseFormat},
+        http_message_types::{HttpBody, HttpRequest, HttpResponse, RequestExt, ResponseFormat},
         middleware_stack::ErrorResponse,
         redirect_type::RedirectType,
     },
@@ -16,7 +16,6 @@ use http::{
     },
     HeaderName, HeaderValue, Response, StatusCode,
 };
-use http_body_util::{combinators::BoxBody, Full};
 use itsi_error::Result;
 use parking_lot::{Mutex, RwLock};
 use percent_encoding::percent_decode_str;
@@ -28,7 +27,6 @@ use std::{
     borrow::Cow,
     cmp::Ordering,
     collections::HashMap,
-    convert::Infallible,
     fs::Metadata,
     ops::Deref,
     path::{Path, PathBuf},
@@ -324,7 +322,7 @@ impl StaticFileServer {
             }) => Response::builder()
                 .status(StatusCode::MOVED_PERMANENTLY)
                 .header(header::LOCATION, redirect_to)
-                .body(BoxBody::new(Full::new(Bytes::new())))
+                .body(HttpBody::empty())
                 .unwrap(),
             Err(not_found_behavior) => match not_found_behavior {
                 NotFoundBehavior::Error(error_response) => {
@@ -340,7 +338,7 @@ impl StaticFileServer {
                 NotFoundBehavior::Redirect(redirect) => Response::builder()
                     .status(redirect.r#type.status_code())
                     .header(header::LOCATION, redirect.to)
-                    .body(BoxBody::new(Full::new(Bytes::new())))
+                    .body(HttpBody::empty())
                     .unwrap(),
             },
         })
@@ -407,7 +405,7 @@ impl StaticFileServer {
 
         Response::builder()
             .status(StatusCode::NOT_FOUND)
-            .body(BoxBody::new(Full::new(Bytes::new())))
+            .body(HttpBody::empty())
             .unwrap()
     }
 
@@ -648,15 +646,8 @@ impl StaticFileServer {
         Err(nf)
     }
 
-    async fn stream_file_range(
-        &self,
-        path: PathBuf,
-        start: u64,
-        end: u64,
-    ) -> Option<BoxBody<Bytes, Infallible>> {
+    async fn stream_file_range(&self, path: PathBuf, start: u64, end: u64) -> Option<HttpBody> {
         use futures::TryStreamExt;
-        use http_body_util::StreamBody;
-        use hyper::body::Frame;
         use tokio::io::AsyncSeekExt;
         use tokio_util::io::ReaderStream;
 
@@ -687,32 +678,25 @@ impl StaticFileServer {
         let range_length = end - start + 1;
         let limited_reader = tokio::io::AsyncReadExt::take(file, range_length);
         let path_clone = path.clone();
-        let stream = ReaderStream::with_capacity(limited_reader, 64 * 1024)
-            .map_ok(Frame::data)
-            .map_err(move |e| {
-                warn!("Error streaming file {}: {}", path_clone.display(), e);
-                unreachable!("We handle IO errors above")
-            });
-
-        Some(BoxBody::new(StreamBody::new(stream)))
+        let stream = ReaderStream::with_capacity(limited_reader, 64 * 1024).map_err(move |e| {
+            warn!("Error streaming file {}: {}", path_clone.display(), e);
+            unreachable!("We handle IO errors above")
+        });
+        Some(HttpBody::stream(stream))
     }
 
-    async fn stream_file(&self, path: PathBuf) -> Option<BoxBody<Bytes, Infallible>> {
+    async fn stream_file(&self, path: PathBuf) -> Option<HttpBody> {
         use futures::TryStreamExt;
-        use http_body_util::StreamBody;
-        use hyper::body::Frame;
         use tokio_util::io::ReaderStream;
 
         match File::open(&path).await {
             Ok(file) => {
                 let path_clone = path.clone();
-                let stream = ReaderStream::with_capacity(file, 64 * 1024)
-                    .map_ok(Frame::data)
-                    .map_err(move |e| {
-                        warn!("Error streaming file {}: {}", path_clone.display(), e);
-                        unreachable!("We handle IO errors above")
-                    });
-                Some(BoxBody::new(StreamBody::new(stream)))
+                let stream = ReaderStream::with_capacity(file, 64 * 1024).map_err(move |e| {
+                    warn!("Error streaming file {}: {}", path_clone.display(), e);
+                    unreachable!("We handle IO errors above")
+                });
+                Some(HttpBody::stream(stream))
             }
             Err(e) => {
                 warn!(
@@ -749,7 +733,7 @@ impl StaticFileServer {
             return Response::builder()
                 .status(StatusCode::RANGE_NOT_SATISFIABLE)
                 .header("Content-Range", format!("bytes */{}", content_length))
-                .body(BoxBody::new(Full::new(Bytes::new())))
+                .body(HttpBody::empty())
                 .unwrap();
         }
 
@@ -795,7 +779,7 @@ impl StaticFileServer {
                 builder = builder.header("Content-Range", range);
             }
 
-            return builder.body(BoxBody::new(Full::new(Bytes::new()))).unwrap();
+            return builder.body(HttpBody::empty()).unwrap();
         }
 
         // For GET requests, prepare the actual content
@@ -829,10 +813,7 @@ impl StaticFileServer {
         }
     }
 
-    fn serve_cached_content(
-        &self,
-        serve_cache_args: ServeCacheArgs,
-    ) -> http::Response<BoxBody<Bytes, Infallible>> {
+    fn serve_cached_content(&self, serve_cache_args: ServeCacheArgs) -> HttpResponse {
         let ServeCacheArgs(
             cache_entry,
             start,
@@ -855,7 +836,7 @@ impl StaticFileServer {
             return Response::builder()
                 .status(StatusCode::RANGE_NOT_SATISFIABLE)
                 .header("Content-Range", format!("bytes */{}", content_length))
-                .body(BoxBody::new(Full::new(Bytes::new())))
+                .body(HttpBody::empty())
                 .unwrap();
         }
 
@@ -904,7 +885,7 @@ impl StaticFileServer {
                 builder = builder.header("Content-Range", range);
             }
 
-            return builder.body(BoxBody::new(Full::new(Bytes::new()))).unwrap();
+            return builder.body(HttpBody::empty()).unwrap();
         }
 
         if is_range_request {
@@ -920,7 +901,7 @@ impl StaticFileServer {
                 cache_entry.last_modified_http_date.clone(),
                 content_range,
                 &self.headers,
-                BoxBody::new(Full::new(range_bytes)),
+                HttpBody::full(range_bytes),
             )
         } else {
             // Return the full content
@@ -987,15 +968,15 @@ fn format_http_date_header(time: SystemTime) -> HeaderValue {
         .unwrap()
 }
 
-fn build_ok_body(bytes: Arc<Bytes>) -> BoxBody<Bytes, Infallible> {
-    BoxBody::new(Full::new(bytes.as_ref().clone()))
+fn build_ok_body(bytes: Arc<Bytes>) -> HttpBody {
+    HttpBody::full(bytes.as_ref().clone())
 }
 
 // Helper function to handle not modified responses
-fn build_not_modified_response() -> http::Response<BoxBody<Bytes, Infallible>> {
+fn build_not_modified_response() -> HttpResponse {
     Response::builder()
         .status(StatusCode::NOT_MODIFIED)
-        .body(BoxBody::new(Full::new(Bytes::new())))
+        .body(HttpBody::empty())
         .unwrap()
 }
 
@@ -1009,8 +990,8 @@ fn build_file_response(
     last_modified_http_date: HeaderValue,
     range_header: Option<String>,
     headers: &Option<HashMap<String, String>>,
-    body: BoxBody<Bytes, Infallible>,
-) -> http::Response<BoxBody<Bytes, Infallible>> {
+    body: HttpBody,
+) -> HttpResponse {
     let mut response = Response::new(body);
 
     *response.status_mut() = status;

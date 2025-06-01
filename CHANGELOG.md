@@ -1,3 +1,16 @@
+## [0.2.17] - 2025-05-31
+- Enabled vectorized writes in IoSteam
+- Replaced all usage of heap-allocated BoxBody with HttpBody enums
+- Add 5 threads as default for rack/handler
+- Reserve header size ahead of time in rack interface
+- Avoid intermediate array allocation when populating Rack env headers.
+- Rewrite synchronous thread worker to avoid excessive GVL acquisition
+- Revert to default write_ev behaviour for http1
+- Switch to service_fn from service struct to avoid one additional pinned future
+- Worker pinning accepts ruby workers too
+- Fixed ordering incomaptibility in etag forwarding from static file server
+- Added embedded benchmark suite
+
 ## [0.2.16] - 2025-05-02
 - Optimized static error responses
 - Optimized rate limit middleware

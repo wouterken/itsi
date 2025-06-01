@@ -72,6 +72,12 @@ pub struct ServerParams {
     pub ruby_thread_request_backlog_size: Option<usize>,
     pub middleware_loader: HeapValue<Proc>,
     pub middleware: OnceLock<MiddlewareSet>,
+    pub pipeline_flush: bool,
+    pub writev: Option<bool>,
+    pub max_concurrent_streams: Option<u32>,
+    pub max_local_error_reset_streams: Option<usize>,
+    pub max_header_list_size: u32,
+    pub max_send_buf_size: usize,
     pub binds: Vec<Bind>,
     #[debug(skip)]
     pub(crate) listeners: Mutex<Vec<Listener>>,
@@ -178,19 +184,19 @@ impl ServerParams {
     }
 
     fn from_rb_hash(rb_param_hash: RHash) -> Result<ServerParams> {
+        let num_cpus = num_cpus::get_physical() as u8;
         let workers = rb_param_hash
             .fetch::<_, Option<u8>>("workers")?
-            .unwrap_or(num_cpus::get() as u8);
+            .unwrap_or(num_cpus);
         let worker_memory_limit: Option<u64> = rb_param_hash.fetch("worker_memory_limit")?;
         let silence: bool = rb_param_hash.fetch("silence")?;
         let multithreaded_reactor: bool = rb_param_hash
             .fetch::<_, Option<bool>>("multithreaded_reactor")?
-            .unwrap_or(workers == 1);
+            .unwrap_or(workers <= (num_cpus / 3));
         let pin_worker_cores: bool = rb_param_hash
             .fetch::<_, Option<bool>>("pin_worker_cores")?
-            .unwrap_or(true);
+            .unwrap_or(false);
         let shutdown_timeout: f64 = rb_param_hash.fetch("shutdown_timeout")?;
-
         let hooks: Option<RHash> = rb_param_hash.fetch("hooks")?;
         let hooks = hooks
             .map(|rhash| -> Result<HashMap<String, HeapValue<Proc>>> {
@@ -281,6 +287,14 @@ impl ServerParams {
             set_target_filters(target_filters);
         }
 
+        let pipeline_flush: bool = rb_param_hash.fetch("pipeline_flush")?;
+        let writev: Option<bool> = rb_param_hash.fetch("writev")?;
+        let max_concurrent_streams: Option<u32> = rb_param_hash.fetch("max_concurrent_streams")?;
+        let max_local_error_reset_streams: Option<usize> =
+            rb_param_hash.fetch("max_local_error_reset_streams")?;
+        let max_header_list_size: u32 = rb_param_hash.fetch("max_header_list_size")?;
+        let max_send_buf_size: usize = rb_param_hash.fetch("max_send_buf_size")?;
+
         let binds: Option<Vec<String>> = rb_param_hash.fetch("binds")?;
         let binds = binds
             .unwrap_or_else(|| vec![DEFAULT_BIND.to_string()])
@@ -322,6 +336,12 @@ impl ServerParams {
             scheduler_class,
             ruby_thread_request_backlog_size,
             oob_gc_responses_threshold,
+            pipeline_flush,
+            writev,
+            max_concurrent_streams,
+            max_local_error_reset_streams,
+            max_header_list_size,
+            max_send_buf_size,
             binds,
             itsi_server_token_preference,
             socket_opts,
@@ -437,7 +457,8 @@ impl ItsiServerConfig {
         let requires_exec = if !is_single_mode && !server_params.preload {
             // In cluster mode children are cycled during a reload
             // and if preload is disabled, will get a clean memory slate,
-            // so we don't need to exec.
+            // so we don't need to exec. We do need to rebind our listeners here.
+            server_params.setup_listeners()?;
             false
         } else {
             // In non-cluster mode, or when preloading is enabled, we shouldn't try to

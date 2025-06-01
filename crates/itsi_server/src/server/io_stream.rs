@@ -2,6 +2,7 @@ use pin_project::pin_project;
 use tokio::net::{TcpStream, UnixStream};
 use tokio_rustls::server::TlsStream;
 
+use std::io::{self, IoSlice};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -34,12 +35,12 @@ pub enum IoStream {
 }
 
 impl IoStream {
-    pub fn addr(&self) -> SockAddr {
+    pub fn addr(&self) -> String {
         match self {
-            IoStream::Tcp { addr, .. } => addr.clone(),
-            IoStream::TcpTls { addr, .. } => addr.clone(),
-            IoStream::Unix { addr, .. } => addr.clone(),
-            IoStream::UnixTls { addr, .. } => addr.clone(),
+            IoStream::Tcp { addr, .. } => addr.to_string(),
+            IoStream::TcpTls { addr, .. } => addr.to_string(),
+            IoStream::Unix { addr, .. } => addr.to_string(),
+            IoStream::UnixTls { addr, .. } => addr.to_string(),
         }
     }
 }
@@ -88,6 +89,28 @@ impl AsyncWrite for IoStream {
             IoStreamEnumProj::TcpTls { stream, .. } => stream.poll_shutdown(cx),
             IoStreamEnumProj::Unix { stream, .. } => stream.poll_shutdown(cx),
             IoStreamEnumProj::UnixTls { stream, .. } => stream.poll_shutdown(cx),
+        }
+    }
+
+    fn poll_write_vectored(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        bufs: &[IoSlice<'_>],
+    ) -> Poll<io::Result<usize>> {
+        match self.project() {
+            IoStreamEnumProj::Tcp { stream, .. } => stream.poll_write_vectored(cx, bufs),
+            IoStreamEnumProj::TcpTls { stream, .. } => stream.poll_write_vectored(cx, bufs),
+            IoStreamEnumProj::Unix { stream, .. } => stream.poll_write_vectored(cx, bufs),
+            IoStreamEnumProj::UnixTls { stream, .. } => stream.poll_write_vectored(cx, bufs),
+        }
+    }
+
+    fn is_write_vectored(&self) -> bool {
+        match self {
+            IoStream::Tcp { stream, .. } => stream.is_write_vectored(),
+            IoStream::TcpTls { stream, .. } => stream.is_write_vectored(),
+            IoStream::Unix { stream, .. } => stream.is_write_vectored(),
+            IoStream::UnixTls { stream, .. } => stream.is_write_vectored(),
         }
     }
 }

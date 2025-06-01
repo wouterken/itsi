@@ -58,6 +58,7 @@ fn init(ruby: &Ruby) -> Result<()> {
     request.define_method("rack_protocol", method!(ItsiHttpRequest::rack_protocol, 0))?;
     request.define_method("host", method!(ItsiHttpRequest::host, 0))?;
     request.define_method("headers", method!(ItsiHttpRequest::headers, 0))?;
+    request.define_method("each_header", method!(ItsiHttpRequest::each_header, 0))?;
     request.define_method("uri", method!(ItsiHttpRequest::uri, 0))?;
     request.define_method("header", method!(ItsiHttpRequest::header, 1))?;
     request.define_method("[]", method!(ItsiHttpRequest::header, 1))?;
@@ -71,6 +72,7 @@ fn init(ruby: &Ruby) -> Result<()> {
     request.define_method("url_encoded?", method!(ItsiHttpRequest::is_url_encoded, 0))?;
     request.define_method("multipart?", method!(ItsiHttpRequest::is_multipart, 0))?;
     request.define_method("url_params", method!(ItsiHttpRequest::url_params, 0))?;
+    request.define_method("server_error", method!(ItsiHttpRequest::error, 1))?;
 
     let body_proxy = ruby.get_inner(&ITSI_BODY_PROXY);
     body_proxy.define_method("gets", method!(ItsiBodyProxy::gets, 0))?;
@@ -80,6 +82,10 @@ fn init(ruby: &Ruby) -> Result<()> {
 
     let response = ruby.get_inner(&ITSI_RESPONSE);
     response.define_method("[]=", method!(ItsiHttpResponse::add_header, 2))?;
+    response.define_method(
+        "reserve_headers",
+        method!(ItsiHttpResponse::reserve_headers, 1),
+    )?;
     response.define_method("add_header", method!(ItsiHttpResponse::add_header, 2))?;
     response.define_method("add_headers", method!(ItsiHttpResponse::add_headers, 1))?;
     response.define_method("status=", method!(ItsiHttpResponse::set_status, 1))?;
@@ -87,7 +93,6 @@ fn init(ruby: &Ruby) -> Result<()> {
     response.define_method("<<", method!(ItsiHttpResponse::send_frame, 1))?;
     response.define_method("write", method!(ItsiHttpResponse::send_frame, 1))?;
     response.define_method("read", method!(ItsiHttpResponse::recv_frame, 0))?;
-    response.define_method("flush", method!(ItsiHttpResponse::flush, 0))?;
     response.define_method("closed?", method!(ItsiHttpResponse::is_closed, 0))?;
     response.define_method(
         "send_and_close",

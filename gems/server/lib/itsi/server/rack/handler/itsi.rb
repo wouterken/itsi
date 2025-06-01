@@ -8,7 +8,9 @@ module Rack
         port = options.fetch(:Port, 3001)
         ::Itsi::Server.start(
           {
-            binds: ["http://#{host}:#{port}"]
+            binds: ["http://#{host}:#{port}"],
+            threads: 5,
+            workers: 1
           }
         ) do
           run app

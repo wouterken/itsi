@@ -1,5 +1,5 @@
 use crate::{
-    server::http_message_types::{HttpRequest, HttpResponse},
+    server::http_message_types::{HttpBody, HttpRequest, HttpResponse},
     services::itsi_http_service::HttpRequestContext,
 };
 
@@ -20,8 +20,8 @@ use http::{
     header::{GetAll, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE},
     HeaderValue, Response,
 };
-use http_body_util::{combinators::BoxBody, BodyExt, Full, StreamBody};
-use hyper::body::{Body, Frame};
+use http_body_util::{BodyExt, StreamBody};
+use hyper::body::Body;
 use magnus::error::Result;
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
@@ -126,15 +126,13 @@ impl MimeType {
     }
 }
 
-fn stream_encode<R>(encoder: R) -> BoxBody<Bytes, Infallible>
+fn stream_encode<R>(encoder: R) -> HttpBody
 where
     R: AsyncRead + Unpin + Sync + Send + 'static,
 {
-    let encoded_stream = ReaderStream::new(encoder).map(|res| {
-        res.map(Frame::data)
-            .map_err(|_| -> Infallible { unreachable!("We handle IO errors above") })
-    });
-    BoxBody::new(StreamBody::new(encoded_stream))
+    let encoded_stream = ReaderStream::new(encoder)
+        .map(|res| res.map_err(|_| -> Infallible { unreachable!("We handle IO errors above") }));
+    HttpBody::stream(StreamBody::new(encoded_stream))
 }
 
 fn update_content_encoding(parts: &mut http::response::Parts, new_encoding: HeaderValue) {
@@ -293,7 +291,7 @@ impl MiddlewareLayer for Compression {
                 }
                 CompressionAlgorithm::Identity => unreachable!(),
             };
-            BoxBody::new(Full::new(Bytes::from(compressed_bytes)))
+            HttpBody::full(Bytes::from(compressed_bytes))
         } else {
             let stream = body
                 .into_data_stream()

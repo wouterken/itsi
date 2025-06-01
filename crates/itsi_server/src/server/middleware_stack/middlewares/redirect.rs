@@ -1,7 +1,7 @@
 use super::{string_rewrite::StringRewrite, FromValue, MiddlewareLayer};
 use crate::{
     server::{
-        http_message_types::{HttpRequest, HttpResponse},
+        http_message_types::{HttpBody, HttpRequest, HttpResponse},
         redirect_type::RedirectType,
     },
     services::itsi_http_service::HttpRequestContext,
@@ -9,7 +9,6 @@ use crate::{
 use async_trait::async_trait;
 use either::Either;
 use http::Response;
-use http_body_util::{combinators::BoxBody, Empty};
 use magnus::error::Result;
 use serde::Deserialize;
 use tracing::debug;
@@ -39,7 +38,7 @@ impl Redirect {
         req: &HttpRequest,
         context: &mut HttpRequestContext,
     ) -> Result<HttpResponse> {
-        let mut response = Response::new(BoxBody::new(Empty::new()));
+        let mut response = Response::new(HttpBody::empty());
         *response.status_mut() = self.redirect_type.status_code();
         let destination = self.to.rewrite_request(req, context).parse().map_err(|e| {
             magnus::Error::new(

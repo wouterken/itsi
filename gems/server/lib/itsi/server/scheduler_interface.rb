@@ -14,6 +14,8 @@ module Itsi
       def schedule(app, request)
         Fiber.schedule do
           app.call(request)
+        rescue StandardError => e
+          request.server_error(e.message)
         end
       end
     end

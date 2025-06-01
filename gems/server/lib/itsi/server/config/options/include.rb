@@ -26,8 +26,11 @@ module Itsi
             end
           end
 
-          code = IO.read("#{included_file}.rb")
-          location.instance_eval(code, "#{included_file}.rb", 1)
+          filename =  File.expand_path("#{included_file}.rb")
+
+          code = IO.read(filename)
+          location.instance_eval(code, filename, 1)
+
         end
 
       end

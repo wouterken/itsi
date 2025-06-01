@@ -3,7 +3,6 @@ use base64::{engine::general_purpose, Engine};
 use bytes::Bytes;
 use either::Either;
 use http::{Response, StatusCode};
-use http_body_util::{combinators::BoxBody, Full};
 use magnus::error::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -11,7 +10,7 @@ use std::str;
 use tracing::debug;
 
 use crate::{
-    server::http_message_types::{HttpRequest, HttpResponse, RequestExt},
+    server::http_message_types::{HttpBody, HttpRequest, HttpResponse, RequestExt},
     services::{itsi_http_service::HttpRequestContext, password_hasher::verify_password_hash},
 };
 
@@ -34,7 +33,7 @@ impl AuthBasic {
                 "WWW-Authenticate",
                 format!("Basic realm=\"{}\"", self.realm),
             )
-            .body(BoxBody::new(Full::new(Bytes::from("Unauthorized"))))
+            .body(HttpBody::full(Bytes::from("Unauthorized")))
             .unwrap()
     }
 }

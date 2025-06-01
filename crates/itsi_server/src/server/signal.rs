@@ -1,22 +1,50 @@
-use std::sync::{
-    atomic::{AtomicBool, AtomicI8},
-    LazyLock,
+use std::{
+    collections::VecDeque,
+    sync::atomic::{AtomicBool, AtomicI8},
 };
 
 use nix::libc::{self, sighandler_t};
-use tokio::sync::{self, broadcast};
+use parking_lot::Mutex;
+use tokio::sync::broadcast;
 
 use super::lifecycle_event::LifecycleEvent;
 
 pub static SIGINT_COUNT: AtomicI8 = AtomicI8::new(0);
 pub static SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
-pub static SIGNAL_HANDLER_CHANNEL: LazyLock<(
-    broadcast::Sender<LifecycleEvent>,
-    broadcast::Receiver<LifecycleEvent>,
-)> = LazyLock::new(|| sync::broadcast::channel(5));
+pub static SIGNAL_HANDLER_CHANNEL: Mutex<Option<broadcast::Sender<LifecycleEvent>>> =
+    Mutex::new(None);
+
+pub static PENDING_QUEUE: Mutex<VecDeque<LifecycleEvent>> = Mutex::new(VecDeque::new());
+
+pub fn subscribe_runtime_to_signals() -> broadcast::Receiver<LifecycleEvent> {
+    let mut guard = SIGNAL_HANDLER_CHANNEL.lock();
+    if let Some(sender) = guard.as_ref() {
+        return sender.subscribe();
+    }
+    let (sender, receiver) = broadcast::channel(5);
+    let sender_clone = sender.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        for event in PENDING_QUEUE.lock().drain(..) {
+            sender_clone.send(event).ok();
+        }
+    });
+
+    guard.replace(sender);
+
+    receiver
+}
+
+pub fn unsubscribe_runtime() {
+    SIGNAL_HANDLER_CHANNEL.lock().take();
+}
 
 pub fn send_lifecycle_event(event: LifecycleEvent) {
-    SIGNAL_HANDLER_CHANNEL.0.send(event).ok();
+    if let Some(sender) = SIGNAL_HANDLER_CHANNEL.lock().as_ref() {
+        sender.send(event).ok();
+    } else {
+        PENDING_QUEUE.lock().push_back(event);
+    }
 }
 
 fn receive_signal(signum: i32, _: sighandler_t) {

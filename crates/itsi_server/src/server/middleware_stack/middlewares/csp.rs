@@ -1,6 +1,6 @@
 use super::FromValue;
 use crate::{
-    server::http_message_types::{HttpRequest, HttpResponse},
+    server::http_message_types::{HttpBody, HttpRequest, HttpResponse},
     services::itsi_http_service::HttpRequestContext,
 };
 use async_trait::async_trait;
@@ -8,7 +8,7 @@ use bytes::{Bytes, BytesMut};
 use either::Either;
 use futures::TryStreamExt;
 use http::{HeaderValue, StatusCode};
-use http_body_util::{combinators::BoxBody, BodyExt, Empty};
+use http_body_util::BodyExt;
 use itsi_error::ItsiError;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -164,7 +164,7 @@ impl super::MiddlewareLayer for Csp {
                 }
             }
 
-            let mut resp = HttpResponse::new(BoxBody::new(Empty::new()));
+            let mut resp = HttpResponse::new(HttpBody::empty());
             *resp.status_mut() = StatusCode::NO_CONTENT;
             return Ok(Either::Right(resp));
         }

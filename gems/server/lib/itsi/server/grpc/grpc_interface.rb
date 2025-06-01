@@ -79,7 +79,7 @@ module Itsi
       end
 
       def handle_client_streaming(active_call)
-        response = service.send(active_call.method_name, active_call.each_remote_read, active_call)
+        response = service.send(active_call.method_name, active_call)
         active_call.remote_send(response)
       end
 
@@ -94,7 +94,7 @@ module Itsi
       end
 
       def handle_bidi_streaming(active_call)
-        result = service.send(active_call.method_name, active_call.each_remote_read, active_call) do |response|
+        result = service.send(active_call.method_name, active_call.each, active_call) do |response|
           active_call.remote_send(response)
         end
         return unless result.is_a?(Enumerator)

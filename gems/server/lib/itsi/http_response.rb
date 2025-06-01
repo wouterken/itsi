@@ -16,6 +16,7 @@ module Itsi
       body = body.to_s unless body.is_a?(String)
 
       if headers
+        reserve_headers(headers.size)
         headers.each do |key, value|
           if value.is_a?(Array)
             value.each { |v| add_header(key, v) }
@@ -39,6 +40,10 @@ module Itsi
       else
         close
       end
+    end
+
+    def flush
+      # No-op. Our Rust server performs stream coalescing and automatically flushes on a tight interval.
     end
   end
 end
