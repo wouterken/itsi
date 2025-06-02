@@ -12,7 +12,7 @@ proxy \
   to: "http://backend.example.com/api{path}{query}",
   backends: ["127.0.0.1:3001", "127.0.0.1:3002"],
   backend_priority: "round_robin",
-  headers: { "X-Forwarded-For" => { rewrite: "{addr}" } },
+  headers: { "X-Forwarded-For" => "{addr}" },
   verify_ssl: false,
   timeout: 30,
   tls_sni: true,
@@ -54,7 +54,7 @@ proxy \
 3. **Header Overrides**
    The `headers` option lets you specify extra or overriding headers. Each header value may be a literal or a string rewrite. For example, overriding `"X-Forwarded-For"` to carry the client’s IP is done by:
    ```ruby
-   { "X-Forwarded-For" => { rewrite: "{addr}" } }
+   { "X-Forwarded-For" => "{addr}" }
    ```
 
 4. **Request Forwarding and Error Handling**

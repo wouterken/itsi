@@ -1,5 +1,5 @@
 ## Simple API With Schema and Controllers
-Simple example of how you can use
+Simple example of how you can use the following options:
 
 * https://itsi.fyi/middleware/endpoint/
 * https://itsi.fyi/middleware/endpoint/controller

@@ -31,10 +31,10 @@ bundle exec itsi
 There's also a Rails adapter allowing you to add it to your Gemfile and launch it using the `rails server` command.
 
 ```ruby
-rails server -U itsi
+rails server -u itsi
 ```
 {{< callout type="info" >}}
-  Note that `rails server -U itsi` runs Itsi with an intentionally minimal footprint, specifically for development purposes. To take full advantage of Itsi's concurrency features,
+  Note that `rails server -u itsi` runs Itsi with an intentionally minimal footprint, specifically for development purposes. To take full advantage of Itsi's concurrency features,
 it's advised you tweak these inside a dedicated `Itsi.rb` file.
   {{< /callout >}}
 

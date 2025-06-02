@@ -1,3 +1,6 @@
+# frozen_string_literal: true
+# typed: true
+
 module Itsi
   class Server
     module Config
@@ -55,9 +58,7 @@ module Itsi
             nested_locations: [],
             middleware_loader: lambda do
               @options[:nested_locations].each(&:call)
-              if !(@middleware[:app] || @middleware[:static_assets])
-                @middleware[:app] = { app_proc: DEFAULT_APP[]}
-              end
+              @middleware[:app] = { app_proc: DEFAULT_APP[] } unless @middleware[:app] || @middleware[:static_assets]
               [flatten_routes, Config.errors_to_error_lines(errors)]
             end
           }
@@ -75,7 +76,7 @@ module Itsi
           define_method(option_name) do |*args, **kwargs, &blk|
             option.new(self, *args, **kwargs, &blk).build!
           rescue Exception => e # rubocop:disable Lint/RescueException
-            @errors << [e, e.backtrace.find{|r| !(r =~ /server\/config/) }]
+            @errors << [e, e.backtrace.find { |r| !(r =~ %r{server/config}) }]
           end
         end
 
@@ -86,7 +87,7 @@ module Itsi
           rescue Config::Endpoint::InvalidHandlerException => e
             @errors << [e, "#{e.backtrace[0]}:in #{e.message}"]
           rescue Exception => e # rubocop:disable Lint/RescueException
-            @errors << [e, e.backtrace.find{|r| !(r =~ /server\/config/) }]
+            @errors << [e, e.backtrace.find { |r| !(r =~ %r{server/config}) }]
           end
         end
 

@@ -181,6 +181,6 @@ module UserController
   end
 end
 
-controller User
+controller UserController
 post "/", :create
 ```
