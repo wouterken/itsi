@@ -262,7 +262,14 @@ impl SingleMode {
         let shutdown_timeout = self.server_config.server_params.read().shutdown_timeout;
         let (shutdown_sender, _) = watch::channel(RunningPhase::Running);
         let monitor_thread = self.clone().start_monitors(thread_workers.clone());
+
+        // If we're on Linux with reuse_port enabled, we can use
+        // kernel level load balancing across processes sharing a port.
+        // To take advantage of this, these forks will rebind to the same port upon boot.
+        // Worker 0 is special (this one just inherits the bind from the master process).
         let is_zero_worker = self.is_zero_worker();
+        let should_rebind = !is_zero_worker || self.server_config.use_reuse_port_load_balancing();
+
         if monitor_thread.is_none() {
             error!("Failed to start monitor thread");
             return Err(ItsiError::new("Failed to start monitor thread"));
@@ -283,7 +290,7 @@ impl SingleMode {
                 .listeners
                 .lock()
                 .drain(..)
-                .map(|list| Arc::new(list.into_tokio_listener(is_zero_worker)))
+                .map(|list| Arc::new(list.into_tokio_listener(should_rebind)))
                 .collect::<Vec<_>>();
 
             tokio_listeners.iter().cloned().for_each(|listener| {

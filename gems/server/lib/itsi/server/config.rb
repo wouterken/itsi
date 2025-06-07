@@ -97,7 +97,7 @@ module Itsi
             errors << [e, e.backtrace[0]]
           end
         # If we're just preloading a specific gem group, we'll do that here too
-        when Symbol
+        when Symbol, String
           Itsi.log_debug("Preloading gem group #{preload}")
           Bundler.require(preload)
         end

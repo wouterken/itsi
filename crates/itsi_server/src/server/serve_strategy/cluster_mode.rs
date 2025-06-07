@@ -321,15 +321,6 @@ impl ClusterMode {
             .iter()
             .try_for_each(|worker| worker.boot(Arc::clone(&self)))?;
 
-        if cfg!(target_os = "linux") {
-            self.server_config
-                .server_params
-                .write()
-                .listeners
-                .lock()
-                .drain(..);
-        };
-
         let (sender, mut receiver) = watch::channel(());
         *CHILD_SIGNAL_SENDER.lock() = Some(sender);
 

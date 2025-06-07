@@ -4,7 +4,6 @@
 require "itsi/server"
 require "optparse"
 
-
 COMMANDS = {
   "init" => "Initialize a new Itsi.rb server configuration file",
   "status" => "Show the status of the server",
@@ -119,7 +118,6 @@ parser = OptionParser.new do |opts|
     options[:shutdown_timeout] = shutdown_timeout
   end
 
-
   opts.on("--stream-body", TrueClass, "Stream body frames (default: false for best compatibility)") do |stream_body|
     options[:stream_body] = stream_body
   end
@@ -159,7 +157,7 @@ parser = OptionParser.new do |opts|
   end
 end
 
-if ENV['COMP_LINE'] || ARGV.include?('--completion')
+if ENV["COMP_LINE"] || ARGV.include?("--completion")
   puts COMMANDS.keys
   exit
 end
@@ -173,7 +171,7 @@ end
 
 case (command = ARGV.shift)
 when *COMMANDS.keys
-  required_arity = Itsi::Server.method(command).parameters&.select{|c| c.first == :req }&.length&.succ || 2
+  required_arity = Itsi::Server.method(command).parameters&.select { |c| c.first == :req }&.length&.succ || 2
   case required_arity
   when 1 then Itsi::Server.send(command)
   when 2 then Itsi::Server.send(command, options)

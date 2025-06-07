@@ -16,7 +16,7 @@ use std::{
     sync::mpsc,
     thread::{self},
 };
-use tracing::debug;
+use tracing::{debug, info};
 
 /// Represents a set of patterns and commands.
 #[derive(Debug, Clone)]
@@ -96,7 +96,15 @@ pub fn watch_groups(pattern_groups: Vec<(String, Vec<Vec<String>>)>) -> Result<O
         let mut groups = Vec::new();
         for (pattern, commands) in pattern_groups.into_iter() {
             let base_dir = extract_and_canonicalize_base_dir(&pattern);
-            let glob = Glob::new(pattern.trim_start_matches("./")).map_err(|e| {
+            let cwd = PathBuf::from(".").canonicalize().unwrap();
+            let relative_base_dir = base_dir.strip_prefix(&cwd).unwrap_or(&base_dir);
+            info!(
+                "Trimming pattern {:?} from {:?}",
+                relative_base_dir, pattern
+            );
+
+            let pattern = pattern.trim_start_matches(relative_base_dir.to_str().unwrap());
+            let glob = Glob::new(pattern).map_err(|e| {
                 magnus::Error::new(
                     magnus::exception::standard_error(),
                     format!("Failed to create watch glob: {}", e),
@@ -111,8 +119,8 @@ pub fn watch_groups(pattern_groups: Vec<(String, Vec<Vec<String>>)>) -> Result<O
             groups.push(PatternGroup {
                 base_dir,
                 glob_set,
-                pattern,
                 commands,
+                pattern: pattern.to_string(),
                 last_triggered: None,
             });
         }

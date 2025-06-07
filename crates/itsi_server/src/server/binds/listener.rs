@@ -304,16 +304,16 @@ impl Listener {
         connect_tcp_socket(ip, port, &socket_opts).unwrap()
     }
 
-    pub fn into_tokio_listener(self, no_rebind: bool) -> TokioListener {
+    pub fn into_tokio_listener(self, should_rebind: bool) -> TokioListener {
         match self {
             Listener::Tcp(mut listener) => {
-                if cfg!(target_os = "linux") && !no_rebind {
+                if should_rebind {
                     listener = Listener::rebind_listener(listener);
                 }
                 TokioListener::Tcp(TokioTcpListener::from_std(listener).unwrap())
             }
             Listener::TcpTls((mut listener, acceptor)) => {
-                if cfg!(target_os = "linux") && !no_rebind {
+                if should_rebind {
                     listener = Listener::rebind_listener(listener);
                 }
                 TokioListener::TcpTls(

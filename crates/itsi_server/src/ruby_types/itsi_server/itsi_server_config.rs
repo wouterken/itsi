@@ -84,7 +84,7 @@ pub struct ServerParams {
     listener_info: Mutex<HashMap<String, i32>>,
     pub itsi_server_token_preference: ItsiServerTokenPreference,
     pub preloaded: AtomicBool,
-    socket_opts: SocketOpts,
+    pub socket_opts: SocketOpts,
     preexisting_listeners: Option<String>,
 }
 
@@ -440,6 +440,10 @@ impl ItsiServerConfig {
                 format!("Error loading initial configuration {:?}", err),
             )),
         }
+    }
+
+    pub fn use_reuse_port_load_balancing(&self) -> bool {
+        cfg!(target_os = "linux") && self.server_params.read().socket_opts.reuse_port
     }
 
     /// Reload
