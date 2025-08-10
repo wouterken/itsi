@@ -308,6 +308,7 @@ impl SingleMode {
                         job_sender: job_sender.clone(),
                         nonblocking_sender: nonblocking_sender.clone(),
                         server_params: server_params.clone(),
+                        http01_handler: listener.http01_handler(),
                     }),
                     join_set: JoinSet::new(),
                 };

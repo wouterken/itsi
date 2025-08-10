@@ -1739,6 +1739,7 @@ dependencies = [
  "futures",
  "log",
  "num-bigint",
+ "parking_lot",
  "pem",
  "proc-macro2",
  "rcgen",

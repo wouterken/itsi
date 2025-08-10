@@ -1,5 +1,6 @@
 use magnus::{value::Lazy, Module, RClass, RModule};
 
+pub mod certificate_manager;
 pub mod itsi_body_proxy;
 pub mod itsi_grpc_call;
 pub mod itsi_grpc_response_stream;

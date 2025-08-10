@@ -1,5 +1,5 @@
 use base64::{engine::general_purpose, Engine as _};
-use itsi_acme::{AcmeAcceptor, AcmeConfig, AcmeState};
+use itsi_acme::{AcmeAcceptor, AcmeConfig, AcmeState, Http01Handler};
 use itsi_error::Result;
 use itsi_tracing::info;
 use locked_dir_cache::LockedDirCache;
@@ -27,7 +27,7 @@ use crate::env::{
     ITSI_LOCAL_CA_DIR,
 };
 
-mod locked_dir_cache;
+pub mod locked_dir_cache;
 
 #[derive(Clone)]
 pub enum ItsiTlsAcceptor {
@@ -37,6 +37,22 @@ pub enum ItsiTlsAcceptor {
         Arc<Mutex<AcmeState<Error>>>,
         Arc<ServerConfig>,
     ),
+}
+
+impl ItsiTlsAcceptor {
+    /// Get the HTTP-01 challenge handler if this is an automatic TLS acceptor
+    pub fn http01_handler(&self) -> Option<Arc<Http01Handler>> {
+        match self {
+            ItsiTlsAcceptor::Automatic(_, acme_state, _) => {
+                if let Ok(guard) = acme_state.try_lock() {
+                    Some(guard.http01_handler())
+                } else {
+                    None
+                }
+            }
+            ItsiTlsAcceptor::Manual(_) => None,
+        }
+    }
 }
 
 /// Generates a TLS configuration based on either :

@@ -44,6 +44,15 @@ pub struct ListenerInfo {
 }
 
 impl TokioListener {
+    /// Get the HTTP-01 challenge handler if this listener uses automatic TLS
+    pub fn http01_handler(&self) -> Option<Arc<itsi_acme::Http01Handler>> {
+        match self {
+            TokioListener::TcpTls(_, tls_acceptor) => tls_acceptor.http01_handler(),
+            TokioListener::UnixTls(_, tls_acceptor) => tls_acceptor.http01_handler(),
+            _ => None,
+        }
+    }
+
     pub fn listener_info(&self) -> ListenerInfo {
         match self {
             TokioListener::Tcp(listener) => ListenerInfo {

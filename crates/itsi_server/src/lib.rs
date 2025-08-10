@@ -10,7 +10,7 @@ pub mod services;
 use magnus::{error::Result, function, method, Module, Object, Ruby};
 use prelude::*;
 use ruby_types::{
-    itsi_body_proxy::ItsiBodyProxy, itsi_grpc_call::ItsiGrpcCall,
+    certificate_manager, itsi_body_proxy::ItsiBodyProxy, itsi_grpc_call::ItsiGrpcCall,
     itsi_grpc_response_stream::ItsiGrpcResponseStream, itsi_http_request::ItsiHttpRequest,
     itsi_http_response::ItsiHttpResponse, itsi_server::ItsiServer, ITSI_BODY_PROXY, ITSI_GRPC_CALL,
     ITSI_GRPC_RESPONSE_STREAM, ITSI_MODULE, ITSI_REQUEST, ITSI_RESPONSE, ITSI_SERVER,
@@ -24,6 +24,9 @@ fn init(ruby: &Ruby) -> Result<()> {
     rustls::crypto::aws_lc_rs::default_provider()
         .install_default()
         .ok();
+
+    // Initialize certificate service
+    certificate_manager::init_certificate_service();
 
     let itsi = ruby.get_inner(&ITSI_MODULE);
     itsi.define_singleton_method("log_debug", function!(log_debug, 1))?;
@@ -40,6 +43,40 @@ fn init(ruby: &Ruby) -> Result<()> {
     server.define_singleton_method("reset_signal_handlers", function!(reset_signal_handlers, 0))?;
     server.define_method("start", method!(ItsiServer::start, 0))?;
     server.define_method("stop", method!(ItsiServer::stop, 0))?;
+
+    // Certificate management methods
+    server.define_singleton_method(
+        "add_certificate",
+        function!(certificate_manager::add_certificate, 2),
+    )?;
+    server.define_singleton_method(
+        "remove_certificate",
+        function!(certificate_manager::remove_certificate, 1),
+    )?;
+    server.define_singleton_method(
+        "list_certificates",
+        function!(certificate_manager::list_certificates, 0),
+    )?;
+    server.define_singleton_method(
+        "renew_certificate",
+        function!(certificate_manager::renew_certificate, 1),
+    )?;
+    server.define_singleton_method(
+        "certificate_status",
+        function!(certificate_manager::certificate_status, 1),
+    )?;
+    server.define_singleton_method(
+        "on_certificate_event",
+        function!(certificate_manager::on_certificate_event, 0),
+    )?;
+    server.define_singleton_method(
+        "set_challenge_preference",
+        function!(certificate_manager::set_challenge_preference, 1),
+    )?;
+    server.define_singleton_method(
+        "get_challenge_preference",
+        function!(certificate_manager::get_challenge_preference, 0),
+    )?;
 
     let request = ruby.get_inner(&ITSI_REQUEST);
     request.define_method("path", method!(ItsiHttpRequest::path, 0))?;

@@ -1,16 +1,17 @@
 use crate::default_responses::{NOT_FOUND_RESPONSE, TIMEOUT_RESPONSE};
 use crate::ruby_types::itsi_server::itsi_server_config::ItsiServerTokenPreference;
 use crate::server::http_message_types::{
-    ConversionExt, HttpRequest, HttpResponse, RequestExt, ResponseFormat,
+    ConversionExt, HttpBody, HttpRequest, HttpResponse, RequestExt, ResponseFormat,
 };
 use crate::server::lifecycle_event::LifecycleEvent;
 use crate::server::middleware_stack::MiddlewareLayer;
 use crate::server::serve_strategy::acceptor::AcceptorArgs;
 use crate::server::signal::{send_lifecycle_event, SHUTDOWN_REQUESTED};
+use bytes::Bytes;
 use chrono::{self, DateTime, Local};
 use either::Either;
 use http::header::ACCEPT_ENCODING;
-use http::{HeaderValue, Request};
+use http::{HeaderValue, Request, Response, StatusCode};
 use hyper::body::Incoming;
 use regex::Regex;
 use smallvec::SmallVec;
@@ -178,6 +179,12 @@ const SERVER_TOKEN_NAME: HeaderValue = HeaderValue::from_static("Itsi");
 impl ItsiHttpService {
     pub async fn handle_request(&self, req: Request<Incoming>) -> itsi_error::Result<HttpResponse> {
         let mut req = req.limit();
+
+        // Handle ACME HTTP-01 challenges first, before any other processing
+        if let Some(acme_response) = self.handle_acme_challenge(&req).await? {
+            return Ok(acme_response);
+        }
+
         let accept: ResponseFormat = req.accept().into();
         let is_single_mode = self.server_params.workers == 1;
 
@@ -265,6 +272,85 @@ impl ItsiHttpService {
             }
         } else {
             service_future.await
+        }
+    }
+
+    /// Handle ACME HTTP-01 challenge requests
+    async fn handle_acme_challenge(
+        &self,
+        req: &HttpRequest,
+    ) -> itsi_error::Result<Option<HttpResponse>> {
+        // Check if this is an ACME challenge request
+        let path = req.uri().path();
+        if !path.starts_with("/.well-known/acme-challenge/") {
+            return Ok(None);
+        }
+
+        // Only handle GET requests
+        if req.method().as_str() != "GET" {
+            return Ok(Some(
+                Response::builder()
+                    .status(StatusCode::METHOD_NOT_ALLOWED)
+                    .body(HttpBody::full(Bytes::from("405 Method Not Allowed")))
+                    .unwrap(),
+            ));
+        }
+
+        // Get the HTTP-01 handler from acceptor args
+        let handler = match &self.acceptor_args.http01_handler {
+            Some(handler) => handler,
+            None => {
+                // No ACME handler configured, return 404
+                return Ok(Some(
+                    Response::builder()
+                        .status(StatusCode::NOT_FOUND)
+                        .body(HttpBody::full(Bytes::from("404 Not Found")))
+                        .unwrap(),
+                ));
+            }
+        };
+
+        // Extract token from path
+        const ACME_CHALLENGE_PREFIX: &str = "/.well-known/acme-challenge/";
+        let token = &path[ACME_CHALLENGE_PREFIX.len()..];
+
+        // Validate token format (should be base64url safe characters)
+        if token.is_empty()
+            || token.contains('/')
+            || !token
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        {
+            return Ok(Some(
+                Response::builder()
+                    .status(StatusCode::NOT_FOUND)
+                    .body(HttpBody::full(Bytes::from("404 Not Found")))
+                    .unwrap(),
+            ));
+        }
+
+        // Look up the key authorization for this token
+        match handler.get_key_auth(token) {
+            Some(key_auth) => {
+                // Serve the key authorization
+                Ok(Some(
+                    Response::builder()
+                        .status(StatusCode::OK)
+                        .header("Content-Type", "text/plain")
+                        .header("Cache-Control", "no-cache")
+                        .body(HttpBody::full(Bytes::from(key_auth)))
+                        .unwrap(),
+                ))
+            }
+            None => {
+                // Token not found, return 404
+                Ok(Some(
+                    Response::builder()
+                        .status(StatusCode::NOT_FOUND)
+                        .body(HttpBody::full(Bytes::from("404 Not Found")))
+                        .unwrap(),
+                ))
+            }
         }
     }
 }

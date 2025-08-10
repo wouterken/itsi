@@ -141,11 +141,15 @@ Itsi also comes bundled with a passfile generator, to help you manage your passw
 * See <a target="_blank" href="/middleware/auth_jwt">auth_jwt</a>, <a target="_blank" href="/middleware/auth_api_key">auth_api_key</a>, <a target="_blank" href="/middleware/auth_basic">auth_basic</a> and <a target="_blank" href="/utilities/passfile_generator">passfile</a>.
 {{% /details %}}
 
-{{% details title="Automatic Let's Encrypt Certificates" closed="true" %}}
-* Automated provisioning of Let's Encrypt certificates.
+{{% details title="Automatic ACME/Let's Encrypt Certificates" closed="true" %}}
+* Automated provisioning of Let's Encrypt and other ACME-compatible certificates.
+* Support for both HTTP-01 and TLS-ALPN-01 challenge types for maximum compatibility.
+* Runtime certificate management - add, remove, and renew certificates during server operation.
+* Event-driven certificate lifecycle handling with custom callbacks.
 * File system caching of certificate data to avoid excessive API calls.
 * Supports usage of subject alternative names (SANs) for certificates that span multiple domains/sub-domains.
-* See <a target="_blank" href="/options/certificates#production-certificates-lets-encrypt">certificates</a>.
+* Advanced configuration DSL with per-certificate settings and global ACME options.
+* See <a target="_blank" href="/options/certificates">certificates</a> and <a target="_blank" href="/configuration/acme_certificates">ACME configuration</a>.
 {{% /details %}}
 
 {{% details title="Automatic Development Certificates" closed="true" %}}

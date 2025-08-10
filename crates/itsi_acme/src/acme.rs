@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::https_helper::{https, HttpsRequestError, Method, Response};
-use crate::jose::{key_authorization_sha256, sign, sign_eab, JoseError};
+use crate::jose::{key_authorization, key_authorization_sha256, sign, sign_eab, JoseError};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use rcgen::{CustomExtension, Error as RcgenError, PKCS_ECDSA_P256_SHA256};
@@ -204,6 +204,21 @@ impl Account {
         let certified_key = CertifiedKey::new(vec![cert.der().clone()], pk);
         Ok((challenge, certified_key))
     }
+
+    pub fn http_01<'a>(
+        &self,
+        challenges: &'a [Challenge],
+    ) -> Result<(&'a Challenge, String), AcmeError> {
+        let challenge = challenges.iter().find(|c| c.typ == ChallengeType::Http01);
+
+        let challenge = match challenge {
+            Some(challenge) => challenge,
+            None => return Err(AcmeError::NoHttp01Challenge),
+        };
+
+        let key_auth = key_authorization(&self.key_pair, &challenge.token)?;
+        Ok((challenge, key_auth))
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -337,6 +352,8 @@ pub enum AcmeError {
     MissingHeader(&'static str),
     #[error("no tls-alpn-01 challenge found")]
     NoTlsAlpn01Challenge,
+    #[error("no http-01 challenge found")]
+    NoHttp01Challenge,
 }
 
 fn get_header(response: &Response, header: &'static str) -> Result<String, AcmeError> {

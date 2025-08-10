@@ -1,4 +1,5 @@
 pub mod cache_store;
+pub mod certificate_service;
 pub mod itsi_http_service;
 pub mod mime_types;
 pub mod password_hasher;

@@ -49,6 +49,12 @@ pub(crate) fn sign_eab(
     Ok(body)
 }
 
+pub(crate) fn key_authorization(key: &EcdsaKeyPair, token: &str) -> Result<String, JoseError> {
+    let jwk = Jwk::new(key);
+    let key_authorization = format!("{}.{}", token, jwk.thumb_sha256_base64()?);
+    Ok(key_authorization)
+}
+
 pub(crate) fn key_authorization_sha256(
     key: &EcdsaKeyPair,
     token: &str,

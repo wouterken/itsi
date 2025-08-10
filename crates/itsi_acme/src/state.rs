@@ -22,6 +22,7 @@ use crate::acceptor::AcmeAcceptor;
 use crate::acme::{
     Account, AcmeError, Auth, AuthStatus, Directory, Identifier, Order, OrderStatus,
 };
+use crate::http_challenge::Http01Handler;
 use crate::{AcmeConfig, Incoming, ResolvesServerCertAcme};
 
 type Timer = std::pin::Pin<Box<Sleep>>;
@@ -36,6 +37,7 @@ pub struct AcmeState<EC: Debug = Infallible, EA: Debug = EC> {
     config: Arc<AcmeConfig<EC, EA>>,
     resolver: Arc<ResolvesServerCertAcme>,
     account_key: Option<Vec<u8>>,
+    http01_handler: Arc<Http01Handler>,
 
     early_action: Option<BoxFuture<Event<EC, EA>>>,
     load_cert: Option<BoxFuture<Result<Option<Vec<u8>>, EC>>>,
@@ -128,12 +130,17 @@ impl<EC: 'static + Debug, EA: 'static + Debug> AcmeState<EC, EA> {
     pub fn resolver(&self) -> Arc<ResolvesServerCertAcme> {
         self.resolver.clone()
     }
+
+    pub fn http01_handler(&self) -> Arc<Http01Handler> {
+        self.http01_handler.clone()
+    }
     pub fn new(config: AcmeConfig<EC, EA>) -> Self {
         let config = Arc::new(config);
         Self {
             config: config.clone(),
             resolver: ResolvesServerCertAcme::new(),
             account_key: None,
+            http01_handler: Arc::new(Http01Handler::new()),
             early_action: None,
             load_cert: Some(Box::pin({
                 let config = config.clone();
@@ -220,6 +227,7 @@ impl<EC: 'static + Debug, EA: 'static + Debug> AcmeState<EC, EA> {
     async fn order(
         config: Arc<AcmeConfig<EC, EA>>,
         resolver: Arc<ResolvesServerCertAcme>,
+        http01_handler: Arc<Http01Handler>,
         key_pair: Vec<u8>,
     ) -> Result<Vec<u8>, OrderError> {
         let directory = Directory::discover(&config.client_config, &config.directory_url).await?;
@@ -242,10 +250,9 @@ impl<EC: 'static + Debug, EA: 'static + Debug> AcmeState<EC, EA> {
         loop {
             match order.status {
                 OrderStatus::Pending => {
-                    let auth_futures = order
-                        .authorizations
-                        .iter()
-                        .map(|url| Self::authorize(&config, &resolver, &account, url));
+                    let auth_futures = order.authorizations.iter().map(|url| {
+                        Self::authorize(&config, &resolver, &http01_handler, &account, url)
+                    });
                     try_join_all(auth_futures).await?;
                     log::info!("completed all authorizations");
                     order = account.order(&config.client_config, &order_url).await?;
@@ -289,25 +296,42 @@ impl<EC: 'static + Debug, EA: 'static + Debug> AcmeState<EC, EA> {
     async fn authorize(
         config: &AcmeConfig<EC, EA>,
         resolver: &ResolvesServerCertAcme,
+        http01_handler: &Http01Handler,
         account: &Account,
         url: &String,
     ) -> Result<(), OrderError> {
         let auth = account.auth(&config.client_config, url).await?;
-        let (domain, challenge_url) = match auth.status {
+        let (domain, challenge_url, http01_token) = match auth.status {
             AuthStatus::Pending => {
                 let Identifier::Dns(domain) = auth.identifier;
                 log::info!("trigger challenge for {}", &domain);
-                let (challenge, auth_key) =
-                    account.tls_alpn_01(&auth.challenges, domain.clone())?;
-                resolver.set_auth_key(domain.clone(), Arc::new(auth_key));
-                account
-                    .challenge(&config.client_config, &challenge.url)
-                    .await?;
-                (domain, challenge.url.clone())
+
+                // Try HTTP-01 challenge first, then fall back to TLS-ALPN-01
+                if let Ok((challenge, key_auth)) = account.http_01(&auth.challenges) {
+                    log::info!("using HTTP-01 challenge for {}", &domain);
+                    let token = challenge.token.clone();
+                    http01_handler.add_challenge(token.clone(), key_auth);
+                    account
+                        .challenge(&config.client_config, &challenge.url)
+                        .await?;
+                    (domain, challenge.url.clone(), Some(token))
+                } else if let Ok((challenge, auth_key)) =
+                    account.tls_alpn_01(&auth.challenges, domain.clone())
+                {
+                    log::info!("using TLS-ALPN-01 challenge for {}", &domain);
+                    resolver.set_auth_key(domain.clone(), Arc::new(auth_key));
+                    account
+                        .challenge(&config.client_config, &challenge.url)
+                        .await?;
+                    (domain, challenge.url.clone(), None)
+                } else {
+                    return Err(OrderError::Acme(AcmeError::NoTlsAlpn01Challenge));
+                }
             }
             AuthStatus::Valid => return Ok(()),
             _ => return Err(OrderError::BadAuth(auth)),
         };
+
         for i in 0u64..5 {
             after(Duration::from_secs(1u64 << i)).await;
             let auth = account.auth(&config.client_config, url).await?;
@@ -318,9 +342,26 @@ impl<EC: 'static + Debug, EA: 'static + Debug> AcmeState<EC, EA> {
                         .challenge(&config.client_config, &challenge_url)
                         .await?
                 }
-                AuthStatus::Valid => return Ok(()),
-                _ => return Err(OrderError::BadAuth(auth)),
+                AuthStatus::Valid => {
+                    // Clean up HTTP-01 challenge on success
+                    if let Some(token) = http01_token {
+                        http01_handler.remove_challenge(&token);
+                    }
+                    return Ok(());
+                }
+                _ => {
+                    // Clean up HTTP-01 challenge on failure
+                    if let Some(token) = http01_token {
+                        http01_handler.remove_challenge(&token);
+                    }
+                    return Err(OrderError::BadAuth(auth));
+                }
             }
+        }
+
+        // Clean up HTTP-01 challenge on timeout
+        if let Some(token) = http01_token {
+            http01_handler.remove_challenge(&token);
         }
         Err(OrderError::TooManyAttemptsAuth(domain))
     }
@@ -408,8 +449,14 @@ impl<EC: 'static + Debug, EA: 'static + Debug> AcmeState<EC, EA> {
             };
             let config = self.config.clone();
             let resolver = self.resolver.clone();
+            let http01_handler = self.http01_handler.clone();
             self.order = Some(Box::pin({
-                Self::order(config.clone(), resolver.clone(), account_key)
+                Self::order(
+                    config.clone(),
+                    resolver.clone(),
+                    http01_handler,
+                    account_key,
+                )
             }));
         }
     }

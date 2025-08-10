@@ -8,6 +8,7 @@ use crate::{
     server::{binds::listener::ListenerInfo, io_stream::IoStream, request_job::RequestJob},
     services::itsi_http_service::{ItsiHttpService, ItsiHttpServiceInner},
 };
+use itsi_acme::Http01Handler;
 
 use super::single_mode::{RunningPhase, SingleMode};
 
@@ -31,6 +32,7 @@ pub struct AcceptorArgs {
     pub job_sender: async_channel::Sender<RequestJob>,
     pub nonblocking_sender: async_channel::Sender<RequestJob>,
     pub server_params: Arc<ServerParams>,
+    pub http01_handler: Option<Arc<Http01Handler>>,
 }
 
 impl Acceptor {
