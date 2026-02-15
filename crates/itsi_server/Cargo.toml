@@ -42,7 +42,7 @@ itsi_rb_helpers = { path = "../itsi_rb_helpers" }
 itsi_tracing = { path = "../itsi_tracing" }
 itsi_acme = { path = "../itsi_acme" }
 jsonwebtoken = "9.3.1"
-magnus = { version = "0.7.1", features = ["bytes", "rb-sys"] }
+magnus = { version = "0.8.2", features = ["bytes", "rb-sys"] }
 notify = { version = "8.0.0" }
 nix = { version = "0.29.0", features = [
   "socket",
@@ -72,7 +72,7 @@ rustls = "0.23.23"
 rustls-pemfile = "2.2.0"
 serde = "1.0.219"
 serde_json = "1.0.140"
-serde_magnus = "0.9.0"
+serde_magnus = "0.11.0"
 sha2 = "0.10.8"
 socket2 = "0.5.8"
 sysinfo = "0.33.1"
