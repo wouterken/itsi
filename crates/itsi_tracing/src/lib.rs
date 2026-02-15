@@ -1,4 +1,4 @@
-use atty::{Stream, is};
+use atty::{is, Stream};
 use std::{
     env,
     sync::{Mutex, OnceLock},
@@ -10,8 +10,8 @@ use tracing_subscriber::fmt::{
     format::{FmtSpan, JsonFields},
     writer::BoxMakeWriter,
 };
-use tracing_subscriber::{EnvFilter, fmt, prelude::*, reload};
-use tracing_subscriber::{Layer, Registry, layer::Layered};
+use tracing_subscriber::{fmt, prelude::*, reload, EnvFilter};
+use tracing_subscriber::{layer::Layered, Layer, Registry};
 
 // Global reload handle for changing the level at runtime.
 static RELOAD_HANDLE: OnceLock<

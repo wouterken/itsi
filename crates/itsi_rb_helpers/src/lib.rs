@@ -1,14 +1,14 @@
 use std::{ffi::c_int, os::raw::c_void, ptr::null_mut};
 
 use magnus::{
-    ArgList, RArray, Ruby, Thread, Value,
     block::Proc,
-    rb_sys::{AsRawId, FromRawValue, protect},
+    rb_sys::{protect, AsRawId, FromRawValue},
     value::{IntoId, LazyId, ReprValue},
+    ArgList, RArray, Ruby, Thread, Value,
 };
 use rb_sys::{
-    VALUE, rb_funcallv, rb_thread_call_with_gvl, rb_thread_call_without_gvl, rb_thread_create,
-    rb_thread_schedule, rb_thread_wakeup,
+    rb_funcallv, rb_thread_call_with_gvl, rb_thread_call_without_gvl, rb_thread_create,
+    rb_thread_schedule, rb_thread_wakeup, VALUE,
 };
 
 mod heap_value;
@@ -182,7 +182,11 @@ pub fn terminate_non_fork_safe_threads() {
                 && !v_thread
                     .funcall::<_, _, bool>(*ID_THREAD_VARIABLE_GET, (ruby.sym_new("fork_safe"),))
                     .unwrap_or(false);
-            if non_fork_safe { Some(v_thread) } else { None }
+            if non_fork_safe {
+                Some(v_thread)
+            } else {
+                None
+            }
         })
         .collect::<Vec<_>>();
 

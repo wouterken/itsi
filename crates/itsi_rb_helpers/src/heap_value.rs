@@ -1,7 +1,7 @@
-use magnus::IntoValue;
 use magnus::rb_sys::AsRawValue;
 use magnus::value::BoxValue;
-use magnus::{Ruby, Value, value::ReprValue};
+use magnus::IntoValue;
+use magnus::{value::ReprValue, Ruby, Value};
 use std::fmt::{self, Debug, Formatter};
 use std::ops::Deref;
 

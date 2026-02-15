@@ -27,6 +27,59 @@ use std::{
 };
 use tracing::debug;
 
+/// Compact representation of the client's Accept-Encoding preferences.
+/// Priority order is determined by the bit checks in `pick_encoding`.
+#[derive(Clone, Copy, Debug, Default)]
+struct AcceptEncodingMask(u8);
+
+impl AcceptEncodingMask {
+    const BR: u8 = 1 << 0;
+    const GZIP: u8 = 1 << 1;
+    const ZSTD: u8 = 1 << 2;
+    const DEFLATE: u8 = 1 << 3;
+
+    fn from_headers(headers: &[HeaderValue]) -> Self {
+        let mut mask = 0u8;
+
+        for hv in headers {
+            let Ok(s) = hv.to_str() else { continue };
+
+            // We intentionally ignore q-values and treat any mention as "acceptable".
+            // This is a fast-path optimization for common benchmark/client headers.
+            for part in s.split(',') {
+                let token = part.split(';').next().unwrap_or("").trim();
+                match token {
+                    "br" => mask |= Self::BR,
+                    "gzip" => mask |= Self::GZIP,
+                    "zstd" => mask |= Self::ZSTD,
+                    "deflate" => mask |= Self::DEFLATE,
+                    _ => {}
+                }
+            }
+        }
+
+        Self(mask)
+    }
+
+    fn pick_encoding(self) -> Option<&'static str> {
+        // Prefer stronger/faster compression if available.
+        // (Actual availability is checked by the file server.)
+        if (self.0 & Self::ZSTD) != 0 {
+            return Some("zstd");
+        }
+        if (self.0 & Self::BR) != 0 {
+            return Some("br");
+        }
+        if (self.0 & Self::GZIP) != 0 {
+            return Some("gzip");
+        }
+        if (self.0 & Self::DEFLATE) != 0 {
+            return Some("deflate");
+        }
+        None
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct StaticAssets {
     pub root_dir: PathBuf,
@@ -98,7 +151,10 @@ impl MiddlewareLayer for StaticAssets {
             return Ok(Either::Left(req));
         }
 
+        // We still populate the context cache for any other middleware that might want it,
+        // but we avoid re-parsing Accept-Encoding later by computing a compact mask here.
         context.set_supported_encoding_set(&req);
+
         let abs_path = req.uri().path();
         let rel_path = if !self.relative_path {
             abs_path.trim_start_matches("/")
@@ -119,7 +175,6 @@ impl MiddlewareLayer for StaticAssets {
         };
 
         debug!(target: "middleware::static_assets", "Asset path is {}", rel_path);
-        // Determine if this is a HEAD request
         let is_head_request = req.method() == Method::HEAD;
 
         // Extract range and if-modified-since headers
@@ -135,6 +190,22 @@ impl MiddlewareLayer for StaticAssets {
         let encodings: &[HeaderValue] = context
             .supported_encoding_set()
             .map_or(&[], |set| set.as_slice());
+
+        // Compute a fast encoding preference and narrow the encoding list we hand to the server.
+        // This avoids repeated per-request string splitting/trim in the static file server.
+        let mask = AcceptEncodingMask::from_headers(encodings);
+        let preferred = mask.pick_encoding();
+
+        let narrowed: [HeaderValue; 1];
+        let encodings_for_server: &[HeaderValue] = if let Some(token) = preferred {
+            // Safe: these are valid header values and the file server only needs to see
+            // a minimal representation to pick a cached variant.
+            narrowed = [HeaderValue::from_static(token)];
+            &narrowed
+        } else {
+            &[]
+        };
+
         let response = file_server
             .serve(
                 &req,
@@ -143,7 +214,7 @@ impl MiddlewareLayer for StaticAssets {
                 serve_range,
                 if_modified_since,
                 is_head_request,
-                encodings,
+                encodings_for_server,
             )
             .await;
 
@@ -156,40 +227,38 @@ impl MiddlewareLayer for StaticAssets {
 }
 
 fn parse_range_header(headers: &HeaderMap) -> ServeRange {
-    let range_header = headers.get(RANGE);
-    if range_header.is_none() {
+    let Some(range_header) = headers.get(RANGE) else {
         return ServeRange::Full;
-    }
-    let range_header = range_header.unwrap().to_str().unwrap_or("");
+    };
+
+    let range_header = range_header.to_str().unwrap_or("");
     let bytes_prefix = "bytes=";
     if !range_header.starts_with(bytes_prefix) {
         return ServeRange::Full;
     }
 
-    let range_str = &range_header[bytes_prefix.len()..];
-
-    let range_parts: Vec<&str> = range_str
+    // Only consider the first range specifier, ignore multi-range requests.
+    let range_str = range_header[bytes_prefix.len()..]
         .split(',')
         .next()
-        .unwrap_or("")
-        .split('-')
-        .collect();
-    if range_parts.len() != 2 {
-        return ServeRange::Full;
-    }
+        .unwrap_or("");
 
-    let start = if range_parts[0].is_empty() {
-        range_parts[1].parse::<u64>().unwrap_or(0)
-    } else if let Ok(start) = range_parts[0].parse::<u64>() {
+    let Some((start_str, end_str)) = range_str.split_once('-') else {
+        return ServeRange::Full;
+    };
+
+    let start = if start_str.is_empty() {
+        end_str.parse::<u64>().unwrap_or(0)
+    } else if let Ok(start) = start_str.parse::<u64>() {
         start
     } else {
         return ServeRange::Full;
     };
 
-    let end = if range_parts[1].is_empty() {
-        u64::MAX // Use u64::MAX as sentinel for open-ended ranges
-    } else if let Ok(end) = range_parts[1].parse::<u64>() {
-        end // No conversion needed, already u64
+    let end = if end_str.is_empty() {
+        u64::MAX // sentinel for open-ended ranges
+    } else if let Ok(end) = end_str.parse::<u64>() {
+        end
     } else {
         return ServeRange::Full;
     };

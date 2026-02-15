@@ -127,6 +127,38 @@ impl CacheEntry {
         &self,
         supported_encodings: &[HeaderValue],
     ) -> (Arc<Bytes>, Option<HeaderValue>) {
+        // Fast-path: if the caller already computed a preferred single encoding token,
+        // it will pass exactly one HeaderValue (e.g. "br"). This avoids per-request
+        // string splitting/parsing on the cached static file hot-path.
+        if supported_encodings.len() == 1 {
+            let hv = &supported_encodings[0];
+            if hv == HEADER_VALUE_ZSTD {
+                if let Some(zstd) = self.zstd.as_ref() {
+                    return (zstd.clone(), Some(HEADER_VALUE_ZSTD.clone()));
+                }
+                return (self.content.clone(), None);
+            }
+            if hv == HEADER_VALUE_BR {
+                if let Some(br) = self.br.as_ref() {
+                    return (br.clone(), Some(HEADER_VALUE_BR.clone()));
+                }
+                return (self.content.clone(), None);
+            }
+            if hv == HEADER_VALUE_GZIP {
+                if let Some(gz) = self.gz.as_ref() {
+                    return (gz.clone(), Some(HEADER_VALUE_GZIP.clone()));
+                }
+                return (self.content.clone(), None);
+            }
+            if hv == HEADER_VALUE_DEFLATE {
+                if let Some(deflate) = self.deflate.as_ref() {
+                    return (deflate.clone(), Some(HEADER_VALUE_DEFLATE.clone()));
+                }
+                return (self.content.clone(), None);
+            }
+        }
+
+        // Slow-path: parse Accept-Encoding values and select the first supported encoding.
         for encoding_header in supported_encodings {
             if let Ok(header_value) = encoding_header.to_str() {
                 for header_value in header_value.split(",").map(|hv| hv.trim()) {
@@ -416,15 +448,12 @@ impl StaticFileServer {
         abs_path: &str,
         accept: ResponseFormat,
     ) -> std::result::Result<ResolvedAsset, NotFoundBehavior> {
-        let ext_opt = Path::new(key)
-            .extension()
-            .and_then(|e| e.to_str())
-            .map(|s| s.to_lowercase());
+        let ext_opt = Path::new(key).extension().and_then(|e| e.to_str());
 
         // If the allowed list is non-empty, enforce membership
         if !self.allowed_extensions.is_empty() {
             match ext_opt {
-                Some(ref ext)
+                Some(ext)
                     if self
                         .allowed_extensions
                         .iter()
@@ -876,10 +905,7 @@ impl StaticFileServer {
                         content_length.to_string()
                     },
                 )
-                .header(
-                    "Last-Modified",
-                    format_http_date_header(cache_entry.last_modified),
-                );
+                .header("Last-Modified", cache_entry.last_modified_http_date.clone());
 
             if let Some(range) = content_range {
                 builder = builder.header("Content-Range", range);

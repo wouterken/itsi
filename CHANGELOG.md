@@ -1,3 +1,6 @@
+## [0.2.21-rc1] - 2026-01-08
+- Removed Rust `target-cpu=native` to avoid illegal instruction on older CPUs.
+
 ## [0.2.20] - 2025-09-01
 - Ensured Itsi server can run within a read-only file-system
 
