@@ -10,9 +10,9 @@ use std::sync::atomic::AtomicPtr;
 use std::sync::Arc;
 
 /// Test cache, which generates certificates for ACME incompatible test environments.
-/// ```rust
-/// # use tokio_rustls_acme::{AcmeConfig};
-/// # use tokio_rustls_acme::caches::{DirCache, TestCache};
+/// ```rust,no_run
+/// # use itsi_acme::AcmeConfig;
+/// # use itsi_acme::caches::{DirCache, TestCache};
 /// # let test_environment = true;
 /// let mut config = AcmeConfig::new(["example.com"])
 ///     .cache(DirCache::new("./cache"));

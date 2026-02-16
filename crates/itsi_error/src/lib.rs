@@ -1,9 +1,6 @@
 pub use anyhow::Context;
 use magnus::Error as MagnusError;
-use magnus::{
-    error::ErrorType,
-    exception::{self, arg_error, standard_error},
-};
+use magnus::{error::ErrorType, Ruby};
 use thiserror::Error;
 
 pub static CLIENT_CONNECTION_CLOSED: &str = "Client disconnected";
@@ -73,7 +70,10 @@ pub trait IntoMagnusError {
 
 impl<T: std::error::Error> IntoMagnusError for T {
     fn into_magnus_error(self) -> MagnusError {
-        MagnusError::new(standard_error(), self.to_string())
+        MagnusError::new(
+            Ruby::get().unwrap().exception_standard_error(),
+            self.to_string(),
+        )
     }
 }
 
@@ -92,17 +92,34 @@ impl From<String> for ItsiError {
 impl From<ItsiError> for magnus::Error {
     fn from(err: ItsiError) -> Self {
         match err {
-            ItsiError::InvalidInput(msg) => magnus::Error::new(arg_error(), msg),
-            ItsiError::InternalServerError(msg) => magnus::Error::new(standard_error(), msg),
-            ItsiError::InternalError(msg) => magnus::Error::new(standard_error(), msg),
-            ItsiError::UnsupportedProtocol(msg) => magnus::Error::new(arg_error(), msg),
-            ItsiError::ArgumentError(msg) => magnus::Error::new(arg_error(), msg),
-            ItsiError::Jump(msg) => magnus::Error::new(exception::local_jump_error(), msg),
-            ItsiError::ClientConnectionClosed => {
-                magnus::Error::new(exception::eof_error(), CLIENT_CONNECTION_CLOSED)
+            ItsiError::InvalidInput(msg) => {
+                magnus::Error::new(Ruby::get().unwrap().exception_arg_error(), msg)
             }
-            ItsiError::Break => magnus::Error::new(exception::interrupt(), "Break"),
-            ItsiError::Pass => magnus::Error::new(exception::interrupt(), "Pass"),
+            ItsiError::InternalServerError(msg) => {
+                magnus::Error::new(Ruby::get().unwrap().exception_standard_error(), msg)
+            }
+            ItsiError::InternalError(msg) => {
+                magnus::Error::new(Ruby::get().unwrap().exception_standard_error(), msg)
+            }
+            ItsiError::UnsupportedProtocol(msg) => {
+                magnus::Error::new(Ruby::get().unwrap().exception_arg_error(), msg)
+            }
+            ItsiError::ArgumentError(msg) => {
+                magnus::Error::new(Ruby::get().unwrap().exception_arg_error(), msg)
+            }
+            ItsiError::Jump(msg) => {
+                magnus::Error::new(Ruby::get().unwrap().exception_local_jump_error(), msg)
+            }
+            ItsiError::ClientConnectionClosed => magnus::Error::new(
+                Ruby::get().unwrap().exception_eof_error(),
+                CLIENT_CONNECTION_CLOSED,
+            ),
+            ItsiError::Break => {
+                magnus::Error::new(Ruby::get().unwrap().exception_interrupt(), "Break")
+            }
+            ItsiError::Pass => {
+                magnus::Error::new(Ruby::get().unwrap().exception_interrupt(), "Pass")
+            }
             ItsiError::Io(err) => err.into_magnus_error(),
             ItsiError::Rcgen(err) => err.into_magnus_error(),
             ItsiError::HttpParse(err) => err.into_magnus_error(),

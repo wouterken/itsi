@@ -1,7 +1,7 @@
-use magnus::IntoValue;
 use magnus::rb_sys::AsRawValue;
 use magnus::value::BoxValue;
-use magnus::{Ruby, Value, value::ReprValue};
+use magnus::IntoValue;
+use magnus::{value::ReprValue, Ruby, Value};
 use std::fmt::{self, Debug, Formatter};
 use std::ops::Deref;
 
@@ -66,7 +66,7 @@ where
     T: ReprValue,
 {
     fn into_value_with(self, _: &Ruby) -> Value {
-        self.0.into_value()
+        self.0.into_value_with(&magnus::Ruby::get().unwrap())
     }
 }
 
@@ -116,7 +116,7 @@ impl Deref for HeapVal {
 
 impl IntoValue for HeapVal {
     fn into_value_with(self, _: &Ruby) -> Value {
-        self.0.into_value()
+        self.0.into_value_with(&magnus::Ruby::get().unwrap())
     }
 }
 

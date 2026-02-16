@@ -7,7 +7,7 @@ pub mod ruby_types;
 pub mod server;
 pub mod services;
 
-use magnus::{error::Result, function, method, Module, Object, Ruby};
+use magnus::{error::Result, function, method, Class, Module, Object, Ruby};
 use prelude::*;
 use ruby_types::{
     itsi_body_proxy::ItsiBodyProxy, itsi_grpc_call::ItsiGrpcCall,
@@ -36,7 +36,8 @@ fn init(ruby: &Ruby) -> Result<()> {
     )?;
 
     let server = ruby.get_inner(&ITSI_SERVER);
-    server.define_singleton_method("new", function!(ItsiServer::new, 3))?;
+    server.define_alloc_func::<ItsiServer>();
+    server.define_method("initialize", method!(ItsiServer::initialize, 3))?;
     server.define_singleton_method("reset_signal_handlers", function!(reset_signal_handlers, 0))?;
     server.define_method("start", method!(ItsiServer::start, 0))?;
     server.define_method("stop", method!(ItsiServer::stop, 0))?;

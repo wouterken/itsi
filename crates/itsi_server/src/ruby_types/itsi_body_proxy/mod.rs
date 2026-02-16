@@ -32,7 +32,9 @@ impl ItsiBody {
     pub fn into_value(&self) -> Option<Value> {
         match self {
             ItsiBody::Buffered(bytes) => bytes.as_value(),
-            ItsiBody::Stream(proxy) => Some(proxy.clone().into_value()),
+            ItsiBody::Stream(proxy) => {
+                Some(proxy.clone().into_value_with(&magnus::Ruby::get().unwrap()))
+            }
             ItsiBody::Empty => None,
         }
     }
@@ -54,7 +56,7 @@ impl ItsiBodyProxy {
             if let Some(chunk) = block_on(stream.next()) {
                 let chunk = chunk.map_err(|err| {
                     magnus::Error::new(
-                        magnus::exception::standard_error(),
+                        magnus::Ruby::get().unwrap().exception_standard_error(),
                         format!("Error reading body {:?}", err),
                     )
                 })?;
@@ -86,7 +88,7 @@ impl ItsiBodyProxy {
             if let Some(chunk) = block_on(stream.next()) {
                 let chunk = chunk.map_err(|err| {
                     magnus::Error::new(
-                        magnus::exception::standard_error(),
+                        magnus::Ruby::get().unwrap().exception_standard_error(),
                         format!("Error reading body {:?}", err),
                     )
                 })?;
@@ -97,7 +99,9 @@ impl ItsiBodyProxy {
                 break;
             }
         }
-        let output_string = buffer.take().unwrap_or(RString::buf_new(buf.len()));
+        let output_string = buffer
+            .take()
+            .unwrap_or(magnus::Ruby::get().unwrap().str_buf_new(buf.len()));
         output_string.cat(buf.clone());
         buf.clear();
         Ok(Some(output_string))
@@ -111,7 +115,7 @@ impl ItsiBodyProxy {
         while let Some(chunk) = block_on(stream.next()) {
             let chunk = chunk.map_err(|err| {
                 magnus::Error::new(
-                    magnus::exception::standard_error(),
+                    magnus::Ruby::get().unwrap().exception_standard_error(),
                     format!("Error reading body {:?}", err),
                 )
             })?;
@@ -133,7 +137,7 @@ impl ItsiBodyProxy {
     fn verify_open(&self) -> MagnusResult<()> {
         if self.closed.load(atomic::Ordering::SeqCst) {
             return Err(magnus::Error::new(
-                magnus::exception::standard_error(),
+                magnus::Ruby::get().unwrap().exception_standard_error(),
                 "Body stream is closed",
             ));
         }

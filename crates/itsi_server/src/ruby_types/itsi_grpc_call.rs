@@ -64,7 +64,9 @@ impl ItsiGrpcCall {
         let snake_case_method_name = METHOD_NAME_REGEX
             .replace_all(method_name, "${1}_${2}")
             .to_lowercase();
-        Ok(Symbol::new(snake_case_method_name))
+        Ok(magnus::Ruby::get()
+            .unwrap()
+            .to_symbol(snake_case_method_name))
     }
 
     pub fn stream(&self) -> MagnusResult<ItsiGrpcResponseStream> {
@@ -205,7 +207,7 @@ impl ItsiGrpcCall {
         })
         .map_err(|e: std::io::Error| {
             Error::new(
-                magnus::exception::standard_error(),
+                magnus::Ruby::get().unwrap().exception_standard_error(),
                 format!("deflate decompression failed: {}", e),
             )
         })?;
@@ -224,7 +226,7 @@ impl ItsiGrpcCall {
         })
         .map_err(|e: std::io::Error| {
             Error::new(
-                magnus::exception::standard_error(),
+                magnus::Ruby::get().unwrap().exception_standard_error(),
                 format!("gzip decompression failed: {}", e),
             )
         })?;
@@ -243,7 +245,7 @@ impl ItsiGrpcCall {
         })
         .map_err(|e| {
             Error::new(
-                magnus::exception::standard_error(),
+                magnus::Ruby::get().unwrap().exception_standard_error(),
                 format!("gzip compression failed: {e}"),
             )
         })?;
@@ -262,7 +264,7 @@ impl ItsiGrpcCall {
         })
         .map_err(|e| {
             Error::new(
-                magnus::exception::standard_error(),
+                magnus::Ruby::get().unwrap().exception_standard_error(),
                 format!("deflate compression failed: {e}"),
             )
         })?;

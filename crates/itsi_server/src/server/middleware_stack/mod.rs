@@ -49,7 +49,7 @@ impl StringMatch {
             let src_str = value.funcall::<_, _, String>("source", ())?;
             let regex = Regex::new(&src_str).map_err(|e| {
                 magnus::Error::new(
-                    magnus::exception::standard_error(),
+                    magnus::Ruby::get().unwrap().exception_standard_error(),
                     format!("Invalid regexp: {}", e),
                 )
             })?;
@@ -142,7 +142,7 @@ impl MiddlewareSet {
             let mut routes = vec![];
             for (index, route) in RArray::from_value(*routes_raw)
                 .ok_or(magnus::Error::new(
-                    magnus::exception::standard_error(),
+                    magnus::Ruby::get().unwrap().exception_standard_error(),
                     format!("Routes must be an array. Got {:?}", routes_raw),
                 ))?
                 .into_iter()
@@ -152,18 +152,18 @@ impl MiddlewareSet {
                 let route_raw = route_hash
                     .get("route")
                     .ok_or(magnus::Error::new(
-                        magnus::exception::standard_error(),
+                        magnus::Ruby::get().unwrap().exception_standard_error(),
                         "Route is missing :route key",
                     ))?
                     .funcall::<_, _, String>("source", ())?;
 
                 let middleware =
                     RHash::from_value(route_hash.get("middleware").ok_or(magnus::Error::new(
-                        magnus::exception::standard_error(),
+                        magnus::Ruby::get().unwrap().exception_standard_error(),
                         "Route is missing middleware key",
                     ))?)
                     .ok_or(magnus::Error::new(
-                        magnus::exception::standard_error(),
+                        magnus::Ruby::get().unwrap().exception_standard_error(),
                         format!("middleware must be a hash. Got {:?}", routes_raw),
                     ))?;
 
@@ -179,7 +179,7 @@ impl MiddlewareSet {
                             RArray::from_value(value)
                                 .ok_or_else(|| {
                                     magnus::Error::new(
-                                        magnus::exception::type_error(),
+                                        magnus::Ruby::get().unwrap().exception_type_error(),
                                         "Expected array",
                                     )
                                 })
@@ -232,7 +232,7 @@ impl MiddlewareSet {
             Ok(Self {
                 route_set: RegexSet::new(&routes).map_err(|e| {
                     magnus::Error::new(
-                        magnus::exception::standard_error(),
+                        magnus::Ruby::get().unwrap().exception_standard_error(),
                         format!("Failed to create route set: {}", e),
                     )
                 })?,
@@ -243,7 +243,7 @@ impl MiddlewareSet {
                     .collect::<std::result::Result<Vec<Regex>, regex::Error>>()
                     .map_err(|e| {
                         magnus::Error::new(
-                            magnus::exception::standard_error(),
+                            magnus::Ruby::get().unwrap().exception_standard_error(),
                             format!("Failed to create route set: {}", e),
                         )
                     })?
@@ -254,7 +254,7 @@ impl MiddlewareSet {
             })
         } else {
             Err(magnus::Error::new(
-                magnus::exception::standard_error(),
+                magnus::Ruby::get().unwrap().exception_standard_error(),
                 "Failed to create middleware stack",
             ))
         }
@@ -286,7 +286,7 @@ impl MiddlewareSet {
             self.route_set
         );
         Err(magnus::Error::new(
-            magnus::exception::standard_error(),
+            magnus::Ruby::get().unwrap().exception_standard_error(),
             format!(
                 "No matching middleware stack found for request: {:?}",
                 request
@@ -338,7 +338,7 @@ impl MiddlewareSet {
                 "app" => Ok(Middleware::RubyApp(RubyApp::from_value(parameters.into())?)),
                 "proxy" => Ok(Middleware::Proxy(Proxy::from_value(parameters)?)),
                 _ => Err(magnus::Error::new(
-                    magnus::exception::standard_error(),
+                    magnus::Ruby::get().unwrap().exception_standard_error(),
                     format!("Unknown filter type: {}", mw_type),
                 )),
             }
@@ -349,7 +349,7 @@ impl MiddlewareSet {
         match result {
             Ok(result) => Ok(result),
             Err(err) => Err(magnus::Error::new(
-                magnus::exception::standard_error(),
+                magnus::Ruby::get().unwrap().exception_standard_error(),
                 format!(
                     "Failed to instantiate middleware of type {}, due to {}",
                     middleware_type, err

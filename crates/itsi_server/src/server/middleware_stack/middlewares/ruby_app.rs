@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use derive_more::Debug;
 use either::Either;
 use itsi_rb_helpers::{HeapVal, HeapValue};
-use magnus::{block::Proc, error::Result, value::ReprValue, Symbol};
+use magnus::{block::Proc, error::Result, value::ReprValue};
 use regex::Regex;
 use std::str::FromStr;
 use std::sync::atomic::Ordering;
@@ -44,23 +44,33 @@ impl FromStr for RequestType {
 
 impl RubyApp {
     pub fn from_value(params: HeapVal) -> magnus::error::Result<Arc<Self>> {
-        let app = params.funcall::<_, _, Proc>(Symbol::new("[]"), ("app_proc",))?;
+        let app = params
+            .funcall::<_, _, Proc>(magnus::Ruby::get().unwrap().to_symbol("[]"), ("app_proc",))?;
         let sendfile = params
-            .funcall::<_, _, bool>(Symbol::new("[]"), ("sendfile",))
+            .funcall::<_, _, bool>(magnus::Ruby::get().unwrap().to_symbol("[]"), ("sendfile",))
             .unwrap_or(true);
         let nonblocking = params
-            .funcall::<_, _, bool>(Symbol::new("[]"), ("nonblocking",))
+            .funcall::<_, _, bool>(
+                magnus::Ruby::get().unwrap().to_symbol("[]"),
+                ("nonblocking",),
+            )
             .unwrap_or(false);
         let base_path_src = params
-            .funcall::<_, _, String>(Symbol::new("[]"), ("base_path",))
+            .funcall::<_, _, String>(magnus::Ruby::get().unwrap().to_symbol("[]"), ("base_path",))
             .unwrap_or("".to_owned());
         let script_name = params
-            .funcall::<_, _, Option<String>>(Symbol::new("[]"), ("script_name",))
+            .funcall::<_, _, Option<String>>(
+                magnus::Ruby::get().unwrap().to_symbol("[]"),
+                ("script_name",),
+            )
             .unwrap_or(None);
         let base_path = Regex::new(&base_path_src).unwrap();
 
         let request_type: RequestType = params
-            .funcall::<_, _, String>(Symbol::new("[]"), ("request_type",))
+            .funcall::<_, _, String>(
+                magnus::Ruby::get().unwrap().to_symbol("[]"),
+                ("request_type",),
+            )
             .unwrap_or("http".to_string())
             .parse()
             .unwrap_or(RequestType::Http);

@@ -1,3 +1,9 @@
+## [0.2.21] - 2026-02-16
+- Fix Ruby 2.7 startup NameError in static_assets redirect schema load path
+
+## [0.2.21-rc1] - 2026-01-08
+- Removed Rust `target-cpu=native` to avoid illegal instruction on older CPUs.
+
 ## [0.2.20] - 2025-09-01
 - Ensured Itsi server can run within a read-only file-system
 

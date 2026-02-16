@@ -6,9 +6,11 @@ use redis::{Client, RedisError, Script};
 use serde::Deserialize;
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
+use std::fmt::Write as _;
 use std::result::Result;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex as AsyncMutex;
 use tokio::time::timeout;
 use tracing::warn;
@@ -303,27 +305,37 @@ impl RateLimiter for InMemoryRateLimiter {
 
         let mut entries = self.entries.write();
 
-        let entry = entries
-            .entry(key.to_string())
-            .or_insert_with(|| RateLimitEntry {
-                count: 0,
-                expires_at: now + timeout,
-            });
+        // Avoid per-request allocation: only allocate a String when inserting a new key.
+        //
+        // NOTE: we use `get_mut` first because `HashMap::entry` for `HashMap<String, _>`
+        // requires an owned `String`, which would allocate on every request.
+        if let Some(entry) = entries.get_mut(key) {
+            if entry.expires_at < now {
+                entry.expires_at = now + timeout;
+                entry.count = 1;
+            } else {
+                entry.count += 1;
+            }
 
-        if entry.expires_at < now {
-            entry.expires_at = now + timeout;
-            entry.count = 1;
-        } else {
-            entry.count += 1;
+            let ttl = if entry.expires_at > now {
+                entry.expires_at.duration_since(now).as_secs()
+            } else {
+                0
+            };
+
+            return Ok((entry.count, ttl));
         }
 
-        let ttl = if entry.expires_at > now {
-            entry.expires_at.duration_since(now).as_secs()
-        } else {
-            0
-        };
+        // Insert path: allocate once for the new key.
+        entries.insert(
+            key.to_owned(),
+            RateLimitEntry {
+                count: 1,
+                expires_at: now + timeout,
+            },
+        );
 
-        Ok((entry.count, ttl))
+        Ok((1, timeout.as_secs()))
     }
 
     async fn check_limit(
@@ -378,14 +390,49 @@ impl BanManager {
 }
 
 /// Utility function to create a rate limit key for a specific minute
-pub fn create_rate_limit_key(api_key: &str, resource: &str) -> String {
-    // Get the current minute number (0-59)
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
+static CACHED_MINUTE_BUCKET_SECS: AtomicU64 = AtomicU64::new(0);
+static CACHED_MINUTE_BUCKET: AtomicU64 = AtomicU64::new(0);
 
-    let minutes = now.as_secs() / 60 % 60;
-    format!("ratelimit:{}:{}:{}", api_key, resource, minutes)
+#[inline]
+fn cached_minute_bucket() -> u64 {
+    // Cache the computed minute bucket and only refresh at most once per second.
+    // This avoids a syscall and divisions/mods on every request, while preserving
+    // the exact same value as the previous implementation.
+    let now_secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    let last = CACHED_MINUTE_BUCKET_SECS.load(Ordering::Relaxed);
+    if last != now_secs {
+        let minutes = (now_secs / 60) % 60;
+        CACHED_MINUTE_BUCKET.store(minutes, Ordering::Relaxed);
+        CACHED_MINUTE_BUCKET_SECS.store(now_secs, Ordering::Relaxed);
+        minutes
+    } else {
+        CACHED_MINUTE_BUCKET.load(Ordering::Relaxed)
+    }
+}
+
+pub fn create_rate_limit_key(api_key: &str, resource: &str) -> String {
+    let minutes = cached_minute_bucket();
+
+    // Build the exact same string as:
+    // format!("ratelimit:{}:{}:{}", api_key, resource, minutes)
+    // but avoid `format!` machinery and minimize reallocations.
+    let mut s = String::with_capacity(
+        "ratelimit:".len() + api_key.len() + 1 + resource.len() + 1 + 2, // minutes is 0-59
+    );
+
+    s.push_str("ratelimit:");
+    s.push_str(api_key);
+    s.push(':');
+    s.push_str(resource);
+    s.push(':');
+    // u64->decimal without intermediate allocation
+    let _ = write!(&mut s, "{}", minutes);
+
+    s
 }
 
 /// Utility function to create a ban key for an IP address

@@ -62,6 +62,18 @@ module Itsi
           # stream this response.
           body_streamer.call(response)
 
+        elsif body.is_a?(Array)
+          if body.length == 1
+            response.send_and_close(body[0].to_s)
+          else
+            buffer = nil
+            body.each do |part|
+              response << buffer.to_s if buffer
+              buffer = part
+            end
+
+            response.send_and_close(buffer.to_s)
+          end
         elsif body.respond_to?(:each) || body.respond_to?(:to_ary)
           # If we're enumerable with more than one chunk
           # also stream, otherwise write in a single chunk

@@ -13,26 +13,32 @@ use tracing::{info, instrument};
 mod file_watcher;
 pub mod itsi_server_config;
 #[magnus::wrap(class = "Itsi::Server", free_immediately, size)]
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct ItsiServer {
-    pub config: Arc<Mutex<Arc<ItsiServerConfig>>>,
+    pub config: Arc<Mutex<Option<Arc<ItsiServerConfig>>>>,
 }
 
 impl ItsiServer {
-    pub fn new(
-        ruby: &Ruby,
+    pub fn initialize(
+        &self,
         cli_params: RHash,
         itsifile_path: Option<PathBuf>,
         itsi_config_proc: Option<Proc>,
-    ) -> Result<Self> {
-        Ok(Self {
-            config: Arc::new(Mutex::new(Arc::new(ItsiServerConfig::new(
-                ruby,
-                cli_params,
-                itsifile_path,
-                itsi_config_proc,
-            )?))),
-        })
+    ) -> Result<()> {
+        let ruby = Ruby::get().map_err(|_| {
+            magnus::Error::new(
+                magnus::Ruby::get().unwrap().exception_runtime_error(),
+                "Failed to acquire Ruby VM handle",
+            )
+        })?;
+        let config = Arc::new(ItsiServerConfig::new(
+            &ruby,
+            cli_params,
+            itsifile_path,
+            itsi_config_proc,
+        )?);
+        *self.config.lock() = Some(config);
+        Ok(())
     }
 
     pub fn stop(&self) -> Result<()> {
@@ -40,10 +46,20 @@ impl ItsiServer {
         Ok(())
     }
 
+    fn config(&self) -> Result<Arc<ItsiServerConfig>> {
+        self.config.lock().as_ref().cloned().ok_or_else(|| {
+            magnus::Error::new(
+                magnus::Ruby::get().unwrap().exception_runtime_error(),
+                "Itsi::Server not initialized",
+            )
+        })
+    }
+
     #[instrument(skip(self))]
     pub fn start(&self) -> Result<()> {
-        self.config.lock().server_params.read().setup_listeners()?;
-        let result = if self.config.lock().server_params.read().silence {
+        let server_config = self.config()?;
+        server_config.server_params.read().setup_listeners()?;
+        let result = if server_config.server_params.read().silence {
             run_silently(|| self.build_and_run_strategy())
         } else {
             info!("Itsi - Rolling into action. ⚪💨");
@@ -60,11 +76,11 @@ impl ItsiServer {
     }
 
     pub(crate) fn build_strategy(&self) -> Result<ServeStrategy> {
-        let server_config = self.config.lock();
+        let server_config = self.config()?;
         Ok(if server_config.server_params.read().workers > 1 {
-            ServeStrategy::Cluster(Arc::new(ClusterMode::new(server_config.clone())))
+            ServeStrategy::Cluster(Arc::new(ClusterMode::new(server_config)))
         } else {
-            ServeStrategy::Single(Arc::new(SingleMode::new(server_config.clone(), 0)?))
+            ServeStrategy::Single(Arc::new(SingleMode::new(server_config, 0)?))
         })
     }
 

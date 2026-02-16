@@ -4,7 +4,7 @@ require 'mkmf'
 require 'rb_sys/mkmf'
 
 create_rust_makefile('itsi/scheduler/itsi_scheduler') do |r|
-  r.extra_rustflags = ['-C target-cpu=native']
+  r.extra_rustflags = []
   r.env = {
     'BINDGEN_EXTRA_CLANG_ARGS' => '-include stdbool.h -std=c99'
   }

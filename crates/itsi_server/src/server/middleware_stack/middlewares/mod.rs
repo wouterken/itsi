@@ -43,9 +43,9 @@ pub use error_response::ErrorResponse;
 pub use etag::ETag;
 pub use intrusion_protection::IntrusionProtection;
 pub use log_requests::LogRequests;
-use magnus::error::Result;
 use magnus::rb_sys::AsRawValue;
 use magnus::Value;
+use magnus::{error::Result, Ruby};
 pub use max_body::MaxBody;
 pub use proxy::Proxy;
 pub use rate_limit::RateLimit;
@@ -88,7 +88,13 @@ pub trait FromValue: Sized + Send + Sync + 'static {
             }
         }
 
-        let deserialized: Arc<Self> = Arc::new(deserialize(value)?);
+        let ruby = Ruby::get().map_err(|_| {
+            magnus::Error::new(
+                magnus::Ruby::get().unwrap().exception_runtime_error(),
+                "Failed to acquire Ruby VM handle",
+            )
+        })?;
+        let deserialized: Arc<Self> = Arc::new(deserialize(&ruby, value)?);
         cache.insert(raw, deserialized.clone());
         Ok(deserialized)
     }

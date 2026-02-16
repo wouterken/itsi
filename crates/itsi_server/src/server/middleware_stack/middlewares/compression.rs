@@ -293,9 +293,7 @@ impl MiddlewareLayer for Compression {
             };
             HttpBody::full(Bytes::from(compressed_bytes))
         } else {
-            let stream = body
-                .into_data_stream()
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
+            let stream = body.into_data_stream().map_err(std::io::Error::other);
             let async_read_fut = StreamReader::new(stream);
             let reader = BufReader::new(async_read_fut);
             match compression_method {

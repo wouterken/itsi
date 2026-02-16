@@ -59,7 +59,7 @@ impl ItsiGrpcResponseStreamInner {
             .blocking_send(ByteFrame::Data(bytes))
             .map_err(|err| {
                 magnus::Error::new(
-                    magnus::exception::io_error(),
+                    magnus::Ruby::get().unwrap().exception_io_error(),
                     format!("Trying to write to closed stream: {:?}", err),
                 )
             })?;
@@ -80,7 +80,7 @@ impl ItsiGrpcResponseStreamInner {
         let trailer_tx = std::mem::replace(&mut self.trailer_tx, oneshot::channel().0);
         trailer_tx.send(header_map).map_err(|err| {
             magnus::Error::new(
-                magnus::exception::standard_error(),
+                magnus::Ruby::get().unwrap().exception_standard_error(),
                 format!("Error sending trailers {:?}", err),
             )
         })?;

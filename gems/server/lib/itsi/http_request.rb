@@ -27,6 +27,21 @@ module Itsi
 
     RACK_HEADER_MAP.default_proc = proc { |_, key| "HTTP_#{key.upcase.gsub(/-/, "_")}" }
 
+    SPECIAL_RACK_HEADER_MAP = {
+      "content-type" => "CONTENT_TYPE",
+      "content-length" => "CONTENT_LENGTH",
+      "accept" => "HTTP_ACCEPT",
+      "accept-encoding" => "HTTP_ACCEPT_ENCODING",
+      "accept-language" => "HTTP_ACCEPT_LANGUAGE",
+      "user-agent" => "HTTP_USER_AGENT",
+      "referer" => "HTTP_REFERER",
+      "origin" => "HTTP_ORIGIN",
+      "cookie" => "HTTP_COOKIE",
+      "authorization" => "HTTP_AUTHORIZATION",
+      "x-forwarded-for" => "HTTP_X_FORWARDED_FOR",
+      "x-forwarded-proto" => "HTTP_X_FORWARDED_PROTO"
+    }.freeze
+
     HTTP_09 = "HTTP/0.9"
     HTTP_09_ARR = ["HTTP/0.9"].freeze
     HTTP_10 = "HTTP/1.0"
@@ -63,24 +78,9 @@ module Itsi
         end
       env["rack.url_scheme"] = scheme
       env["rack.input"] = build_input_io
-      env["rack.hijack"] = method(:hijack)
+      env["rack.hijack"] = self
       each_header do |k, v|
-        env[case k
-            when "content-type" then "CONTENT_TYPE"
-            when "content-length" then "CONTENT_LENGTH"
-            when "accept" then "HTTP_ACCEPT"
-            when "accept-encoding" then "HTTP_ACCEPT_ENCODING"
-            when "accept-language" then "HTTP_ACCEPT_LANGUAGE"
-            when "user-agent" then "HTTP_USER_AGENT"
-            when "referer" then "HTTP_REFERER"
-            when "origin" then "HTTP_ORIGIN"
-            when "cookie" then "HTTP_COOKIE"
-            when "authorization" then "HTTP_AUTHORIZATION"
-            when "x-forwarded-for" then "HTTP_X_FORWARDED_FOR"
-            when "x-forwarded-proto" then "HTTP_X_FORWARDED_PROTO"
-            else RACK_HEADER_MAP[k]
-            end
-        ] = v
+        env[SPECIAL_RACK_HEADER_MAP[k] || RACK_HEADER_MAP[k]] = v
       end
       env
     end
@@ -136,6 +136,11 @@ module Itsi
         app_sock.sync = true
         app_sock
       end
+    end
+
+    # Rack expects env["rack.hijack"] to respond to #call.
+    def call
+      hijack
     end
 
     def body

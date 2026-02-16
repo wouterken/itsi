@@ -4,7 +4,7 @@ use argon2::{
 };
 
 use itsi_error::ItsiError;
-use magnus::{error::Result, Value};
+use magnus::{error::Result, Ruby, Value};
 use serde::Deserialize;
 use serde_magnus::deserialize;
 use sha_crypt::{
@@ -26,7 +26,13 @@ pub enum HashAlgorithm {
 }
 
 pub fn create_password_hash(password: String, algo: Value) -> Result<String> {
-    let hash_algorithm: HashAlgorithm = deserialize(algo)?;
+    let ruby = Ruby::get().map_err(|_| {
+        magnus::Error::new(
+            magnus::Ruby::get().unwrap().exception_runtime_error(),
+            "Failed to acquire Ruby VM handle",
+        )
+    })?;
+    let hash_algorithm: HashAlgorithm = deserialize(&ruby, algo)?;
     match hash_algorithm {
         HashAlgorithm::Bcrypt => {
             // Use the bcrypt crate for password hashing.

@@ -159,7 +159,7 @@ impl Eq for Middleware {}
 
 impl PartialOrd for Middleware {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.variant_order().cmp(&other.variant_order()))
+        Some(self.cmp(other))
     }
 }
 

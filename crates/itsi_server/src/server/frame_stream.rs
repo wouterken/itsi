@@ -48,9 +48,10 @@ impl Stream for FrameStream {
                 if this.shutdown_rx.has_changed().unwrap_or(false)
                     && *this.shutdown_rx.borrow() == RunningPhase::ShutdownPending
                 {
-                    while let Ok(bytes) = this.receiver.try_recv() {
+                    if let Ok(bytes) = this.receiver.try_recv() {
                         return Poll::Ready(Some(Ok(bytes)));
                     }
+
                     this.drained = true;
                     return Poll::Ready(None);
                 }

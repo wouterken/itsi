@@ -7,7 +7,7 @@ use std::sync::atomic::AtomicPtr;
 
 /// No-op cache, which does nothing.
 /// ```rust
-/// # use tokio_rustls_acme::caches::NoCache;
+/// # use itsi_acme::caches::NoCache;
 /// # type EC = std::io::Error;
 /// # type EA = EC;
 /// let no_cache = NoCache::<EC, EA>::new();
