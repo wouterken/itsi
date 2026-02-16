@@ -27,7 +27,7 @@ impl ItsiServer {
     ) -> Result<()> {
         let ruby = Ruby::get().map_err(|_| {
             magnus::Error::new(
-                magnus::exception::runtime_error(),
+                magnus::Ruby::get().unwrap().exception_runtime_error(),
                 "Failed to acquire Ruby VM handle",
             )
         })?;
@@ -49,7 +49,7 @@ impl ItsiServer {
     fn config(&self) -> Result<Arc<ItsiServerConfig>> {
         self.config.lock().as_ref().cloned().ok_or_else(|| {
             magnus::Error::new(
-                magnus::exception::runtime_error(),
+                magnus::Ruby::get().unwrap().exception_runtime_error(),
                 "Itsi::Server not initialized",
             )
         })

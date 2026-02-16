@@ -50,14 +50,21 @@ impl BigBytes {
                 if bytes.is_empty() {
                     None
                 } else {
-                    Some(bytes.into_value())
+                    Some(bytes.into_value_with(&magnus::Ruby::get().unwrap()))
                 }
             }
             BigBytes::OnDisk(path) => {
                 let ruby = Ruby::get().unwrap();
                 let rarray = ruby.ary_new();
-                rarray.push(path.path().to_str().unwrap().into_value()).ok();
-                Some(rarray.into_value())
+                rarray
+                    .push(
+                        path.path()
+                            .to_str()
+                            .unwrap()
+                            .into_value_with(&magnus::Ruby::get().unwrap()),
+                    )
+                    .ok();
+                Some(rarray.into_value_with(&magnus::Ruby::get().unwrap()))
             }
         }
     }

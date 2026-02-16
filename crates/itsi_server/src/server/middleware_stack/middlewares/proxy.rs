@@ -280,14 +280,14 @@ impl MiddlewareLayer for Proxy {
                     .build()
                     .map_err(|e| {
                         magnus::Error::new(
-                            magnus::exception::runtime_error(),
+                            magnus::Ruby::get().unwrap().exception_runtime_error(),
                             format!("Failed to build Reqwest client: {}", e),
                         )
                     })?,
             )
             .map_err(|_e| {
                 magnus::Error::new(
-                    magnus::exception::standard_error(),
+                    magnus::Ruby::get().unwrap().exception_standard_error(),
                     "Failed to save resolver backends",
                 )
             })?;

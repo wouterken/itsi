@@ -598,8 +598,7 @@ impl StaticFileServer {
                             }
                         }
                     }
-                    if index_file.is_some() {
-                        let index_path = index_file.unwrap();
+                    if let Some(index_path) = index_file {
                         self.key_to_path
                             .lock()
                             .insert(key.to_string(), index_path.clone());
@@ -1254,8 +1253,8 @@ async fn generate_directory_listing(
             });
 
             // Serialize the JSON object to a pretty-printed string.
-            let json_string = serde_json::to_string_pretty(&json_obj)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+            let json_string =
+                serde_json::to_string_pretty(&json_obj).map_err(std::io::Error::other)?;
 
             Ok(json_string)
         }

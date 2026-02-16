@@ -2,6 +2,6 @@
 
 module Itsi
   class Scheduler
-    VERSION = "0.2.21.rc2"
+    VERSION = "0.2.21"
   end
 end

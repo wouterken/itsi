@@ -1,4 +1,4 @@
-## [0.2.21-rc2] - 2026-02-16
+## [0.2.21] - 2026-02-16
 - Fix Ruby 2.7 startup NameError in static_assets redirect schema load path
 
 ## [0.2.21-rc1] - 2026-01-08

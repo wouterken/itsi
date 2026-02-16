@@ -145,9 +145,10 @@ impl ClusterMode {
 
                     call_with_gvl(|_| {
                         create_ruby_thread(move || {
-                            call_without_gvl(move || match worker_clone.boot(self_clone) {
-                                Err(err) => error!("Worker boot failed {:?}", err),
-                                _ => {}
+                            call_without_gvl(move || {
+                                if let Err(err) = worker_clone.boot(self_clone) {
+                                    error!("Worker boot failed {:?}", err);
+                                }
                             })
                         });
                     });

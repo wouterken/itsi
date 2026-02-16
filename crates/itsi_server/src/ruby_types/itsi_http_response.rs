@@ -63,7 +63,7 @@ pub struct ResponseInner {
 
 #[derive(Debug)]
 pub enum ResponseFrame {
-    HttpResponse(HttpResponse),
+    HttpResponse(Box<HttpResponse>),
     HijackedResponse(ItsiHttpResponse),
 }
 
@@ -225,7 +225,9 @@ impl ItsiHttpResponse {
         if let Some(mut response) = self.response.write().take() {
             *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
             if let Some(sender) = self.response_sender.write().take() {
-                sender.send(ResponseFrame::HttpResponse(response)).ok();
+                sender
+                    .send(ResponseFrame::HttpResponse(Box::new(response)))
+                    .ok();
             }
         }
     }
@@ -235,7 +237,9 @@ impl ItsiHttpResponse {
         if let Some(mut response) = self.response.write().take() {
             *response.status_mut() = StatusCode::SERVICE_UNAVAILABLE;
             if let Some(sender) = self.response_sender.write().take() {
-                sender.send(ResponseFrame::HttpResponse(response)).ok();
+                sender
+                    .send(ResponseFrame::HttpResponse(Box::new(response)))
+                    .ok();
             }
         }
     }
@@ -253,7 +257,9 @@ impl ItsiHttpResponse {
                     *response.body_mut() = HttpBody::stream(buffered);
                     self.frame_writer.write().replace(writer);
                     if let Some(sender) = self.response_sender.write().take() {
-                        sender.send(ResponseFrame::HttpResponse(response)).ok();
+                        sender
+                            .send(ResponseFrame::HttpResponse(Box::new(response)))
+                            .ok();
                     }
                 } else {
                     info!("No response!");
@@ -280,7 +286,9 @@ impl ItsiHttpResponse {
                 *response.body_mut() = HttpBody::full(frame);
             }
             if let Some(sender) = self.response_sender.write().take() {
-                sender.send(ResponseFrame::HttpResponse(response)).ok();
+                sender
+                    .send(ResponseFrame::HttpResponse(Box::new(response)))
+                    .ok();
             }
         }
 

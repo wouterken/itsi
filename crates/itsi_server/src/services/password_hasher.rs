@@ -28,7 +28,7 @@ pub enum HashAlgorithm {
 pub fn create_password_hash(password: String, algo: Value) -> Result<String> {
     let ruby = Ruby::get().map_err(|_| {
         magnus::Error::new(
-            magnus::exception::runtime_error(),
+            magnus::Ruby::get().unwrap().exception_runtime_error(),
             "Failed to acquire Ruby VM handle",
         )
     })?;

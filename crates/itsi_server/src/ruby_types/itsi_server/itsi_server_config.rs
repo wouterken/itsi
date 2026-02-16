@@ -14,7 +14,7 @@ use magnus::{
     block::Proc,
     error::Result,
     value::{LazyId, ReprValue},
-    RArray, RHash, Ruby, Symbol, TryConvert, Value,
+    RArray, RHash, Ruby, TryConvert, Value,
 };
 use nix::{
     fcntl::{fcntl, FcntlArg, FdFlag},
@@ -161,14 +161,14 @@ impl ServerParams {
                     Vec::<String>::try_convert(error_lines.unwrap().as_value())?;
                 ItsiServerConfig::print_config_errors(errors);
                 return Err(magnus::Error::new(
-                    magnus::exception::runtime_error(),
+                    magnus::Ruby::get().unwrap().exception_runtime_error(),
                     "Failed to set middleware",
                 ));
             }
             let middleware = MiddlewareSet::new(routes_raw)?;
             self.middleware.set(middleware).map_err(|_| {
                 magnus::Error::new(
-                    magnus::exception::runtime_error(),
+                    magnus::Ruby::get().unwrap().exception_runtime_error(),
                     "Failed to set middleware",
                 )
             })?;
@@ -361,7 +361,7 @@ impl ServerParams {
             let bind_to_fd_map: HashMap<String, i32> = serde_json::from_str(preexisting_listeners)
                 .map_err(|e| {
                     magnus::Error::new(
-                        magnus::exception::standard_error(),
+                        magnus::Ruby::get().unwrap().exception_standard_error(),
                         format!("Invalid listener info: {}", e),
                     )
                 })?;
@@ -393,7 +393,10 @@ impl ServerParams {
             .iter()
             .map(|listener| {
                 listener.handover().map_err(|e| {
-                    magnus::Error::new(magnus::exception::runtime_error(), e.to_string())
+                    magnus::Error::new(
+                        magnus::Ruby::get().unwrap().exception_runtime_error(),
+                        e.to_string(),
+                    )
                 })
             })
             .collect::<Result<HashMap<String, i32>>>()?;
@@ -419,7 +422,8 @@ impl ItsiServerConfig {
             itsi_config_proc.clone(),
         ) {
             Ok(server_params) => {
-                cli_params.delete::<_, Value>(Symbol::new("listeners"))?;
+                cli_params
+                    .delete::<_, Value>(magnus::Ruby::get().unwrap().to_symbol("listeners"))?;
 
                 let watcher_fd = if let Some(watchers) = server_params.notify_watchers.clone() {
                     file_watcher::watch_groups(watchers)?
@@ -436,7 +440,7 @@ impl ItsiServerConfig {
                 })
             }
             Err(err) => Err(magnus::Error::new(
-                magnus::exception::standard_error(),
+                magnus::Ruby::get().unwrap().exception_standard_error(),
                 format!("Error loading initial configuration {:?}", err),
             )),
         }
@@ -493,7 +497,7 @@ impl ItsiServerConfig {
         if !errors.is_empty() {
             Self::print_config_errors(errors);
             return Err(magnus::Error::new(
-                magnus::exception::standard_error(),
+                magnus::Ruby::get().unwrap().exception_standard_error(),
                 "Invalid server config",
             ));
         }
@@ -567,13 +571,13 @@ impl ItsiServerConfig {
             .map(|(str, fd)| {
                 let dupped_fd = dup(*fd).map_err(|errno| {
                     magnus::Error::new(
-                        magnus::exception::standard_error(),
+                        magnus::Ruby::get().unwrap().exception_standard_error(),
                         format!("Errno {} while trying to dup {}", errno, fd),
                     )
                 })?;
                 Self::clear_cloexec(dupped_fd).map_err(|e| {
                     magnus::Error::new(
-                        magnus::exception::standard_error(),
+                        magnus::Ruby::get().unwrap().exception_standard_error(),
                         format!("Failed to clear cloexec flag for fd {}: {}", dupped_fd, e),
                     )
                 })?;
@@ -629,7 +633,7 @@ impl ItsiServerConfig {
             serde_json::to_string(&self.server_params.read().listener_info.lock().clone())
                 .map_err(|e| {
                     magnus::Error::new(
-                        magnus::exception::standard_error(),
+                        magnus::Ruby::get().unwrap().exception_standard_error(),
                         format!("Invalid listener info: {}", e),
                     )
                 })?;

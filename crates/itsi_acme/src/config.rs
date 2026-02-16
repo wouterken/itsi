@@ -31,9 +31,9 @@ impl AcmeConfig<Infallible, Infallible> {
     /// error types will be `Infallible` since the cache cannot return an error. The methods to set
     /// a cache will change the error types to match those returned by the supplied cache.
     ///
-    /// ```rust
-    /// # use tokio_rustls_acme::AcmeConfig;
-    /// use tokio_rustls_acme::caches::DirCache;
+    /// ```rust,no_run
+    /// # use itsi_acme::AcmeConfig;
+    /// use itsi_acme::caches::DirCache;
     /// let config = AcmeConfig::new(["example.com"]).cache(DirCache::new("./rustls_acme_cache"));
     /// ```
     ///
@@ -43,9 +43,9 @@ impl AcmeConfig<Infallible, Infallible> {
     /// An uncached instance of [AcmeConfig] with particular type parameters can be created using
     /// [NoCache].
     ///
-    /// ```rust
-    /// # use tokio_rustls_acme::AcmeConfig;
-    /// use tokio_rustls_acme::caches::NoCache;
+    /// ```rust,no_run
+    /// # use itsi_acme::AcmeConfig;
+    /// use itsi_acme::caches::NoCache;
     /// # type EC = std::io::Error;
     /// # type EA = EC;
     /// let config: AcmeConfig<EC, EA> = AcmeConfig::new(["example.com"]).cache(NoCache::new());

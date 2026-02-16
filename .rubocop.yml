@@ -1,0 +1,20 @@
+AllCops:
+  TargetRubyVersion: 3.1
+  NewCops: enable
+  SuggestExtensions: false
+  Include:
+    - gems/server/lib/**/*.rb
+    - gems/scheduler/lib/**/*.rb
+  Exclude:
+    - examples/**/*
+    - gems/**/tmp/**/*
+    - target/**/*
+    - pkg/**/*
+    - vendor/**/*
+    - tmp/**/*
+
+Style/StringLiterals:
+  EnforcedStyle: double_quotes
+
+Style/StringLiteralsInInterpolation:
+  EnforcedStyle: double_quotes

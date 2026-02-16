@@ -110,7 +110,7 @@ pub fn send_watcher_command(fd: &OwnedFd, cmd: WatcherCommand) -> Result<()> {
     match write(fd, &buf) {
         Ok(_) => Ok(()),
         Err(e) => Err(magnus::Error::new(
-            magnus::exception::standard_error(),
+            magnus::Ruby::get().unwrap().exception_standard_error(),
             format!("Failed to send command to watcher: {}", e),
         )),
     }
@@ -122,14 +122,14 @@ pub fn watch_groups(
     // Create bidirectional pipes for communication
     let (parent_read_fd, child_write_fd): (OwnedFd, OwnedFd) = pipe().map_err(|e| {
         magnus::Error::new(
-            magnus::exception::standard_error(),
+            magnus::Ruby::get().unwrap().exception_standard_error(),
             format!("Failed to create parent read pipe: {}", e),
         )
     })?;
 
     let (child_read_fd, parent_write_fd): (OwnedFd, OwnedFd) = pipe().map_err(|e| {
         magnus::Error::new(
-            magnus::exception::standard_error(),
+            magnus::Ruby::get().unwrap().exception_standard_error(),
             format!("Failed to create child read pipe: {}", e),
         )
     })?;
@@ -137,7 +137,7 @@ pub fn watch_groups(
     let fork_result = unsafe {
         fork().map_err(|e| {
             magnus::Error::new(
-                magnus::exception::standard_error(),
+                magnus::Ruby::get().unwrap().exception_standard_error(),
                 format!("Failed to fork file watcher: {}", e),
             )
         })
@@ -194,7 +194,7 @@ pub fn watch_groups(
 
             let glob = Glob::new(&remaining_pattern).map_err(|e| {
                 magnus::Error::new(
-                    magnus::exception::standard_error(),
+                    magnus::Ruby::get().unwrap().exception_standard_error(),
                     format!(
                         "Failed to create watch glob for pattern '{}': {}",
                         remaining_pattern, e
@@ -203,7 +203,7 @@ pub fn watch_groups(
             })?;
             let glob_set = GlobSetBuilder::new().add(glob).build().map_err(|e| {
                 magnus::Error::new(
-                    magnus::exception::standard_error(),
+                    magnus::Ruby::get().unwrap().exception_standard_error(),
                     format!("Failed to create watch glob set: {}", e),
                 )
             })?;

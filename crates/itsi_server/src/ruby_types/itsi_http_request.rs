@@ -6,9 +6,9 @@ use itsi_error::CLIENT_CONNECTION_CLOSED;
 use itsi_rb_helpers::{funcall_no_ret, print_rb_backtrace, HeapValue};
 use itsi_tracing::debug;
 use magnus::{
-    block::{yield_values, Proc},
+    block::Proc,
     error::{ErrorType, Result as MagnusResult},
-    Error, IntoValue, RHash, Symbol,
+    Error, IntoValue, RHash,
 };
 use magnus::{
     value::{LazyId, ReprValue},
@@ -110,20 +110,20 @@ impl ItsiHttpRequest {
                 // when building against Ruby < 3.2...
                 #[cfg(not(ruby_gte_3_2))]
                 {
-                    RHash::new()
+                    magnus::Ruby::get().unwrap().hash_new()
                 }
             };
             for (i, group_name) in re.capture_names().enumerate().skip(1) {
                 if let Some(name) = group_name {
                     if let Some(m) = caps.get(i) {
                         // Insert into the hash: key is the group name, value is the match.
-                        params.aset(Symbol::new(name), m.as_str())?;
+                        params.aset(magnus::Ruby::get().unwrap().to_symbol(name), m.as_str())?;
                     }
                 }
             }
             Ok(params)
         } else {
-            Ok(RHash::new())
+            Ok(magnus::Ruby::get().unwrap().hash_new())
         }
     }
 
@@ -201,7 +201,7 @@ impl ItsiHttpRequest {
                         }
                     },
                     Ok(_) => match receiver.await {
-                        Ok(ResponseFrame::HttpResponse(response)) => Ok(response),
+                        Ok(ResponseFrame::HttpResponse(response)) => Ok(*response),
                         Ok(ResponseFrame::HijackedResponse(response)) => {
                             match response.process_hijacked_response().await {
                                 Ok(result) => Ok(result),
@@ -354,7 +354,10 @@ impl ItsiHttpRequest {
 
     pub(crate) fn each_header(&self) -> MagnusResult<()> {
         self.parts.headers.iter().for_each(|(hn, hv)| {
-            yield_values::<_, Value>((hn.as_str(), hv.to_str().unwrap_or(""))).ok();
+            magnus::Ruby::get()
+                .unwrap()
+                .yield_values::<_, Value>((hn.as_str(), hv.to_str().unwrap_or("")))
+                .ok();
         });
         Ok(())
     }

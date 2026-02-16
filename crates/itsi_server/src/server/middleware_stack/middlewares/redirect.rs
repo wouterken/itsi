@@ -42,7 +42,7 @@ impl Redirect {
         *response.status_mut() = self.redirect_type.status_code();
         let destination = self.to.rewrite_request(req, context).parse().map_err(|e| {
             magnus::Error::new(
-                magnus::exception::standard_error(),
+                magnus::Ruby::get().unwrap().exception_standard_error(),
                 format!("Invalid Rewrite String: {:?}: {}", self.to, e),
             )
         })?;

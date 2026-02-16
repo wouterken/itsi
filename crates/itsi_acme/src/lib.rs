@@ -31,7 +31,7 @@
 //! ```rust,no_run
 //! use tokio::io::AsyncWriteExt;
 //! use futures::StreamExt;
-//! use tokio_rustls_acme::{AcmeConfig, caches::DirCache};
+//! use itsi_acme::{AcmeConfig, caches::DirCache};
 //! use tokio_stream::wrappers::TcpListenerStream;
 //!
 //! #[tokio::main]
