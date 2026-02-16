@@ -33,9 +33,16 @@ module Itsi
           }
         end
 
+        RedirectTarget = TypedStruct.new do
+          {
+            to: (Required() & Type(String)),
+            type: Enum(["permanent", "temporary", "found", "moved_permanently"]).default("moved_permanently")
+          }
+        end
+
         RedirectResponse = TypedStruct.new do
           {
-            redirect: Type(Redirect::Redirect) & Required()
+            redirect: Type(RedirectTarget) & Required()
           }
         end
 
