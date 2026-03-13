@@ -17,6 +17,12 @@ end
 version = ARGV.fetch(0)
 Gem::Version.new(version)
 
+def cargo_version_for(version)
+  version.sub(/(?<=\d)\.([A-Za-z].*)\z/, '-\1')
+end
+
+cargo_version = cargo_version_for(version)
+
 replace_file(ROOT.join("lib/itsi/version.rb")) do |content|
   content.sub(/VERSION = ".*?"/, %(VERSION = "#{version}"))
 end
@@ -40,7 +46,7 @@ end
   ROOT.join("crates/itsi_scheduler/Cargo.toml")
 ].each do |path|
   replace_file(path) do |content|
-    content.sub(/^version = ".*?"$/, %(version = "#{version}"))
+    content.sub(/^version = ".*?"$/, %(version = "#{cargo_version}"))
   end
 end
 
