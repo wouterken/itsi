@@ -143,9 +143,6 @@ jobs:
       - name: Set CI version
         run: ruby script/ci/set_version.rb "${{ needs.resolve-version.outputs.version }}"
 
-      - name: Sync Rust crates into gem ext directories
-        run: bundle exec rake sync_crates
-
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -164,6 +161,9 @@ jobs:
 
       - name: Install Ruby dependencies
         run: bundle install
+
+      - name: Sync Rust crates into gem ext directories
+        run: bundle exec rake sync_crates
 
       - name: Install cibuildgem
         run: gem install cibuildgem -v "${CIBUILDGEM_VERSION}"
@@ -220,11 +220,14 @@ jobs:
       - name: Set CI version
         run: ruby script/ci/set_version.rb "${{ needs.resolve-version.outputs.version }}"
 
-      - name: Sync Rust crates into gem ext directories
-        run: bundle exec rake sync_crates
-
       - name: Install cibuildgem
         run: gem install cibuildgem -v "${CIBUILDGEM_VERSION}"
+
+      - name: Install Ruby dependencies
+        run: bundle install
+
+      - name: Sync Rust crates into gem ext directories
+        run: bundle exec rake sync_crates
 
       - name: Download compiled stage
         uses: actions/download-artifact@v5
