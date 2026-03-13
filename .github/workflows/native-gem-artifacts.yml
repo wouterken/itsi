@@ -143,6 +143,15 @@ jobs:
       - name: Set CI version
         run: ruby script/ci/set_version.rb "${{ needs.resolve-version.outputs.version }}"
 
+      - name: Configure Bundler groups
+        run: |
+          echo "BUNDLE_WITHOUT=sandbox:tools" >> "${GITHUB_ENV}"
+          if [ "${{ matrix.gem_id }}" = "server" ]; then
+            echo "BUNDLE_WITH=server_test" >> "${GITHUB_ENV}"
+          else
+            echo "BUNDLE_WITH=" >> "${GITHUB_ENV}"
+          fi
+
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -214,11 +223,17 @@ jobs:
           bundler: "2.6.9"
           bundler-cache: false
 
-      - name: Install Ruby dependencies
-        run: bundle install
-
       - name: Set CI version
         run: ruby script/ci/set_version.rb "${{ needs.resolve-version.outputs.version }}"
+
+      - name: Configure Bundler groups
+        run: |
+          echo "BUNDLE_WITHOUT=sandbox:tools" >> "${GITHUB_ENV}"
+          if [ "${{ matrix.entry.gem_id }}" = "server" ]; then
+            echo "BUNDLE_WITH=server_test" >> "${GITHUB_ENV}"
+          else
+            echo "BUNDLE_WITH=" >> "${GITHUB_ENV}"
+          fi
 
       - name: Install cibuildgem
         run: gem install cibuildgem -v "${CIBUILDGEM_VERSION}"
@@ -297,6 +312,14 @@ jobs:
           ruby-version: "3.4"
           bundler: "2.6.9"
           bundler-cache: false
+
+      - name: Configure Bundler groups
+        run: |
+          echo "BUNDLE_WITHOUT=sandbox:tools:server_test" >> "${GITHUB_ENV}"
+          echo "BUNDLE_WITH=" >> "${GITHUB_ENV}"
+
+      - name: Install Ruby dependencies
+        run: bundle install
 
       - name: Set CI version
         run: ruby script/ci/set_version.rb "${{ needs.resolve-version.outputs.version }}"
