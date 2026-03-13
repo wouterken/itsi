@@ -153,7 +153,7 @@ jobs:
       - name: Select cross-compile Ruby ABIs
         run: |
           ruby_cc_versions='${{ needs.resolve-matrix.outputs.ruby_cc_versions }}'
-          ruby_cc_version="$(ruby -rjson -e 'puts JSON.parse(ARGV.fetch(0)).join(\":\")' "${ruby_cc_versions}")"
+          ruby_cc_version="$(ruby -rjson -e "puts JSON.parse(ARGV.fetch(0)).join(':')" "${ruby_cc_versions}")"
           echo "RUBY_CC_VERSION=${ruby_cc_version}" >> "${GITHUB_ENV}"
           echo "Compiling native gem for Ruby ABIs: ${ruby_cc_version}"
 
