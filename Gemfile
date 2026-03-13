@@ -4,11 +4,14 @@ gemspec
 gemspec path: 'gems/server'
 gemspec path: 'gems/scheduler'
 
-group :test do
+group :scheduler_test_db do
   gem 'activerecord'
+  gem 'pg'
+end
+
+group :server_test_support do
   gem 'jwt'
   gem 'net_http_unix'
-  gem 'pg'
   gem 'redis'
 end
 
