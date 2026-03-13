@@ -3,7 +3,10 @@ set -euo pipefail
 
 working_directory="${1:?expected gem working directory}"
 
-cc_versions="$(cd "$working_directory" && cibuildgem print_ruby_cc_version)"
+cc_versions="${RUBY_CC_VERSION:-}"
+if [[ -z "${cc_versions}" ]]; then
+  cc_versions="$(cd "$working_directory" && cibuildgem print_ruby_cc_version)"
+fi
 normalized_platform="$(cd "$working_directory" && cibuildgem print_normalized_platform)"
 current_ruby_version="$(ruby -e 'print RUBY_VERSION')"
 

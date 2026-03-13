@@ -43,7 +43,6 @@ on:
         options:
           - "3.1"
           - "3.4"
-          - "4.0"
 
 env:
   CIBUILDGEM: "1"
@@ -56,6 +55,7 @@ jobs:
     outputs:
       entries: ${{ steps.resolve.outputs.entries }}
       rubies: ${{ steps.resolve.outputs.rubies }}
+      ruby_cc_versions: ${{ steps.resolve.outputs.ruby_cc_versions }}
     steps:
       - name: Resolve selected matrix entries
         id: resolve
@@ -91,10 +91,17 @@ jobs:
 
           raise "No matrix entries match the selected filters" if filtered.empty?
 
-          rubies = ruby_scope == "single" ? [ruby_version] : ["3.1", "3.4", "4.0"]
+          ruby_cc_versions_by_minor = {
+            "3.1" => "3.1.6",
+            "3.4" => "3.4.6"
+          }
+
+          rubies = ruby_scope == "single" ? [ruby_version] : ruby_cc_versions_by_minor.keys
+          ruby_cc_versions = rubies.map { |version| ruby_cc_versions_by_minor.fetch(version) }
 
           puts "entries=#{JSON.generate(filtered)}"
           puts "rubies=#{JSON.generate(rubies)}"
+          puts "ruby_cc_versions=#{JSON.generate(ruby_cc_versions)}"
           RUBY
 
   resolve-version:
@@ -142,6 +149,13 @@ jobs:
 
       - name: Set CI version
         run: ruby script/ci/set_version.rb "${{ needs.resolve-version.outputs.version }}"
+
+      - name: Select cross-compile Ruby ABIs
+        run: |
+          ruby_cc_versions='${{ needs.resolve-matrix.outputs.ruby_cc_versions }}'
+          ruby_cc_version="$(ruby -rjson -e 'puts JSON.parse(ARGV.fetch(0)).join(\":\")' "${ruby_cc_versions}")"
+          echo "RUBY_CC_VERSION=${ruby_cc_version}" >> "${GITHUB_ENV}"
+          echo "Compiling native gem for Ruby ABIs: ${ruby_cc_version}"
 
       - name: Configure Bundler groups
         run: |
@@ -278,7 +292,7 @@ jobs:
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: "4.0"
+          ruby-version: "3.4"
 
       - name: Download compiled stage
         uses: actions/download-artifact@v5
