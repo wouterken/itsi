@@ -138,7 +138,7 @@ jobs:
         with:
           ruby-version: "3.1.7"
           bundler: "2.6.9"
-          bundler-cache: true
+          bundler-cache: false
 
       - name: Set CI version
         run: ruby script/ci/set_version.rb "${{ needs.resolve-version.outputs.version }}"
@@ -161,6 +161,9 @@ jobs:
           brew install llvm
           echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> "${GITHUB_ENV}"
           echo "$(brew --prefix llvm)/bin" >> "${GITHUB_PATH}"
+
+      - name: Install Ruby dependencies
+        run: bundle install
 
       - name: Install cibuildgem
         run: gem install cibuildgem -v "${CIBUILDGEM_VERSION}"
@@ -209,7 +212,10 @@ jobs:
         with:
           ruby-version: ${{ matrix.ruby }}
           bundler: "2.6.9"
-          bundler-cache: true
+          bundler-cache: false
+
+      - name: Install Ruby dependencies
+        run: bundle install
 
       - name: Set CI version
         run: ruby script/ci/set_version.rb "${{ needs.resolve-version.outputs.version }}"
@@ -287,7 +293,7 @@ jobs:
         with:
           ruby-version: "3.4"
           bundler: "2.6.9"
-          bundler-cache: true
+          bundler-cache: false
 
       - name: Set CI version
         run: ruby script/ci/set_version.rb "${{ needs.resolve-version.outputs.version }}"
