@@ -137,13 +137,8 @@ jobs:
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: "3.1.7"
-          bundler-cache: false
-
-      - name: Install Bundler for Ruby 3.1
-        run: gem install bundler -v "2.6.9" --no-document
-
-      - name: Install Ruby dependencies
-        run: bundle _2.6.9_ install
+          bundler: "2.6.9"
+          bundler-cache: true
 
       - name: Set CI version
         run: ruby script/ci/set_version.rb "${{ needs.resolve-version.outputs.version }}"
@@ -213,17 +208,8 @@ jobs:
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: ${{ matrix.ruby }}
-          bundler-cache: false
-
-      - name: Install compatible Bundler
-        run: |
-          if ruby -e 'exit(RUBY_VERSION.start_with?("3.1.") ? 0 : 1)'; then
-            gem install bundler -v "2.6.9" --no-document
-            bundle _2.6.9_ install
-          else
-            gem install bundler -v "2.7.2" --no-document
-            bundle _2.7.2_ install
-          fi
+          bundler: "2.6.9"
+          bundler-cache: true
 
       - name: Set CI version
         run: ruby script/ci/set_version.rb "${{ needs.resolve-version.outputs.version }}"
@@ -300,12 +286,8 @@ jobs:
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: "3.4"
-          bundler-cache: false
-
-      - name: Install Bundler
-        run: |
-          gem install bundler -v "2.7.2" --no-document
-          bundle _2.7.2_ install
+          bundler: "2.6.9"
+          bundler-cache: true
 
       - name: Set CI version
         run: ruby script/ci/set_version.rb "${{ needs.resolve-version.outputs.version }}"
