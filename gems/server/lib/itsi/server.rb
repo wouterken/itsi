@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "server/version"
-require_relative "server/itsi_server"
+require_relative "server/native_extension"
 require_relative "server/rack_interface"
 require_relative "server/grpc/grpc_interface"
 require_relative "server/grpc/grpc_call"

@@ -1,0 +1,342 @@
+name: Native Gem Artifacts
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Optional prerelease version. Leave blank to derive it from the branch name."
+        required: false
+        type: string
+      gem_scope:
+        description: "Which native gem(s) to build."
+        required: true
+        type: choice
+        default: all
+        options:
+          - all
+          - server
+          - scheduler
+      platform_scope:
+        description: "Which platform(s) to build."
+        required: true
+        type: choice
+        default: all
+        options:
+          - all
+          - macos-arm64
+          - macos-x86_64
+          - linux-x86_64
+          - linux-arm64
+      ruby_scope:
+        description: "Ruby coverage for cross-tests."
+        required: true
+        type: choice
+        default: full
+        options:
+          - full
+          - single
+      ruby_version:
+        description: "Ruby version to use when ruby_scope=single."
+        required: true
+        type: choice
+        default: "3.4"
+        options:
+          - "3.1"
+          - "3.4"
+          - "4.0"
+
+env:
+  CIBUILDGEM: "1"
+  CIBUILDGEM_VERSION: "0.2.1"
+
+jobs:
+  resolve-matrix:
+    name: Resolve workflow filters
+    runs-on: ubuntu-latest
+    outputs:
+      entries: ${{ steps.resolve.outputs.entries }}
+      rubies: ${{ steps.resolve.outputs.rubies }}
+    steps:
+      - name: Resolve selected matrix entries
+        id: resolve
+        env:
+          GEM_SCOPE: ${{ inputs.gem_scope }}
+          PLATFORM_SCOPE: ${{ inputs.platform_scope }}
+          RUBY_SCOPE: ${{ inputs.ruby_scope }}
+          RUBY_VERSION: ${{ inputs.ruby_version }}
+        run: |
+          ruby <<'RUBY' >> "${GITHUB_OUTPUT}"
+          require "json"
+
+          entries = [
+            { gem_id: "server", gem_name: "itsi-server", gem_dir: "gems/server", require_path: "itsi/server", platform_id: "linux-x86_64", platform_name: "Linux x86_64", runner: "ubuntu-22.04" },
+            { gem_id: "server", gem_name: "itsi-server", gem_dir: "gems/server", require_path: "itsi/server", platform_id: "linux-arm64", platform_name: "Linux arm64", runner: "ubuntu-22.04-arm" },
+            { gem_id: "server", gem_name: "itsi-server", gem_dir: "gems/server", require_path: "itsi/server", platform_id: "macos-x86_64", platform_name: "macOS x86_64", runner: "macos-15-intel" },
+            { gem_id: "server", gem_name: "itsi-server", gem_dir: "gems/server", require_path: "itsi/server", platform_id: "macos-arm64", platform_name: "macOS arm64", runner: "macos-latest" },
+            { gem_id: "scheduler", gem_name: "itsi-scheduler", gem_dir: "gems/scheduler", require_path: "itsi/scheduler", platform_id: "linux-x86_64", platform_name: "Linux x86_64", runner: "ubuntu-22.04" },
+            { gem_id: "scheduler", gem_name: "itsi-scheduler", gem_dir: "gems/scheduler", require_path: "itsi/scheduler", platform_id: "linux-arm64", platform_name: "Linux arm64", runner: "ubuntu-22.04-arm" },
+            { gem_id: "scheduler", gem_name: "itsi-scheduler", gem_dir: "gems/scheduler", require_path: "itsi/scheduler", platform_id: "macos-x86_64", platform_name: "macOS x86_64", runner: "macos-15-intel" },
+            { gem_id: "scheduler", gem_name: "itsi-scheduler", gem_dir: "gems/scheduler", require_path: "itsi/scheduler", platform_id: "macos-arm64", platform_name: "macOS arm64", runner: "macos-latest" }
+          ]
+
+          gem_scope = ENV.fetch("GEM_SCOPE")
+          platform_scope = ENV.fetch("PLATFORM_SCOPE")
+          ruby_scope = ENV.fetch("RUBY_SCOPE")
+          ruby_version = ENV.fetch("RUBY_VERSION")
+
+          filtered = entries.select do |entry|
+            (gem_scope == "all" || entry[:gem_id] == gem_scope) &&
+              (platform_scope == "all" || entry[:platform_id] == platform_scope)
+          end
+
+          raise "No matrix entries match the selected filters" if filtered.empty?
+
+          rubies = ruby_scope == "single" ? [ruby_version] : ["3.1", "3.4", "4.0"]
+
+          puts "entries=#{JSON.generate(filtered)}"
+          puts "rubies=#{JSON.generate(rubies)}"
+          RUBY
+
+  resolve-version:
+    name: Resolve build version
+    needs: resolve-matrix
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+
+      - name: Resolve version
+        id: resolve
+        run: |
+          version="$(ruby script/ci/resolve_version.rb "${{ inputs.version }}")"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "Building ${version}"
+
+  native-compile:
+    name: Compile ${{ matrix.gem_name }} on ${{ matrix.platform_name }}
+    needs:
+      - resolve-matrix
+      - resolve-version
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.resolve-matrix.outputs.entries) }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.1.7"
+          bundler-cache: true
+
+      - name: Set CI version
+        run: ruby script/ci/set_version.rb "${{ needs.resolve-version.outputs.version }}"
+
+      - name: Sync Rust crates into gem ext directories
+        run: bundle exec rake sync_crates
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libclang-dev pkg-config
+
+      - name: Install macOS build dependencies
+        if: runner.os == 'macOS'
+        run: |
+          brew install llvm
+          echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> "${GITHUB_ENV}"
+          echo "$(brew --prefix llvm)/bin" >> "${GITHUB_PATH}"
+
+      - name: Install cibuildgem
+        run: gem install cibuildgem -v "${CIBUILDGEM_VERSION}"
+
+      - name: Prepare rake-compiler Ruby configs
+        run: bash script/ci/setup_cibuildgem_rake_compiler.sh "${{ matrix.gem_dir }}"
+
+      - name: Package native gem
+        working-directory: ${{ matrix.gem_dir }}
+        run: cibuildgem package
+
+      - name: Archive compiled stage
+        run: |
+          mkdir -p "${RUNNER_TEMP}/native-stage"
+          tar -czf "${RUNNER_TEMP}/native-stage/${{ matrix.gem_id }}-${{ matrix.platform_id }}.tar.gz" \
+            -C "${{ matrix.gem_dir }}" \
+            tmp pkg
+
+      - name: Upload compiled stage
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-stage-${{ matrix.gem_id }}-${{ matrix.platform_id }}
+          path: ${{ runner.temp }}/native-stage/${{ matrix.gem_id }}-${{ matrix.platform_id }}.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  native-test-cross:
+    name: Cross-test ${{ matrix.entry.gem_name }} on ${{ matrix.entry.platform_name }} with Ruby ${{ matrix.ruby }}
+    needs:
+      - resolve-matrix
+      - resolve-version
+      - native-compile
+    runs-on: ${{ matrix.entry.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        entry: ${{ fromJson(needs.resolve-matrix.outputs.entries) }}
+        ruby: ${{ fromJson(needs.resolve-matrix.outputs.rubies) }}
+    continue-on-error: false
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+          bundler-cache: true
+
+      - name: Set CI version
+        run: ruby script/ci/set_version.rb "${{ needs.resolve-version.outputs.version }}"
+
+      - name: Sync Rust crates into gem ext directories
+        run: bundle exec rake sync_crates
+
+      - name: Install cibuildgem
+        run: gem install cibuildgem -v "${CIBUILDGEM_VERSION}"
+
+      - name: Download compiled stage
+        uses: actions/download-artifact@v5
+        with:
+          name: native-stage-${{ matrix.entry.gem_id }}-${{ matrix.entry.platform_id }}
+          path: ${{ runner.temp }}/downloaded-stage
+
+      - name: Restore compiled stage
+        run: |
+          tar -xzf "${RUNNER_TEMP}/downloaded-stage/${{ matrix.entry.gem_id }}-${{ matrix.entry.platform_id }}.tar.gz" \
+            -C "${{ matrix.entry.gem_dir }}"
+
+      - name: Copy staged binary into lib
+        working-directory: ${{ matrix.entry.gem_dir }}
+        run: cibuildgem copy_from_staging_to_lib
+
+      - name: Run smoke tests against packaged binary
+        working-directory: ${{ matrix.entry.gem_dir }}
+        run: bundle exec rake test:smoke
+
+  native-install:
+    name: Install-check ${{ matrix.gem_name }} on ${{ matrix.platform_name }}
+    needs:
+      - resolve-matrix
+      - resolve-version
+      - native-test-cross
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.resolve-matrix.outputs.entries) }}
+    steps:
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "4.0"
+
+      - name: Download compiled stage
+        uses: actions/download-artifact@v5
+        with:
+          name: native-stage-${{ matrix.gem_id }}-${{ matrix.platform_id }}
+          path: ${{ runner.temp }}/downloaded-stage
+
+      - name: Install packaged gems
+        run: |
+          mkdir -p pkg
+          tar -xzf "${RUNNER_TEMP}/downloaded-stage/${{ matrix.gem_id }}-${{ matrix.platform_id }}.tar.gz" -C .
+          gem install pkg/*.gem
+
+      - name: Verify gem loads
+        run: |
+          ruby -e 'require "${{ matrix.require_path }}"; puts "ok"'
+
+  wrapper-gem:
+    name: Build wrapper gem
+    needs:
+      - resolve-version
+      - native-install
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+
+      - name: Set CI version
+        run: ruby script/ci/set_version.rb "${{ needs.resolve-version.outputs.version }}"
+
+      - name: Build wrapper gem
+        run: |
+          mkdir -p pkg
+          gem build itsi.gemspec --output "pkg/itsi-${{ needs.resolve-version.outputs.version }}.gem"
+
+      - name: Upload wrapper gem
+        uses: actions/upload-artifact@v4
+        with:
+          name: wrapper-gem-${{ needs.resolve-version.outputs.version }}
+          path: pkg/*.gem
+          if-no-files-found: error
+          retention-days: 7
+
+  bundle-artifacts:
+    name: Bundle all gem artifacts
+    needs:
+      - resolve-version
+      - native-compile
+      - wrapper-gem
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download native stage archives
+        uses: actions/download-artifact@v5
+        with:
+          pattern: native-stage-*
+          path: artifacts/native
+
+      - name: Download wrapper gem
+        uses: actions/download-artifact@v5
+        with:
+          name: wrapper-gem-${{ needs.resolve-version.outputs.version }}
+          path: artifacts/wrapper
+
+      - name: Collect gem files
+        run: |
+          mkdir -p artifacts/final
+          find artifacts/native -name '*.tar.gz' -print0 | while IFS= read -r -d '' archive; do
+            tmpdir="$(mktemp -d)"
+            tar -xzf "${archive}" -C "${tmpdir}"
+            find "${tmpdir}/pkg" -maxdepth 1 -name '*.gem' -exec cp {} artifacts/final/ \;
+          done
+          find artifacts/wrapper -maxdepth 1 -name '*.gem' -exec cp {} artifacts/final/ \;
+          ls -1 artifacts/final > "artifacts/final/manifest-${{ needs.resolve-version.outputs.version }}.txt"
+
+      - name: Upload bundled gems
+        uses: actions/upload-artifact@v4
+        with:
+          name: itsi-gems-${{ needs.resolve-version.outputs.version }}
+          path: artifacts/final/*
+          if-no-files-found: error
+          retention-days: 7
