@@ -269,6 +269,18 @@ jobs:
           tar -xzf "${RUNNER_TEMP}/downloaded-stage/${{ matrix.entry.gem_id }}-${{ matrix.entry.platform_id }}.tar.gz" \
             -C "${{ matrix.entry.gem_dir }}"
 
+      - name: Normalize staged ABI directory for test Ruby
+        run: |
+          native_lib_root="${{ matrix.entry.gem_dir }}/tmp/$(cd "${{ matrix.entry.gem_dir }}" && cibuildgem print_normalized_platform)/stage/lib/itsi/${{ matrix.entry.gem_id }}"
+          expected_minor="${{ matrix.ruby }}"
+
+          if [ -d "${native_lib_root}" ] && [ ! -e "${native_lib_root}/${expected_minor}" ]; then
+            matched_dir="$(find "${native_lib_root}" -mindepth 1 -maxdepth 1 -type d -name "${expected_minor}.*" -print -quit)"
+            if [ -n "${matched_dir}" ]; then
+              cp -R "${matched_dir}" "${native_lib_root}/${expected_minor}"
+            fi
+          fi
+
       - name: Copy staged binary into lib
         working-directory: ${{ matrix.entry.gem_dir }}
         run: cibuildgem copy_from_staging_to_lib
