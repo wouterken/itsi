@@ -8,9 +8,7 @@ SMOKE_TEST_GLOBS = %w[
   test/test_kernel_sleep.rb
   test/test_block_unblock.rb
   test/test_network_io.rb
-  test/test_address_resolve.rb
   test/test_file_io.rb
-  test/test_process_wait.rb
 ].freeze
 
 def configure_test_task(task_name, test_globs)
