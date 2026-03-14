@@ -269,21 +269,22 @@ jobs:
           tar -xzf "${RUNNER_TEMP}/downloaded-stage/${{ matrix.entry.gem_id }}-${{ matrix.entry.platform_id }}.tar.gz" \
             -C "${{ matrix.entry.gem_dir }}"
 
-      - name: Normalize staged ABI directory for test Ruby
+      - name: Copy staged binary into lib
         run: |
-          native_lib_root="${{ matrix.entry.gem_dir }}/tmp/$(cd "${{ matrix.entry.gem_dir }}" && cibuildgem print_normalized_platform)/stage/lib/itsi/${{ matrix.entry.gem_id }}"
-          expected_minor="${{ matrix.ruby }}"
+          normalized_platform="$(cd "${{ matrix.entry.gem_dir }}" && cibuildgem print_normalized_platform)"
+          staged_root="${{ matrix.entry.gem_dir }}/tmp/${normalized_platform}/stage/lib/itsi/${{ matrix.entry.gem_id }}"
+          staged_dir="$(find "${staged_root}" -mindepth 1 -maxdepth 1 -type d -name "${{ matrix.ruby }}*" -print -quit)"
 
-          if [ -d "${native_lib_root}" ] && [ ! -e "${native_lib_root}/${expected_minor}" ]; then
-            matched_dir="$(find "${native_lib_root}" -mindepth 1 -maxdepth 1 -type d -name "${expected_minor}.*" -print -quit)"
-            if [ -n "${matched_dir}" ]; then
-              cp -R "${matched_dir}" "${native_lib_root}/${expected_minor}"
-            fi
+          if [ -z "${staged_dir}" ]; then
+            echo "Could not find staged binary directory under ${staged_root}" >&2
+            find "${{ matrix.entry.gem_dir }}/tmp/${normalized_platform}/stage/lib" -maxdepth 4 -type d | sort
+            exit 1
           fi
 
-      - name: Copy staged binary into lib
-        working-directory: ${{ matrix.entry.gem_dir }}
-        run: cibuildgem copy_from_staging_to_lib
+          dest_dir="${{ matrix.entry.gem_dir }}/lib/itsi/${{ matrix.entry.gem_id }}/${{ matrix.ruby }}"
+          rm -rf "${dest_dir}"
+          mkdir -p "${dest_dir}"
+          cp -R "${staged_dir}/." "${dest_dir}/"
 
       - name: Run smoke tests against packaged binary
         working-directory: ${{ matrix.entry.gem_dir }}
