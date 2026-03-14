@@ -275,16 +275,23 @@ jobs:
           staged_root="${{ matrix.entry.gem_dir }}/tmp/${normalized_platform}/stage/lib/itsi/${{ matrix.entry.gem_id }}"
           staged_dir="$(find "${staged_root}" -mindepth 1 -maxdepth 1 -type d -name "${{ matrix.ruby }}*" -print -quit)"
 
-          if [ -z "${staged_dir}" ]; then
-            echo "Could not find staged binary directory under ${staged_root}" >&2
-            find "${{ matrix.entry.gem_dir }}/tmp/${normalized_platform}/stage/lib" -maxdepth 4 -type d | sort
-            exit 1
+          if [ -n "${staged_dir}" ]; then
+            dest_dir="${{ matrix.entry.gem_dir }}/lib/itsi/${{ matrix.entry.gem_id }}/${{ matrix.ruby }}"
+            rm -rf "${dest_dir}"
+            mkdir -p "${dest_dir}"
+            cp -R "${staged_dir}/." "${dest_dir}/"
+            exit 0
           fi
 
-          dest_dir="${{ matrix.entry.gem_dir }}/lib/itsi/${{ matrix.entry.gem_id }}/${{ matrix.ruby }}"
-          rm -rf "${dest_dir}"
-          mkdir -p "${dest_dir}"
-          cp -R "${staged_dir}/." "${dest_dir}/"
+          if [ -d "${staged_root}" ] && find "${staged_root}" -mindepth 1 -maxdepth 1 | grep -q .; then
+            dest_root="${{ matrix.entry.gem_dir }}/lib/itsi/${{ matrix.entry.gem_id }}"
+            cp -R "${staged_root}/." "${dest_root}/"
+            exit 0
+          fi
+
+          echo "Could not find staged binary content under ${staged_root}" >&2
+          find "${{ matrix.entry.gem_dir }}/tmp/${normalized_platform}/stage/lib" -maxdepth 4 -print | sort
+          exit 1
 
       - name: Run smoke tests against packaged binary
         working-directory: ${{ matrix.entry.gem_dir }}
