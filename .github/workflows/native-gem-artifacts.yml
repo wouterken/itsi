@@ -7,6 +7,10 @@ on:
         description: "Optional prerelease version. Leave blank to derive it from the branch name."
         required: false
         type: string
+      reuse_run_id:
+        description: "Optional prior workflow run ID to reuse compiled native artifacts from."
+        required: false
+        type: string
       gem_scope:
         description: "Which native gem(s) to build."
         required: true
@@ -137,16 +141,29 @@ jobs:
     needs:
       - resolve-matrix
       - resolve-version
+    outputs:
+      artifact_run_id: ${{ steps.artifact-source.outputs.run_id }}
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include: ${{ fromJson(needs.resolve-matrix.outputs.entries) }}
     steps:
+      - name: Resolve artifact source run
+        id: artifact-source
+        run: |
+          if [ -n "${{ inputs.reuse_run_id }}" ]; then
+            echo "run_id=${{ inputs.reuse_run_id }}" >> "${GITHUB_OUTPUT}"
+          else
+            echo "run_id=${GITHUB_RUN_ID}" >> "${GITHUB_OUTPUT}"
+          fi
+
       - name: Checkout code
+        if: ${{ inputs.reuse_run_id == '' }}
         uses: actions/checkout@v5
 
       - name: Set up Ruby
+        if: ${{ inputs.reuse_run_id == '' }}
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: "3.1.7"
@@ -154,9 +171,11 @@ jobs:
           bundler-cache: false
 
       - name: Set CI version
+        if: ${{ inputs.reuse_run_id == '' }}
         run: ruby script/ci/set_version.rb "${{ needs.resolve-version.outputs.version }}"
 
       - name: Select cross-compile Ruby ABIs
+        if: ${{ inputs.reuse_run_id == '' }}
         run: |
           ruby_cc_versions='${{ needs.resolve-matrix.outputs.ruby_cc_versions }}'
           ruby_cc_version="$(ruby -rjson -e "puts JSON.parse(ARGV.fetch(0)).join(':')" "${ruby_cc_versions}")"
@@ -164,6 +183,7 @@ jobs:
           echo "Compiling native gem for Ruby ABIs: ${ruby_cc_version}"
 
       - name: Configure Bundler groups
+        if: ${{ inputs.reuse_run_id == '' }}
         run: |
           echo "BUNDLE_WITHOUT=sandbox:tools:scheduler_test_db:server_test:server_test_support" >> "${GITHUB_ENV}"
           if [ "${{ matrix.gem_id }}" = "server" ]; then
@@ -173,38 +193,45 @@ jobs:
           fi
 
       - name: Set up Rust
+        if: ${{ inputs.reuse_run_id == '' }}
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install Linux build dependencies
-        if: runner.os == 'Linux'
+        if: ${{ inputs.reuse_run_id == '' && runner.os == 'Linux' }}
         run: |
           sudo apt-get update
           sudo apt-get install -y libclang-dev pkg-config
 
       - name: Install macOS build dependencies
-        if: runner.os == 'macOS'
+        if: ${{ inputs.reuse_run_id == '' && runner.os == 'macOS' }}
         run: |
           brew install llvm
           echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> "${GITHUB_ENV}"
           echo "$(brew --prefix llvm)/bin" >> "${GITHUB_PATH}"
 
       - name: Install Ruby dependencies
+        if: ${{ inputs.reuse_run_id == '' }}
         run: bundle install
 
       - name: Sync Rust crates into gem ext directories
+        if: ${{ inputs.reuse_run_id == '' }}
         run: bundle exec rake sync_crates
 
       - name: Install cibuildgem
+        if: ${{ inputs.reuse_run_id == '' }}
         run: gem install cibuildgem -v "${CIBUILDGEM_VERSION}"
 
       - name: Prepare rake-compiler Ruby configs
+        if: ${{ inputs.reuse_run_id == '' }}
         run: bash script/ci/setup_cibuildgem_rake_compiler.sh "${{ matrix.gem_dir }}"
 
       - name: Package native gem
+        if: ${{ inputs.reuse_run_id == '' }}
         working-directory: ${{ matrix.gem_dir }}
         run: cibuildgem package
 
       - name: Archive compiled stage
+        if: ${{ inputs.reuse_run_id == '' }}
         run: |
           mkdir -p "${RUNNER_TEMP}/native-stage"
           tar -czf "${RUNNER_TEMP}/native-stage/${{ matrix.gem_id }}-${{ matrix.platform_id }}.tar.gz" \
@@ -212,6 +239,7 @@ jobs:
             tmp pkg
 
       - name: Upload compiled stage
+        if: ${{ inputs.reuse_run_id == '' }}
         uses: actions/upload-artifact@v4
         with:
           name: native-stage-${{ matrix.gem_id }}-${{ matrix.platform_id }}
@@ -268,7 +296,9 @@ jobs:
         uses: actions/download-artifact@v5
         with:
           name: native-stage-${{ matrix.entry.gem_id }}-${{ matrix.entry.platform_id }}
+          github-token: ${{ github.token }}
           path: ${{ runner.temp }}/downloaded-stage
+          run-id: ${{ needs.native-compile.outputs.artifact_run_id }}
 
       - name: Restore compiled stage
         run: |
@@ -299,6 +329,46 @@ jobs:
           find "${{ matrix.entry.gem_dir }}/tmp/${normalized_platform}/stage/lib" -maxdepth 4 -print | sort
           exit 1
 
+      - name: Download scheduler compiled stage
+        if: ${{ matrix.entry.gem_id == 'server' }}
+        uses: actions/download-artifact@v5
+        with:
+          name: native-stage-scheduler-${{ matrix.entry.platform_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/downloaded-scheduler-stage
+          run-id: ${{ needs.native-compile.outputs.artifact_run_id }}
+
+      - name: Restore scheduler compiled stage
+        if: ${{ matrix.entry.gem_id == 'server' }}
+        run: |
+          tar -xzf "${RUNNER_TEMP}/downloaded-scheduler-stage/scheduler-${{ matrix.entry.platform_id }}.tar.gz" \
+            -C gems/scheduler
+
+      - name: Copy scheduler staged binary into lib
+        if: ${{ matrix.entry.gem_id == 'server' }}
+        run: |
+          normalized_platform="$(cd gems/scheduler && cibuildgem print_normalized_platform)"
+          staged_root="gems/scheduler/tmp/${normalized_platform}/stage/lib/itsi/scheduler"
+          staged_dir="$(find "${staged_root}" -mindepth 1 -maxdepth 1 -type d -name "${{ matrix.ruby }}*" -print -quit)"
+
+          if [ -n "${staged_dir}" ]; then
+            dest_dir="gems/scheduler/lib/itsi/scheduler/${{ matrix.ruby }}"
+            rm -rf "${dest_dir}"
+            mkdir -p "${dest_dir}"
+            cp -R "${staged_dir}/." "${dest_dir}/"
+            exit 0
+          fi
+
+          if [ -d "${staged_root}" ] && find "${staged_root}" -mindepth 1 -maxdepth 1 | grep -q .; then
+            dest_root="gems/scheduler/lib/itsi/scheduler"
+            cp -R "${staged_root}/." "${dest_root}/"
+            exit 0
+          fi
+
+          echo "Could not find scheduler staged binary content under ${staged_root}" >&2
+          find "gems/scheduler/tmp/${normalized_platform}/stage/lib" -maxdepth 4 -print | sort
+          exit 1
+
       - name: Run smoke tests against packaged binary
         working-directory: ${{ matrix.entry.gem_dir }}
         run: bundle exec rake test:smoke
@@ -324,7 +394,9 @@ jobs:
         uses: actions/download-artifact@v5
         with:
           name: native-stage-${{ matrix.gem_id }}-${{ matrix.platform_id }}
+          github-token: ${{ github.token }}
           path: ${{ runner.temp }}/downloaded-stage
+          run-id: ${{ needs.native-compile.outputs.artifact_run_id }}
 
       - name: Install packaged gems
         run: |
@@ -399,8 +471,10 @@ jobs:
       - name: Download native stage archives
         uses: actions/download-artifact@v5
         with:
+          github-token: ${{ github.token }}
           pattern: native-stage-*
           path: artifacts/native
+          run-id: ${{ needs.native-compile.outputs.artifact_run_id }}
 
       - name: Download wrapper gem
         uses: actions/download-artifact@v5
