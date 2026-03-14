@@ -4,4 +4,4 @@ resolver = "2"
 
 [patch.crates-io]
 magnus = { git = "https://github.com/matsadler/magnus.git", rev = "1ed232edb2b75a2eed9b1def34ad57e55c411a5c" }
-rb-sys-build = { path = "../../vendor/rb-sys-build" }
+rb-sys-build = { path = "vendor/rb-sys-build" }
