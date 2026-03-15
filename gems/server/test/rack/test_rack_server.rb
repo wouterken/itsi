@@ -302,8 +302,20 @@ class TestRackServer < Minitest::Test
       )
     end
 
-    sleep 0.25
-    assert_equal Net::HTTP.get(URI("http://#{host}:#{port}")), "Hello, Rackup!"
+    response = nil
+
+    Timeout.timeout(2) do
+      loop do
+        begin
+          response = Net::HTTP.get(URI("http://#{host}:#{port}"))
+          break
+        rescue Errno::ECONNREFUSED, Net::OpenTimeout
+          sleep 0.05
+        end
+      end
+    end
+
+    assert_equal "Hello, Rackup!", response
     Process.kill(:SIGINT, Process.pid)
   end
 

@@ -54,6 +54,8 @@ on:
 env:
   CIBUILDGEM: "1"
   CIBUILDGEM_VERSION: "0.2.1"
+  BUNDLE_RETRY: "8"
+  BUNDLE_TIMEOUT: "30"
 
 jobs:
   resolve-matrix:
