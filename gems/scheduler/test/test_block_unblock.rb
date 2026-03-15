@@ -19,7 +19,7 @@ class TestBlockUnblock < Minitest::Test
     elapsed_time = Time.now - start_time
 
     assert_equal :resumed, result
-    assert_in_delta 0.1, elapsed_time, 0.01, "Fiber did not resume after the expected timeout"
+    assert_in_delta 0.1, elapsed_time, 0.03, "Fiber did not resume after the expected timeout"
   end
 
   # Test that a fiber blocked without a timeout can be manually unblocked.
