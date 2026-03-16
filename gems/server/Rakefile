@@ -3,11 +3,30 @@
 require "bundler/gem_tasks"
 require "minitest/test_task"
 
-SMOKE_TEST_EXCLUSIONS = %w[
-  test/middleware/intrusion_protection.rb
-  test/middleware/rate_limit.rb
-  test/options/ruby_thread_request_backlog_size.rb
-  test/options/test_workers.rb
+SMOKE_TEST_GLOBS = %w[
+  test/options/bind.rb
+  test/options/header_read_timeout.rb
+  test/options/test_request_timeout.rb
+  test/options/test_threads.rb
+  test/rack/test_rack_server.rb
+  test/middleware/allow_list.rb
+  test/middleware/auth_api_key.rb
+  test/middleware/auth_basic.rb
+  test/middleware/cache_control.rb
+  test/middleware/cidr_to_regex.rb
+  test/middleware/compression.rb
+  test/middleware/cors.rb
+  test/middleware/csp.rb
+  test/middleware/deny_list.rb
+  test/middleware/etag.rb
+  test/middleware/header_interpolation.rb
+  test/middleware/location.rb
+  test/middleware/max_body.rb
+  test/middleware/request_headers.rb
+  test/middleware/response_headers.rb
+  test/middleware/static_assets.rb
+  test/middleware/static_response.rb
+  test/middleware/string_rewrite.rb
 ].freeze
 
 def configure_test_task(task_name, test_globs)
@@ -21,9 +40,7 @@ def configure_test_task(task_name, test_globs)
 end
 
 configure_test_task(:test, ["test/**/*.rb"])
-configure_test_task("test:smoke", Dir["test/**/*.rb"].reject do |path|
-  path.start_with?("test/helpers/") || SMOKE_TEST_EXCLUSIONS.include?(path)
-end)
+configure_test_task("test:smoke", SMOKE_TEST_GLOBS)
 
 task "test:full" => :test
 
