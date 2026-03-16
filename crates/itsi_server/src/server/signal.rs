@@ -45,15 +45,17 @@ pub fn unsubscribe_runtime() {
 pub fn send_lifecycle_event(event: LifecycleEvent) {
     if let Some(sender) = SIGNAL_HANDLER_CHANNEL.lock().as_ref() {
         if let Err(e) = sender.send(event) {
-            // Channel full or receivers dropped - this is a critical error for shutdown signals
-            eprintln!("Critical: Failed to send lifecycle event {:?}", e);
-            // For shutdown events, try to force exit if channel delivery fails
             if matches!(
                 e.0,
                 LifecycleEvent::Shutdown | LifecycleEvent::ForceShutdown
             ) {
-                eprintln!("Emergency shutdown due to signal delivery failure");
-                std::process::exit(1);
+                SHUTDOWN_REQUESTED.store(true, Ordering::SeqCst);
+                warn!(
+                    "Dropping shutdown lifecycle event after receiver closed: {:?}",
+                    e
+                );
+            } else {
+                eprintln!("Warning: Failed to send lifecycle event {:?}", e);
             }
         }
     } else {
