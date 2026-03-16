@@ -87,7 +87,15 @@ module Itsi
 
       def stop_background_threads
         @running && @running.each(&:stop)
-        @background_threads&.each(&:join)
+        @background_threads&.each do |thread|
+          next unless thread
+
+          thread.join(5)
+          next unless thread.alive?
+
+          thread.kill
+          thread.join(1)
+        end
         @background_threads = []
         @running = []
       end
