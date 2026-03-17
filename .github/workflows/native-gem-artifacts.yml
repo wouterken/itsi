@@ -380,6 +380,7 @@ jobs:
     needs:
       - resolve-matrix
       - resolve-version
+      - native-compile
       - native-test-cross
     runs-on: ${{ matrix.runner }}
     strategy:
