@@ -90,6 +90,25 @@ class RequestContext
     client.request(request)
   end
 
+  def raw_http(request)
+    socket = TCPSocket.new(@uri.host, @uri.port)
+    socket.write(request)
+    socket.flush
+
+    response = +""
+    loop do
+      ready = IO.select([socket], nil, nil, 1)
+      break unless ready
+
+      response << socket.readpartial(16 * 1024)
+    rescue EOFError
+      break
+    end
+    response
+  ensure
+    socket&.close
+  end
+
   def head(path)
     request = Net::HTTP::Head.new(uri_for(path))
     client.request(request)
