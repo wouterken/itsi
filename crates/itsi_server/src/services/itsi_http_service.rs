@@ -188,14 +188,11 @@ impl ItsiHttpService {
         let token_preference = self.server_params.itsi_server_token_preference;
 
         let service_future = async move {
-            let middleware_stack = self
-                .server_params
-                .middleware
-                .get()
-                .unwrap()
-                .stack_for(&req)
-                .unwrap();
-            let (stack, matching_pattern) = middleware_stack;
+            let Some((stack, matching_pattern)) =
+                self.server_params.middleware.get().unwrap().stack_for(&req)
+            else {
+                return Ok(NOT_FOUND_RESPONSE.to_http_response(accept).await);
+            };
             let mut resp: Option<HttpResponse> = None;
 
             let mut context =
