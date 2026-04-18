@@ -8,6 +8,7 @@ require "itsi/server"
 require "itsi/scheduler"
 require "socket"
 require "net/http"
+require "openssl"
 require "minitest/autorun"
 
 Minitest::Reporters.use! Minitest::Reporters::SpecReporter.new
@@ -157,6 +158,7 @@ class RequestContext
         @uri.host,
         @uri.port,
         use_ssl: @uri.scheme == "https",
+        verify_mode: OpenSSL::SSL::VERIFY_NONE,
         **opts
       )
     end

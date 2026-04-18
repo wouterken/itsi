@@ -1,11 +1,15 @@
 use hyper_util::rt::TokioIo;
-use std::{ops::Deref, pin::Pin, sync::Arc, time::Duration};
+use std::{future::Future, ops::Deref, pin::Pin, sync::Arc, time::Duration};
 use tokio::task::JoinSet;
 use tracing::debug;
 
 use crate::{
     ruby_types::itsi_server::itsi_server_config::ServerParams,
-    server::{binds::listener::ListenerInfo, io_stream::IoStream, request_job::RequestJob},
+    server::{
+        binds::listener::{AcceptedStream, ListenerInfo},
+        io_stream::IoStream,
+        request_job::RequestJob,
+    },
     services::itsi_http_service::{ItsiHttpService, ItsiHttpServiceInner},
 };
 
@@ -34,19 +38,39 @@ pub struct AcceptorArgs {
 }
 
 impl Acceptor {
-    pub(crate) async fn serve_connection(&mut self, stream: IoStream) {
-        let addr = stream.addr();
-        let io: TokioIo<Pin<Box<IoStream>>> = TokioIo::new(Box::pin(stream));
+    pub(crate) async fn serve_accepted_connection(
+        &mut self,
+        stream: AcceptedStream,
+        tls_handshake_timeout: Duration,
+    ) {
+        self.spawn_connection(async move { stream.into_io_stream(tls_handshake_timeout).await });
+    }
+
+    fn spawn_connection<F>(&mut self, stream_future: F)
+    where
+        F: Future<Output = itsi_error::Result<IoStream>> + Send + 'static,
+    {
         let mut shutdown_channel = self.shutdown_receiver.clone();
         let acceptor_args = self.acceptor_args.clone();
-        let service = ItsiHttpService {
-            inner: Arc::new(ItsiHttpServiceInner {
-                acceptor_args: acceptor_args.clone(),
-                addr,
-            }),
-        };
 
         self.join_set.spawn(async move {
+            let stream = match stream_future.await {
+                Ok(stream) => stream,
+                Err(error) => {
+                    debug!("Connection setup failed: {:?}", error);
+                    return;
+                }
+            };
+
+            let addr = stream.addr();
+            let io: TokioIo<Pin<Box<IoStream>>> = TokioIo::new(Box::pin(stream));
+            let service = ItsiHttpService {
+                inner: Arc::new(ItsiHttpServiceInner {
+                    acceptor_args: acceptor_args.clone(),
+                    addr,
+                }),
+            };
+
             let executor = &acceptor_args.strategy.executor;
             let svc = hyper::service::service_fn(move |req| {
                 let service = service.clone();
