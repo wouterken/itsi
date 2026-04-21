@@ -1,3 +1,7 @@
+## [0.2.25] - 2026-04-21
+
+- Fix Rack HTTP_COOKIE construction when clients send duplicate Cookie request headers.
+
 ## [0.2.24] - 2026-04-18
 - Move TLS handshakes out of the listener accept loop so a slow or incomplete TLS client cannot block later HTTPS accepts.
 - Keep malformed proxy-style requests isolated to their connection task instead of disrupting the listener.

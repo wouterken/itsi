@@ -201,6 +201,22 @@ class TestRackServer < Minitest::Test
     end
   end
 
+  def test_duplicate_cookie_request_headers_are_joined_for_rack
+    server(app_with_lint: lambda do |env|
+      [200, { "content-type" => "text/plain" }, [env["HTTP_COOKIE"].to_s]]
+    end) do |uri|
+      response = raw_http(
+        "GET / HTTP/1.1\r\n" \
+        "Host: #{uri.host}:#{uri.port}\r\n" \
+        "Cookie: _session_id=abc\r\n" \
+        "Cookie: _gat=1\r\n" \
+        "Connection: close\r\n\r\n"
+      )
+
+      assert_includes response, "\r\n\r\n_session_id=abc; _gat=1"
+    end
+  end
+
   def test_multiple_headers
     server(app_with_lint: lambda do |env|
       [200, { "content-type" => "text/plain", "x-example" => "one, two, three" }, ["Multiple Headers"]]

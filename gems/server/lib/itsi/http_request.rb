@@ -80,7 +80,14 @@ module Itsi
       env["rack.input"] = build_input_io
       env["rack.hijack"] = self
       each_header do |k, v|
-        env[SPECIAL_RACK_HEADER_MAP[k] || RACK_HEADER_MAP[k]] = v
+        rack_header = SPECIAL_RACK_HEADER_MAP[k] || RACK_HEADER_MAP[k]
+        if k == "cookie" && env.key?(rack_header)
+          # RFC 9113 allows HTTP/2 clients to split Cookie across fields. Rack
+          # expects one HTTP_COOKIE value, joined with "; " rather than comma.
+          env[rack_header] = "#{env[rack_header]}; #{v}"
+        else
+          env[rack_header] = v
+        end
       end
       env
     end
