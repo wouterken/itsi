@@ -314,6 +314,7 @@ impl SingleMode {
 
                 let shutdown_rx_for_acme_task = shutdown_receiver.clone();
                 let acme_task_listener_clone = listener.clone();
+                let tls_handshake_timeout = server_params.header_read_timeout;
 
                 let mut after_accept_wait: Option<Duration> = None::<Duration>;
 
@@ -337,7 +338,7 @@ impl SingleMode {
                         tokio::select! {
                             accept_result = listener.accept() => {
                                 match accept_result {
-                                    Ok(accepted) => acceptor.serve_connection(accepted).await,
+                                    Ok(accepted) => acceptor.serve_accepted_connection(accepted, tls_handshake_timeout).await,
                                     Err(e) => debug!("Listener.accept failed: {:?}", e)
                                 }
                                 if cfg!(target_os = "macos") {

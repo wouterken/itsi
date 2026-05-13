@@ -1,0 +1,23 @@
+source "https://rubygems.org"
+
+gemspec
+
+group :development, :test do
+  gem "bundler"
+  gem "minitest", "~> 5.16"
+  gem "rack"
+  gem "rackup"
+  gem "rake", "~> 13.0"
+  gem "rake-compiler"
+  gem "rb_sys", "~> 0.9.91"
+end
+
+group :server_test do
+  gem "grpc"
+end
+
+group :server_test_support do
+  gem "jwt"
+  gem "net_http_unix"
+  gem "redis"
+end

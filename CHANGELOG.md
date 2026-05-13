@@ -1,3 +1,17 @@
+## [0.2.26] - 2026-05-13
+- Restore synchronized release source after the unsynchronized `0.2.24` / `0.2.25` pushes.
+- Restore the multi-platform native gem packaging workflow so the next release can ship prebuilt binaries again.
+
+## [0.2.25] - 2026-04-21
+- Fix Rack `HTTP_COOKIE` construction when clients send duplicate `Cookie` request headers.
+
+## [0.2.24] - 2026-04-18
+- Move TLS handshakes out of the listener accept loop so a slow or incomplete TLS client cannot block later HTTPS accepts.
+- Keep malformed proxy-style requests isolated to their connection task instead of disrupting the listener.
+
+## [0.2.23] - 2026-04-18
+- Return a normal `404` for unmatched proxy-style requests such as `CONNECT` instead of panicking the HTTP listener.
+
 ## [0.2.21] - 2026-02-16
 - Fix Ruby 2.7 startup NameError in static_assets redirect schema load path
 

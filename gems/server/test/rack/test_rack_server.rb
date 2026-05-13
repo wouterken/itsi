@@ -201,6 +201,22 @@ class TestRackServer < Minitest::Test
     end
   end
 
+  def test_duplicate_cookie_request_headers_are_joined_for_rack
+    server(app_with_lint: lambda do |env|
+      [200, { "content-type" => "text/plain" }, [env["HTTP_COOKIE"].to_s]]
+    end) do |uri|
+      response = raw_http(
+        "GET / HTTP/1.1\r\n" \
+        "Host: #{uri.host}:#{uri.port}\r\n" \
+        "Cookie: _session_id=abc\r\n" \
+        "Cookie: _gat=1\r\n" \
+        "Connection: close\r\n\r\n"
+      )
+
+      assert_includes response, "\r\n\r\n_session_id=abc; _gat=1"
+    end
+  end
+
   def test_multiple_headers
     server(app_with_lint: lambda do |env|
       [200, { "content-type" => "text/plain", "x-example" => "one, two, three" }, ["Multiple Headers"]]
@@ -302,8 +318,20 @@ class TestRackServer < Minitest::Test
       )
     end
 
-    sleep 0.25
-    assert_equal Net::HTTP.get(URI("http://#{host}:#{port}")), "Hello, Rackup!"
+    response = nil
+
+    Timeout.timeout(2) do
+      loop do
+        begin
+          response = Net::HTTP.get(URI("http://#{host}:#{port}"))
+          break
+        rescue Errno::ECONNREFUSED, Net::OpenTimeout
+          sleep 0.05
+        end
+      end
+    end
+
+    assert_equal "Hello, Rackup!", response
     Process.kill(:SIGINT, Process.pid)
   end
 

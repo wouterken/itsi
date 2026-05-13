@@ -270,7 +270,7 @@ version = "0.28.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bfa9b6986f250236c27e5a204062434a773a13243d2ffc2955f37bdba4c5c6a1"
 dependencies = [
- "bindgen",
+ "bindgen 0.69.5",
  "cc",
  "cmake",
  "dunce",
@@ -425,6 +425,24 @@ dependencies = [
  "shlex",
  "syn 2.0.101",
  "which",
+]
+
+[[package]]
+name = "bindgen"
+version = "0.72.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "993776b509cfb49c750f11b8f07a46fa23e0a1386ffc01fb1e7d343efc387895"
+dependencies = [
+ "bitflags 2.9.0",
+ "cexpr",
+ "clang-sys",
+ "itertools",
+ "proc-macro2",
+ "quote",
+ "regex",
+ "rustc-hash 2.1.1",
+ "shlex",
+ "syn 2.0.101",
 ]
 
 [[package]]
@@ -660,7 +678,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "117725a109d387c937a1533ce01b450cbde6b88abceea8473c4d7a85853cda3c"
 dependencies = [
  "lazy_static",
- "windows-sys 0.59.0",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -1643,26 +1661,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4a5f13b858c8d314ee3e8f639011f7ccefe71f97f96e50151fb991f267928e2c"
 
 [[package]]
-name = "itsi-scheduler"
-version = "0.2.21"
-dependencies = [
- "bytes",
- "derive_more",
- "itsi_error",
- "itsi_instrument_entry",
- "itsi_rb_helpers",
- "itsi_tracing",
- "magnus",
- "mio",
- "nix",
- "parking_lot",
- "rb-sys",
- "tracing",
-]
-
-[[package]]
 name = "itsi-server"
-version = "0.2.21"
+version = "0.2.26"
 dependencies = [
  "argon2",
  "async-channel",
@@ -1770,15 +1770,6 @@ dependencies = [
  "nix",
  "rcgen",
  "thiserror 2.0.12",
-]
-
-[[package]]
-name = "itsi_instrument_entry"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
 ]
 
 [[package]]
@@ -1934,8 +1925,7 @@ checksum = "13dc2df351e3202783a1fe0d44375f7295ffb4049267b0f3018346dc122a1d94"
 [[package]]
 name = "magnus"
 version = "0.8.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b36a5b126bbe97eb0d02d07acfeb327036c6319fd816139a49824a83b7f9012"
+source = "git+https://github.com/matsadler/magnus.git?rev=1ed232edb2b75a2eed9b1def34ad57e55c411a5c#1ed232edb2b75a2eed9b1def34ad57e55c411a5c"
 dependencies = [
  "bytes",
  "magnus-macros",
@@ -1947,8 +1937,7 @@ dependencies = [
 [[package]]
 name = "magnus-macros"
 version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47607461fd8e1513cb4f2076c197d8092d921a1ea75bd08af97398f593751892"
+source = "git+https://github.com/matsadler/magnus.git?rev=1ed232edb2b75a2eed9b1def34ad57e55c411a5c#1ed232edb2b75a2eed9b1def34ad57e55c411a5c"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2591,10 +2580,8 @@ dependencies = [
 [[package]]
 name = "rb-sys-build"
 version = "0.9.124"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "568068db4102230882e6d4ae8de6632e224ca75fe5970f6e026a04e91ed635d3"
 dependencies = [
- "bindgen",
+ "bindgen 0.72.1",
  "lazy_static",
  "proc-macro2",
  "quote",
@@ -3922,7 +3909,7 @@ version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf221c93e13a30d793f7645a0e7762c55d169dbb0a49671918a2319d289b10bb"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]

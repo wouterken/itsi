@@ -14,12 +14,13 @@ use std::fmt::Display;
 use std::net::{IpAddr, SocketAddr, TcpListener};
 use std::os::fd::{AsRawFd, FromRawFd, RawFd};
 use std::sync::Arc;
+use std::time::Duration;
 use std::{os::unix::net::UnixListener, path::PathBuf};
 use tokio::net::TcpListener as TokioTcpListener;
 use tokio::net::UnixListener as TokioUnixListener;
 use tokio::net::{unix, TcpStream, UnixStream};
 use tokio::sync::watch::Receiver;
-use tokio_rustls::TlsAcceptor;
+use tokio::time::timeout;
 use tokio_stream::StreamExt;
 
 pub(crate) enum Listener {
@@ -93,7 +94,7 @@ impl TokioListener {
         }
     }
 
-    pub(crate) async fn accept(&self) -> Result<IoStream> {
+    pub(crate) async fn accept(&self) -> Result<AcceptedStream> {
         match self {
             TokioListener::Tcp(listener) => TokioListener::accept_tcp(listener).await,
             TokioListener::TcpTls(listener, acceptor) => {
@@ -106,9 +107,11 @@ impl TokioListener {
         }
     }
 
-    async fn accept_tcp(listener: &TokioTcpListener) -> Result<IoStream> {
+    async fn accept_tcp(listener: &TokioTcpListener) -> Result<AcceptedStream> {
         let tcp_stream = listener.accept().await?;
-        Self::to_tokio_io(Stream::TcpStream(tcp_stream), None).await
+        Ok(AcceptedStream::Ready(Self::to_plain_io(Stream::TcpStream(
+            tcp_stream,
+        ))))
     }
 
     pub async fn spawn_acme_event_task(&self, mut shutdown_receiver: Receiver<RunningPhase>) {
@@ -137,89 +140,131 @@ impl TokioListener {
     async fn accept_tls(
         listener: &TokioTcpListener,
         acceptor: &ItsiTlsAcceptor,
-    ) -> Result<IoStream> {
-        let tcp_stream = listener.accept().await?;
-        match acceptor {
-            ItsiTlsAcceptor::Manual(tls_acceptor) => {
-                Self::to_tokio_io(Stream::TcpStream(tcp_stream), Some(tls_acceptor)).await
-            }
-            ItsiTlsAcceptor::Automatic(acme_acceptor, _, rustls_config) => {
-                let accept_future = acme_acceptor.accept(tcp_stream.0);
-                match accept_future.await {
-                    Ok(None) => Err(ItsiError::Pass),
-                    Ok(Some(start_handshake)) => {
-                        let tls_stream = start_handshake.into_stream(rustls_config.clone()).await?;
-                        Ok(IoStream::TcpTls {
-                            stream: tls_stream,
-                            addr: SockAddr::Tcp(Arc::new(tcp_stream.1)),
-                        })
-                    }
-                    Err(error) => {
-                        error!(error = format!("{:?}", error));
-                        Err(ItsiError::Pass)
-                    }
-                }
-            }
-        }
+    ) -> Result<AcceptedStream> {
+        let (stream, addr) = listener.accept().await?;
+        Ok(AcceptedStream::TcpTls {
+            stream,
+            addr,
+            acceptor: acceptor.clone(),
+        })
     }
 
-    async fn accept_unix(listener: &TokioUnixListener) -> Result<IoStream> {
+    async fn accept_unix(listener: &TokioUnixListener) -> Result<AcceptedStream> {
         let unix_stream = listener.accept().await?;
-        Self::to_tokio_io(Stream::UnixStream(unix_stream), None).await
+        Ok(AcceptedStream::Ready(Self::to_plain_io(
+            Stream::UnixStream(unix_stream),
+        )))
     }
 
     async fn accept_unix_tls(
         listener: &TokioUnixListener,
         acceptor: &ItsiTlsAcceptor,
-    ) -> Result<IoStream> {
-        let unix_stream = listener.accept().await?;
-        match acceptor {
-            ItsiTlsAcceptor::Manual(tls_acceptor) => {
-                Self::to_tokio_io(Stream::UnixStream(unix_stream), Some(tls_acceptor)).await
-            }
-            ItsiTlsAcceptor::Automatic(_, _, _) => {
-                error!("Automatic TLS not supported on Unix sockets");
-                Err(ItsiError::UnsupportedProtocol(
-                    "Automatic TLS on Unix Sockets".to_owned(),
-                ))
-            }
-        }
+    ) -> Result<AcceptedStream> {
+        let (stream, addr) = listener.accept().await?;
+        Ok(AcceptedStream::UnixTls {
+            stream,
+            addr,
+            acceptor: acceptor.clone(),
+        })
     }
 
-    async fn to_tokio_io(
-        input_stream: Stream,
-        tls_acceptor: Option<&TlsAcceptor>,
-    ) -> Result<IoStream> {
-        match tls_acceptor {
-            Some(acceptor) => match input_stream {
-                Stream::TcpStream((tcp_stream, socket_address)) => {
-                    match acceptor.accept(tcp_stream).await {
-                        Ok(tls_stream) => Ok(IoStream::TcpTls {
+    fn to_plain_io(input_stream: Stream) -> IoStream {
+        match input_stream {
+            Stream::TcpStream((tcp_stream, socket_address)) => IoStream::Tcp {
+                stream: tcp_stream,
+                addr: SockAddr::Tcp(Arc::new(socket_address)),
+            },
+            Stream::UnixStream((unix_stream, socket_address)) => IoStream::Unix {
+                stream: unix_stream,
+                addr: SockAddr::Unix(Arc::new(socket_address)),
+            },
+        }
+    }
+}
+
+pub(crate) enum AcceptedStream {
+    Ready(IoStream),
+    TcpTls {
+        stream: TcpStream,
+        addr: SocketAddr,
+        acceptor: ItsiTlsAcceptor,
+    },
+    UnixTls {
+        stream: UnixStream,
+        addr: unix::SocketAddr,
+        acceptor: ItsiTlsAcceptor,
+    },
+}
+
+impl AcceptedStream {
+    pub(crate) async fn into_io_stream(self, handshake_timeout: Duration) -> Result<IoStream> {
+        match self {
+            AcceptedStream::Ready(stream) => Ok(stream),
+            AcceptedStream::TcpTls {
+                stream,
+                addr,
+                acceptor,
+            } => match acceptor {
+                ItsiTlsAcceptor::Manual(tls_acceptor) => {
+                    match timeout(handshake_timeout, tls_acceptor.accept(stream)).await {
+                        Ok(Ok(tls_stream)) => Ok(IoStream::TcpTls {
                             stream: tls_stream,
-                            addr: SockAddr::Tcp(Arc::new(socket_address)),
+                            addr: SockAddr::Tcp(Arc::new(addr)),
                         }),
-                        Err(err) => Err(err.into()),
+                        Ok(Err(error)) => Err(error.into()),
+                        Err(_) => Err(ItsiError::Pass),
                     }
                 }
-                Stream::UnixStream((unix_stream, socket_address)) => {
-                    match acceptor.accept(unix_stream).await {
-                        Ok(tls_stream) => Ok(IoStream::UnixTls {
-                            stream: tls_stream,
-                            addr: SockAddr::Unix(Arc::new(socket_address)),
-                        }),
-                        Err(err) => Err(err.into()),
+                ItsiTlsAcceptor::Automatic(acme_acceptor, _, rustls_config) => {
+                    let accept_future = acme_acceptor.accept(stream);
+                    match timeout(handshake_timeout, accept_future).await {
+                        Err(_) => Err(ItsiError::Pass),
+                        Ok(accept_result) => match accept_result {
+                            Ok(None) => Err(ItsiError::Pass),
+                            Ok(Some(start_handshake)) => {
+                                match timeout(
+                                    handshake_timeout,
+                                    start_handshake.into_stream(rustls_config.clone()),
+                                )
+                                .await
+                                {
+                                    Ok(Ok(tls_stream)) => Ok(IoStream::TcpTls {
+                                        stream: tls_stream,
+                                        addr: SockAddr::Tcp(Arc::new(addr)),
+                                    }),
+                                    Ok(Err(error)) => Err(error.into()),
+                                    Err(_) => Err(ItsiError::Pass),
+                                }
+                            }
+                            Err(error) => {
+                                error!(error = format!("{:?}", error));
+                                Err(ItsiError::Pass)
+                            }
+                        },
                     }
                 }
             },
-            None => match input_stream {
-                Stream::TcpStream((tcp_stream, socket_address)) => Ok(IoStream::Tcp {
-                    stream: tcp_stream,
-                    addr: SockAddr::Tcp(Arc::new(socket_address)),
-                }),
-                Stream::UnixStream((unix_stream, socket_address)) => Ok(IoStream::Unix {
-                    stream: unix_stream,
-                    addr: SockAddr::Unix(Arc::new(socket_address)),
-                }),
+            AcceptedStream::UnixTls {
+                stream,
+                addr,
+                acceptor,
+            } => match acceptor {
+                ItsiTlsAcceptor::Manual(tls_acceptor) => {
+                    match timeout(handshake_timeout, tls_acceptor.accept(stream)).await {
+                        Ok(Ok(tls_stream)) => Ok(IoStream::UnixTls {
+                            stream: tls_stream,
+                            addr: SockAddr::Unix(Arc::new(addr)),
+                        }),
+                        Ok(Err(error)) => Err(error.into()),
+                        Err(_) => Err(ItsiError::Pass),
+                    }
+                }
+                ItsiTlsAcceptor::Automatic(_, _, _) => {
+                    error!("Automatic TLS not supported on Unix sockets");
+                    Err(ItsiError::UnsupportedProtocol(
+                        "Automatic TLS on Unix Sockets".to_owned(),
+                    ))
+                }
             },
         }
     }

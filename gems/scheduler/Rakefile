@@ -3,13 +3,28 @@
 require "bundler/gem_tasks"
 require "minitest/test_task"
 
-Minitest::TestTask.create(:test) do |t|
-  t.libs << 'test'
-  t.libs << 'lib'
-  t.warning = false
-  t.test_globs = ['test/**/*.rb']
-  t.test_prelude = 'require "helpers/test_helper.rb"'
+SMOKE_TEST_GLOBS = %w[
+  test/test_itsi_scheduler.rb
+  test/test_kernel_sleep.rb
+  test/test_block_unblock.rb
+  test/test_network_io.rb
+  test/test_file_io.rb
+].freeze
+
+def configure_test_task(task_name, test_globs)
+  Minitest::TestTask.create(task_name) do |t|
+    t.libs << "test"
+    t.libs << "lib"
+    t.warning = false
+    t.test_globs = test_globs
+    t.test_prelude = 'require "helpers/test_helper.rb"'
+  end
 end
+
+configure_test_task(:test, ["test/**/*.rb"])
+configure_test_task("test:smoke", SMOKE_TEST_GLOBS)
+
+task "test:full" => :test
 
 require "rb_sys/extensiontask"
 

@@ -29,7 +29,11 @@ Gem::Specification.new do |spec|
     end
   end + Dir["../../crates/**/*.{toml,rs,lock}"].map do |ext_file|
     "ext/#{ext_file[%r{.*crates/(.*?)$}, 1]}"
-  end.compact
+  end.compact +
+    Dir["vendor/rb-sys-build/**/*.{toml,rs,h,lock}"] +
+    Dir["vendor/rb-sys-build/LICENSE-*"] +
+    Dir.glob("lib/**/*.{rb,bundle,so,dylib,dll}")
+  spec.files.uniq!
 
   spec.bindir = "exe"
   spec.executables = spec.files.grep(%r{\Aexe/}) { |f| File.basename(f) }

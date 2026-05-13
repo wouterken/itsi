@@ -2,6 +2,6 @@
 
 module Itsi
   class Server
-    VERSION = "0.2.22"
+    VERSION = "0.2.26"
   end
 end

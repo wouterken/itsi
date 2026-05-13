@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "scheduler/version"
-require_relative "scheduler/itsi_scheduler"
+require_relative "scheduler/native_extension"
 require_relative "schedule_refinement"
 
 module Itsi
