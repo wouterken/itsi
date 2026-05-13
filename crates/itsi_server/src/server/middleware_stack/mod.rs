@@ -263,7 +263,7 @@ impl MiddlewareSet {
     pub fn stack_for(
         &self,
         request: &HttpRequest,
-    ) -> Result<(&Vec<Middleware>, Option<Arc<Regex>>)> {
+    ) -> Option<(&Vec<Middleware>, Option<Arc<Regex>>)> {
         let binding = self.route_set.matches(request.uri().path());
         let matches = binding.iter();
 
@@ -276,7 +276,7 @@ impl MiddlewareSet {
             let matching_pattern = self.patterns.get(index).cloned();
             if let Some(stack) = self.stacks.get(&index) {
                 if stack.matches(request) {
-                    return Ok((&stack.layers, matching_pattern));
+                    return Some((&stack.layers, matching_pattern));
                 }
             }
         }
@@ -285,13 +285,7 @@ impl MiddlewareSet {
             request.uri().path(),
             self.route_set
         );
-        Err(magnus::Error::new(
-            magnus::Ruby::get().unwrap().exception_standard_error(),
-            format!(
-                "No matching middleware stack found for request: {:?}",
-                request
-            ),
-        ))
+        None
     }
 
     pub fn parse_middleware(middleware_type: String, parameters: Value) -> Result<Middleware> {
