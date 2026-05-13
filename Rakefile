@@ -57,9 +57,7 @@ task :sync_crates do
   require 'fileutils'
   GEMS.each do |gem_info|
     ext_dir = File.join(gem_info[:dir], 'ext')
-    vendor_dir = File.join(gem_info[:dir], 'vendor')
     FileUtils.mkdir_p(ext_dir)
-    FileUtils.mkdir_p(vendor_dir)
 
     Dir.chdir('crates') do
       Dir['*'].each do |to_sync|
@@ -70,8 +68,6 @@ task :sync_crates do
         system("cp ../Cargo.lock ../#{gem_info[:dir]}/Cargo.lock")
       end
     end
-
-    system("rsync -q -av vendor/rb-sys-build/ #{vendor_dir}/rb-sys-build --delete")
   end
 end
 
