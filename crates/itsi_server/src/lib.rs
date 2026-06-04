@@ -94,6 +94,7 @@ fn init(ruby: &Ruby) -> Result<()> {
     response.define_method("<<", method!(ItsiHttpResponse::send_frame, 1))?;
     response.define_method("write", method!(ItsiHttpResponse::send_frame, 1))?;
     response.define_method("read", method!(ItsiHttpResponse::recv_frame, 0))?;
+    response.define_method("partial_hijack", method!(ItsiHttpResponse::partial_hijack, 1))?;
     response.define_method("closed?", method!(ItsiHttpResponse::is_closed, 0))?;
     response.define_method(
         "send_and_close",

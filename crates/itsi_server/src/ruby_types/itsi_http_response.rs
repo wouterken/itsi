@@ -23,10 +23,12 @@ use parking_lot::RwLock;
 use std::{
     collections::HashMap,
     io,
+    io::Read,
     ops::Deref,
     os::{fd::FromRawFd, unix::net::UnixStream},
     str::FromStr,
     sync::Arc,
+    thread,
     time::Duration,
 };
 use tokio::{
@@ -56,6 +58,7 @@ pub struct ResponseInner {
     pub frame_writer: RwLock<Option<Sender<Bytes>>>,
     pub response: RwLock<Option<HttpResponse>>,
     pub hijacked_socket: RwLock<Option<UnixStream>>,
+    pub partial_hijacked_socket: RwLock<Option<UnixStream>>,
     pub response_sender: RwLock<Option<OneshotSender<ResponseFrame>>>,
     pub shutdown_rx: watch::Receiver<RunningPhase>,
     pub parts: Arc<Parts>,
@@ -65,6 +68,7 @@ pub struct ResponseInner {
 pub enum ResponseFrame {
     HttpResponse(Box<HttpResponse>),
     HijackedResponse(ItsiHttpResponse),
+    PartialHijackedResponse(ItsiHttpResponse),
 }
 
 impl ItsiHttpResponse {
@@ -81,6 +85,7 @@ impl ItsiHttpResponse {
                 frame_writer: RwLock::new(None),
                 response: RwLock::new(Some(Response::new(HttpBody::empty()))),
                 hijacked_socket: RwLock::new(None),
+                partial_hijacked_socket: RwLock::new(None),
             }),
         }
     }
@@ -219,6 +224,42 @@ impl ItsiHttpResponse {
         Ok(response)
     }
 
+    pub async fn process_partial_hijacked_response(&self) -> Result<HttpResponse> {
+        let stream =
+            self.partial_hijacked_socket
+                .write()
+                .take()
+                .ok_or(itsi_error::ItsiError::InvalidInput(
+                    "Couldn't partial hijack stream".to_owned(),
+                ))?;
+        let stream = TokioUnixStream::from_std(stream).map_err(|err| {
+            itsi_error::ItsiError::InvalidInput(format!(
+                "Couldn't prepare partial hijack stream: {:?}",
+                err
+            ))
+        })?;
+
+        let mut response = self.response.write().take().ok_or(
+            itsi_error::ItsiError::InvalidInput("Missing partial hijack response".to_owned()),
+        )?;
+        let parts = self.parts.clone();
+
+        tokio::spawn(async move {
+            let mut req = Request::from_parts((*parts).clone(), Empty::<Bytes>::new());
+            match hyper::upgrade::on(&mut req).await {
+                Ok(upgraded) => {
+                    if let Err(err) = Self::two_way_bridge(upgraded, stream).await {
+                        warn!("partial hijack bridge error: {:?}", err);
+                    }
+                }
+                Err(err) => warn!("partial hijack upgrade error: {:?}", err),
+            }
+        });
+
+        *response.body_mut() = HttpBody::empty();
+        Ok(response)
+    }
+
     pub fn internal_server_error(&self, message: String) {
         error!(message);
         self.close_write().ok();
@@ -302,6 +343,60 @@ impl ItsiHttpResponse {
 
     pub fn recv_frame(&self) {
         // not implemented
+    }
+
+    pub fn partial_hijack(&self, fd: i32) -> MagnusResult<()> {
+        let mut stream = unsafe { UnixStream::from_raw_fd(fd) };
+        let status = self
+            .response
+            .read()
+            .as_ref()
+            .map(|response| response.status())
+            .unwrap_or(StatusCode::OK);
+
+        if status == StatusCode::SWITCHING_PROTOCOLS {
+            *self.partial_hijacked_socket.write() = Some(stream);
+            if let Some(sender) = self.response_sender.write().take() {
+                sender
+                    .send(ResponseFrame::PartialHijackedResponse(self.clone()))
+                    .ok();
+            }
+        } else if let Some(mut response) = self.response.write().take() {
+            let (writer, reader) = tokio::sync::mpsc::channel::<Bytes>(256);
+            let shutdown_rx = self.shutdown_rx.clone();
+            let frame_stream = FrameStream::new(reader, shutdown_rx);
+            let buffered =
+                BufferedStream::new(frame_stream, 32 * 1024, Duration::from_millis(10));
+            *response.body_mut() = HttpBody::stream(buffered);
+            self.frame_writer.write().replace(writer.clone());
+
+            thread::spawn(move || {
+                let mut buf = [0u8; 16 * 1024];
+                loop {
+                    match stream.read(&mut buf) {
+                        Ok(0) => break,
+                        Ok(n) => {
+                            if writer
+                                .blocking_send(Bytes::copy_from_slice(&buf[..n]))
+                                .is_err()
+                            {
+                                break;
+                            }
+                        }
+                        Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
+                        Err(_) => break,
+                    }
+                }
+            });
+
+            if let Some(sender) = self.response_sender.write().take() {
+                sender
+                    .send(ResponseFrame::HttpResponse(Box::new(response)))
+                    .ok();
+            }
+        }
+
+        Ok(())
     }
 
     pub fn is_closed(&self) -> bool {

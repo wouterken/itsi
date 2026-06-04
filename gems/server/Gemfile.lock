@@ -1,0 +1,123 @@
+PATH
+  remote: ../scheduler
+  specs:
+    itsi-scheduler (0.2.27)
+      rb_sys (~> 0.9.91)
+
+PATH
+  remote: .
+  specs:
+    itsi-server (0.2.27)
+      json (~> 2)
+      prism (~> 1.4)
+      rack (>= 1.6)
+      rb_sys (~> 0.9.91)
+
+GEM
+  remote: https://rubygems.org/
+  specs:
+    ansi (1.6.0)
+    base64 (0.3.0)
+    bigdecimal (4.1.2)
+    builder (3.3.0)
+    connection_pool (3.0.2)
+    google-protobuf (4.30.2)
+      bigdecimal
+      rake (>= 13)
+    googleapis-common-protos-types (1.19.0)
+      google-protobuf (>= 3.18, < 5.a)
+    grpc (1.78.0)
+      google-protobuf (>= 3.25, < 5.0)
+      googleapis-common-protos-types (~> 1.0)
+    json (2.19.4)
+    jwt (3.1.2)
+      base64
+    language_server-protocol (3.17.0.5)
+    logger (1.7.0)
+    minitest (5.27.0)
+    minitest-reporters (1.8.0)
+      ansi
+      builder
+      minitest (>= 5.0, < 7)
+      ruby-progressbar
+    net_http_unix (0.2.2)
+    prism (1.9.0)
+    rack (3.2.6)
+    rackup (2.3.1)
+      rack (>= 3)
+    rake (13.3.1)
+    rake-compiler (1.3.0)
+      rake
+    rake-compiler-dock (1.11.0)
+    rb_sys (0.9.126)
+      json (>= 2)
+      rake-compiler-dock (= 1.11.0)
+    rbs (3.10.3)
+      logger
+      tsort
+    redis (5.4.1)
+      redis-client (>= 0.22.0)
+    redis-client (0.24.0)
+      connection_pool
+    ruby-lsp (0.26.7)
+      language_server-protocol (~> 3.17.0)
+      prism (>= 1.2, < 2.0)
+      rbs (>= 3, < 5)
+    ruby-progressbar (1.13.0)
+    tsort (0.2.0)
+
+PLATFORMS
+  arm64-darwin-24
+  ruby
+
+DEPENDENCIES
+  bundler
+  grpc
+  itsi-scheduler!
+  itsi-server!
+  jwt
+  minitest (~> 5.16)
+  minitest-reporters
+  net_http_unix
+  rack
+  rackup
+  rake (~> 13.0)
+  rake-compiler
+  rb_sys (~> 0.9.91)
+  redis
+  ruby-lsp
+
+CHECKSUMS
+  ansi (1.6.0) sha256=ac9ea0c0ea8d32fb4e271348e609963ac78882f34b73836c2a02b3622e666658
+  base64 (0.3.0) sha256=27337aeabad6ffae05c265c450490628ef3ebd4b67be58257393227588f5a97b
+  bigdecimal (4.1.2) sha256=53d217666027eab4280346fba98e7d5b66baaae1b9c3c1c0ffe89d48188a3fbd
+  builder (3.3.0) sha256=497918d2f9dca528fdca4b88d84e4ef4387256d984b8154e9d5d3fe5a9c8835f
+  connection_pool (3.0.2) sha256=33fff5ba71a12d2aa26cb72b1db8bba2a1a01823559fb01d29eb74c286e62e0a
+  google-protobuf (4.30.2) sha256=0f35168dbeeccf13d928acf6c128cfec17b9a826ae4505246a02c115f4ae16ed
+  googleapis-common-protos-types (1.19.0) sha256=aecb76ca5326f8bcc47ab083259bbc4971d07e87f56808af7e210669d9765694
+  grpc (1.78.0) sha256=7aaf47b6d7783fb0e7d40fc853d34e802d47aef7b1312862b6e719141b3527c9
+  itsi-scheduler (0.2.27)
+  itsi-server (0.2.27)
+  json (2.19.4) sha256=670a7d333fb3b18ca5b29cb255eb7bef099e40d88c02c80bd42a3f30fe5239ac
+  jwt (3.1.2) sha256=af6991f19a6bb4060d618d9add7a66f0eeb005ac0bc017cd01f63b42e122d535
+  language_server-protocol (3.17.0.5) sha256=fd1e39a51a28bf3eec959379985a72e296e9f9acfce46f6a79d31ca8760803cc
+  logger (1.7.0) sha256=196edec7cc44b66cfb40f9755ce11b392f21f7967696af15d274dde7edff0203
+  minitest (5.27.0) sha256=2d3b17f8a36fe7801c1adcffdbc38233b938eb0b4966e97a6739055a45fa77d5
+  minitest-reporters (1.8.0) sha256=8ce5280fb73ad3178ae525454df169b6f28c1b38b1d088ea91815d3a370ba384
+  net_http_unix (0.2.2) sha256=98aa0e1e7787f8383e8dd8ff60fc18062c2ddb2aadbc76e92cfb4f95d2c9d71d
+  prism (1.9.0) sha256=7b530c6a9f92c24300014919c9dcbc055bf4cdf51ec30aed099b06cd6674ef85
+  rack (3.2.6) sha256=5ed78e1f73b2e25679bec7d45ee2d4483cc4146eb1be0264fc4d94cb5ef212c2
+  rackup (2.3.1) sha256=6c79c26753778e90983761d677a48937ee3192b3ffef6bc963c0950f94688868
+  rake (13.3.1) sha256=8c9e89d09f66a26a01264e7e3480ec0607f0c497a861ef16063604b1b08eb19c
+  rake-compiler (1.3.0) sha256=eec272ef6d4dad27b36f5cdcf5b9ee4df2193751f4082b095f981ebf9cdf4127
+  rake-compiler-dock (1.11.0) sha256=eab51f2cd533eb35cea6b624a75281f047123e70a64c58b607471bb49428f8c2
+  rb_sys (0.9.126) sha256=ba958e0b8b4b89eeae0b3d24b64c809eb2c37e0ab0773a49e9b1c2e22c95aef8
+  rbs (3.10.3) sha256=70627f3919016134d554e6c99195552ae3ef6020fe034c8e983facc9c192daa6
+  redis (5.4.1) sha256=b5e675b57ad22b15c9bcc765d5ac26f60b675408af916d31527af9bd5a81faae
+  redis-client (0.24.0) sha256=ee65ee39cb2c38608b734566167fd912384f3c1241f59075e22858f23a085dbb
+  ruby-lsp (0.26.7) sha256=60a1199fc7e329348d63a2479854f94435725d833eeabf3d539b790185cbf21f
+  ruby-progressbar (1.13.0) sha256=80fc9c47a9b640d6834e0dc7b3c94c9df37f08cb072b7761e4a71e22cff29b33
+  tsort (0.2.0) sha256=9650a793f6859a43b6641671278f79cfead60ac714148aabe4e3f0060480089f
+
+BUNDLED WITH
+  4.0.6

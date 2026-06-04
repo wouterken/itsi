@@ -145,6 +145,16 @@ module Itsi
       end
     end
 
+    def partial_hijack
+      UNIXSocket.pair.yield_self do |(server_sock, app_sock)|
+        server_sock.autoclose = false
+        response.partial_hijack(server_sock.fileno)
+        server_sock.sync = true
+        app_sock.sync = true
+        app_sock
+      end
+    end
+
     # Rack expects env["rack.hijack"] to respond to #call.
     def call
       hijack

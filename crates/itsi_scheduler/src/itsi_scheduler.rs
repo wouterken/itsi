@@ -14,7 +14,9 @@ use mio::{Events, Poll, Token, Waker};
 use parking_lot::{Mutex, RwLock};
 use std::{
     collections::{BinaryHeap, HashMap, VecDeque},
+    ffi::CString,
     os::fd::RawFd,
+    ptr,
     sync::Arc,
     time::Duration,
 };
@@ -267,14 +269,61 @@ impl ItsiScheduler {
         hostname: String,
     ) -> MagnusResult<Option<Vec<String>>> {
         let result: Option<Vec<String>> = rself.run_blocking_in_thread(ruby, move || {
-            use std::net::ToSocketAddrs;
-            let addrs_res = (hostname.as_str(), 0).to_socket_addrs();
-            match addrs_res {
-                Ok(addrs) => {
-                    let ips: Vec<String> = addrs.map(|s| s.ip().to_string()).collect();
-                    Some(ips)
+            let hostname = CString::new(hostname).ok()?;
+            let hints = nix::libc::addrinfo {
+                ai_flags: 0,
+                ai_family: nix::libc::AF_UNSPEC,
+                ai_socktype: nix::libc::SOCK_STREAM,
+                ai_protocol: 0,
+                ai_addrlen: 0,
+                ai_addr: ptr::null_mut(),
+                ai_canonname: ptr::null_mut(),
+                ai_next: ptr::null_mut(),
+            };
+            let mut res: *mut nix::libc::addrinfo = ptr::null_mut();
+            let rc = unsafe {
+                nix::libc::getaddrinfo(hostname.as_ptr(), ptr::null(), &hints, &mut res)
+            };
+            if rc != 0 || res.is_null() {
+                return None;
+            }
+
+            let mut ips = Vec::new();
+            let mut current = res;
+            while !current.is_null() {
+                let ai = unsafe { &*current };
+                if !ai.ai_addr.is_null() {
+                    match ai.ai_family {
+                        nix::libc::AF_INET => {
+                            let addr = unsafe {
+                                &*(ai.ai_addr as *const nix::libc::sockaddr_in)
+                            };
+                            let ip = std::net::Ipv4Addr::from(u32::from_be(addr.sin_addr.s_addr));
+                            ips.push(ip.to_string());
+                        }
+                        nix::libc::AF_INET6 => {
+                            let addr = unsafe {
+                                &*(ai.ai_addr as *const nix::libc::sockaddr_in6)
+                            };
+                            let ip = std::net::Ipv6Addr::from(addr.sin6_addr.s6_addr);
+                            ips.push(ip.to_string());
+                        }
+                        _ => {}
+                    }
                 }
-                Err(_) => None,
+                current = ai.ai_next;
+            }
+
+            unsafe {
+                nix::libc::freeaddrinfo(res);
+            }
+
+            if ips.is_empty() {
+                None
+            } else {
+                ips.sort();
+                ips.dedup();
+                Some(ips)
             }
         })?;
         Ok(result)

@@ -66,6 +66,85 @@ class TestRackServer < Minitest::Test
     end
   end
 
+  def test_partial_hijack_yields_writable_stream
+    stream_class = nil
+    stream_closed = nil
+    required_methods_ok = nil
+
+    server(app_with_lint: lambda do |_env|
+      [200, { "content-type" => "text/plain", "rack.hijack" => lambda { |stream|
+        stream_class = stream.class
+        refute stream.closed?
+        required_methods_ok = %i[read write << flush close close_read close_write closed?]
+          .all? { |method_name| stream.respond_to?(method_name) }
+        stream.write("Hello")
+        stream.write(", World!")
+        stream.close
+        stream_closed = stream.closed?
+      } }, []]
+    end) do
+      assert_equal "Hello, World!", get("/")
+    end
+
+    assert_equal Rack::Lint::Wrapper::StreamWrapper, stream_class
+    assert_equal true, required_methods_ok
+    assert_equal true, stream_closed
+  end
+
+  def test_partial_hijack_upgrade_supports_bidirectional_io
+    callback_error = Queue.new
+    stream_details = Queue.new
+
+    server(app: lambda do |_env|
+      [101, {
+        "connection" => "Upgrade",
+        "upgrade" => "test",
+        "rack.hijack" => lambda { |stream|
+          stream_details << [stream.class, stream.is_a?(IO), stream.method(:read).arity]
+          Thread.new do
+            begin
+              payload = stream.read(2)
+              stream.write("echo:#{payload}")
+            rescue => e
+              callback_error << e
+            ensure
+              stream.close rescue nil
+            end
+          end
+        }
+      }, []]
+    end) do |uri|
+      socket = TCPSocket.new(uri.host, uri.port)
+      socket.write(
+        "GET / HTTP/1.1\r\n" \
+        "Host: #{uri.host}:#{uri.port}\r\n" \
+        "Connection: Upgrade\r\n" \
+        "Upgrade: test\r\n" \
+        "\r\n"
+      )
+      socket.flush
+
+      response = +""
+      until response.include?("\r\n\r\n")
+        response << socket.readpartial(1024)
+      end
+
+      assert_includes response, "101"
+      socket.write("hi")
+      socket.flush
+      echoed = socket.readpartial(7)
+      assert_equal "echo:hi", echoed
+    ensure
+      socket&.close
+    end
+
+    raise callback_error.pop unless callback_error.empty?
+    stream_class, stream_is_io, read_arity = stream_details.pop
+    assert_equal UNIXSocket, stream_class
+    assert_equal true, stream_is_io
+    assert_operator read_arity, :!=, 0
+  end
+
   def test_enumerable_body
     server(app_with_lint: lambda do |env|
       [200, { "content-type" => "application/json" },

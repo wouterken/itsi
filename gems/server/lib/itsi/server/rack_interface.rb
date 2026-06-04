@@ -1,6 +1,45 @@
 module Itsi
   class Server
     module RackInterface
+      class PartialHijackStream
+        def initialize(response)
+          @response = response
+        end
+
+        def write(chunk)
+          @response.write(chunk.to_s)
+        end
+
+        def read(*)
+          nil
+        end
+
+        def <<(chunk)
+          write(chunk)
+          self
+        end
+
+        def flush
+          self
+        end
+
+        def close_write
+          @response.close_write
+        end
+
+        def close_read
+          true
+        end
+
+        def close
+          @response.close_write
+        end
+
+        def closed?
+          @response.closed?
+        end
+      end
+
       # Builds a handler proc that is compatible with Rack applications.
       def self.for(app)
         require "rack"
@@ -38,7 +77,8 @@ module Itsi
         response.status = status
 
         # 2. Set Headers
-        body_streamer = streaming_body?(body) ? body : headers.delete("rack.hijack")
+        hijack_callback = headers.delete("rack.hijack")
+        body_streamer = streaming_body?(body) ? body : hijack_callback
 
         response.reserve_headers(headers.size)
 
@@ -57,7 +97,10 @@ module Itsi
         # the server will begin to stream it to the client.
 
 
-        if body_streamer
+        if hijack_callback
+          stream = status == 101 ? request.partial_hijack : PartialHijackStream.new(response)
+          body_streamer.call(stream)
+        elsif body_streamer
           # If we're partially hijacked or returned a streaming body,
           # stream this response.
           body_streamer.call(response)

@@ -157,6 +157,7 @@ class RequestContext
         @uri.host,
         @uri.port,
         use_ssl: @uri.scheme == "https",
+        verify_mode: (@uri.scheme == "https" ? OpenSSL::SSL::VERIFY_NONE : nil),
         **opts
       )
     end

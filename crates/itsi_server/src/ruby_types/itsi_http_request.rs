@@ -211,6 +211,15 @@ impl ItsiHttpRequest {
                                 }
                             }
                         }
+                        Ok(ResponseFrame::PartialHijackedResponse(response)) => {
+                            match response.process_partial_hijacked_response().await {
+                                Ok(result) => Ok(result),
+                                Err(e) => {
+                                    error!("Error processing partial hijacked response: {}", e);
+                                    Ok(Response::new(HttpBody::empty()))
+                                }
+                            }
+                        }
                         Err(_) => {
                             error!("Failed to receive response from receiver");
                             Ok(INTERNAL_SERVER_ERROR_RESPONSE

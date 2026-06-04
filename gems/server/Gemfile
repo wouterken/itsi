@@ -1,10 +1,12 @@
 source "https://rubygems.org"
 
 gemspec
+gemspec path: "../scheduler"
 
 group :development, :test do
   gem "bundler"
   gem "minitest", "~> 5.16"
+  gem "minitest-reporters"
   gem "rack"
   gem "rackup"
   gem "rake", "~> 13.0"
