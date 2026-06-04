@@ -4,24 +4,19 @@ mod timer;
 use io_helpers::{build_interest, poll_readiness, set_nonblocking};
 use io_waiter::IoWaiter;
 use itsi_error::ItsiError;
-use itsi_rb_helpers::{call_without_gvl, create_ruby_thread};
-use magnus::{
-    error::Result as MagnusResult,
-    value::{InnerValue, Lazy, LazyId, Opaque, ReprValue},
-    Module, RClass, Ruby, Value,
-};
+use itsi_rb_helpers::call_without_gvl;
+use magnus::{error::Result as MagnusResult, Ruby};
 use mio::{Events, Poll, Token, Waker};
-use parking_lot::{Mutex, RwLock};
+use parking_lot::Mutex;
 use std::{
     collections::{BinaryHeap, HashMap, VecDeque},
     ffi::CString,
     os::fd::RawFd,
     ptr,
-    sync::Arc,
     time::Duration,
 };
 use timer::Timer;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct Readiness(i16);
@@ -33,9 +28,6 @@ impl std::fmt::Debug for ItsiScheduler {
 }
 
 const WAKE_TOKEN: Token = Token(0);
-static ID_CURRENT: LazyId = LazyId::new("current");
-static CLASS_FIBER: Lazy<RClass> =
-    Lazy::new(|ruby| ruby.module_kernel().const_get("Fiber").unwrap());
 
 #[magnus::wrap(class = "Itsi::Scheduler", free_immediately, size)]
 pub(crate) struct ItsiScheduler {
@@ -123,6 +115,57 @@ impl ItsiScheduler {
 
     pub fn clear_timer(&self, token: usize) {
         self.timers.lock().retain(|timer| timer.token.0 != token);
+    }
+
+    pub fn cancel_wait(&self, token: usize) -> MagnusResult<()> {
+        let token = Token(token);
+
+        self.timers.lock().retain(|timer| timer.token != token);
+
+        let mut io_waiters = self.io_waiters.lock();
+        let Some(mut waiter) = io_waiters.remove(&token) else {
+            return Ok(());
+        };
+
+        let mut registry = self.registry.lock();
+        let Some(queue) = registry.get_mut(&waiter.fd) else {
+            return Ok(());
+        };
+
+        let Some(position) = queue.iter().position(|entry| entry.token == token) else {
+            return Ok(());
+        };
+
+        if position == 0 {
+            self.poll
+                .lock()
+                .registry()
+                .deregister(&mut waiter)
+                .map_err(|_| {
+                    ItsiError::ArgumentError("Failed to deregister".to_string())
+                })?;
+        }
+
+        queue.remove(position);
+
+        if position == 0 {
+            if let Some(head) = queue.get_mut(0) {
+                let interest = build_interest(head.readiness)?;
+                self.poll
+                    .lock()
+                    .registry()
+                    .register(head, head.token, interest)
+                    .map_err(|_| {
+                        ItsiError::ArgumentError("Failed to register".to_string())
+                    })?;
+            }
+        }
+
+        if queue.is_empty() {
+            registry.remove(&waiter.fd);
+        }
+
+        Ok(())
     }
 
     pub fn has_pending_io(&self) -> bool {
@@ -222,53 +265,12 @@ impl ItsiScheduler {
         })
     }
 
-    pub fn run_blocking_in_thread<T, F>(&self, ruby: &Ruby, work: F) -> MagnusResult<Option<T>>
-    where
-        T: Send + Sync + std::fmt::Debug + 'static,
-        F: FnOnce() -> Option<T> + Send + 'static,
-    {
-        let result: Arc<RwLock<Option<T>>> = Arc::new(RwLock::new(None));
-        let result_clone = Arc::clone(&result);
-
-        let class_fiber = ruby.get_inner(&CLASS_FIBER);
-        let current_fiber = ruby
-            .get_inner(&CLASS_FIBER)
-            .funcall::<_, _, Value>(*ID_CURRENT, ());
-
-        if current_fiber.is_err() {
-            error!("Failed to get current fiber");
-            return Err(ItsiError::ArgumentError("Failed to get current fiber".to_string()).into());
-        }
-        let current_fiber = Opaque::from(current_fiber.unwrap());
-        let scheduler = Opaque::from(class_fiber.funcall::<_, _, Value>("scheduler", ()).unwrap());
-
-        create_ruby_thread(move || {
-            call_without_gvl(|| {
-                let outcome = work();
-                *result_clone.write() = outcome;
-            });
-
-            let ruby = Ruby::get().unwrap();
-            scheduler
-                .get_inner_with(&ruby)
-                .funcall::<_, _, Value>("unblock", (None::<String>, current_fiber))
-                .unwrap();
-        });
-
-        scheduler
-            .get_inner_with(ruby)
-            .funcall::<_, _, Value>("block", (None::<Value>, None::<u64>))?;
-
-        let result_opt = Arc::try_unwrap(result).unwrap().write().take();
-        Ok(result_opt)
-    }
-
     pub fn address_resolve(
-        ruby: &Ruby,
-        rself: &Self,
+        _ruby: &Ruby,
+        _rself: &Self,
         hostname: String,
     ) -> MagnusResult<Option<Vec<String>>> {
-        let result: Option<Vec<String>> = rself.run_blocking_in_thread(ruby, move || {
+        let result: Option<Vec<String>> = call_without_gvl(move || {
             let hostname = CString::new(hostname).ok()?;
             let hints = nix::libc::addrinfo {
                 ai_flags: 0,
@@ -325,7 +327,7 @@ impl ItsiScheduler {
                 ips.dedup();
                 Some(ips)
             }
-        })?;
+        });
         Ok(result)
     }
 

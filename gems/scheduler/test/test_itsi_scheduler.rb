@@ -29,4 +29,44 @@ class TestItsiScheduler < Minitest::Test
     assert_equal total, 6
     assert_match /terminated on exception/, out
   end
+
+  def test_blocking_operation_wait_returns_result_without_stalling_scheduler
+    result = nil
+    marker = nil
+
+    with_scheduler do |scheduler|
+      Fiber.schedule do
+        result = scheduler.blocking_operation_wait(-> do
+          sleep 0.05
+          :done
+        end)
+      end
+
+      Fiber.schedule do
+        sleep 0.01
+        marker = :progressed
+      end
+    end
+
+    assert_equal :done, result
+    assert_equal :progressed, marker
+  end
+
+  def test_blocking_operation_wait_propagates_exceptions
+    error = nil
+
+    with_scheduler do |scheduler|
+      Fiber.schedule do
+        begin
+          scheduler.blocking_operation_wait(-> { raise ArgumentError, "boom" })
+        rescue => exception
+          error = exception
+        end
+      end
+    end
+
+    refute_nil error
+    assert_equal ArgumentError, error.class
+    assert_equal "boom", error.message
+  end
 end

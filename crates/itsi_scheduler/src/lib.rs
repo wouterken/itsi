@@ -20,8 +20,9 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     scheduler.define_method("warn", method!(ItsiScheduler::warn, 1))?;
     scheduler.define_method("start_timer", method!(ItsiScheduler::start_timer, 2))?;
     scheduler.define_method("clear_timer", method!(ItsiScheduler::clear_timer, 1))?;
+    scheduler.define_method("cancel_wait", method!(ItsiScheduler::cancel_wait, 1))?;
     scheduler.define_method(
-        "address_resolve",
+        "native_address_resolve",
         method!(ItsiScheduler::address_resolve, 1),
     )?;
     scheduler.define_method("has_pending_io?", method!(ItsiScheduler::has_pending_io, 0))?;

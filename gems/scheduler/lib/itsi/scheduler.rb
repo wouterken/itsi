@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "etc"
+
 require_relative "scheduler/version"
 require_relative "scheduler/native_extension"
 require_relative "schedule_refinement"
@@ -7,6 +9,7 @@ require_relative "schedule_refinement"
 module Itsi
   class Scheduler
     class Error < StandardError; end
+    WorkRequest = Struct.new(:fiber, :work, :result, :error, keyword_init: true)
 
     def self.resume_token
       @resume_token ||= 0
@@ -17,12 +20,14 @@ module Itsi
       @join_waiters = {}.compare_by_identity
       @token_map = {}.compare_by_identity
       @resume_tokens = {}.compare_by_identity
+      @timeout_requests = {}
       @unblocked = [[], []]
       @unblock_idx = 0
       @unblocked_mux = Mutex.new
       @resume_fiber = method(:resume_fiber).to_proc
       @resume_fiber_with_readiness = method(:resume_fiber_with_readiness).to_proc
       @resume_blocked = method(:resume_blocked).to_proc
+      setup_worker_pool
     end
 
     def block(_, timeout, fiber = Fiber.current, token = Scheduler.resume_token)
@@ -33,6 +38,7 @@ module Itsi
       @token_map[fiber] = token
       Fiber.yield
     ensure
+      cancel_wait(token)
       @resume_tokens.delete(token)
       @token_map.delete(fiber)
       @join_waiters.delete(fiber)
@@ -61,6 +67,35 @@ module Itsi
       block nil, duration
     end
 
+    def timeout_after(duration, klass = Timeout::Error, message = "execution expired")
+      fiber = Fiber.current
+      token = Scheduler.resume_token
+      exception = klass.is_a?(Class) ? klass.new(message) : klass
+      @timeout_requests[token] = [fiber, exception]
+      start_timer(duration, token)
+      yield duration
+    ensure
+      clear_timer(token) if token
+      @timeout_requests.delete(token) if token
+    end
+
+    def fiber_interrupt(fiber, exception)
+      cancel_wait(@token_map[fiber]) if @token_map.key?(fiber)
+      fiber.raise(exception)
+      true
+    rescue FiberError
+      false
+    end
+
+    def blocking_operation_wait(work)
+      request = WorkRequest.new(fiber: Fiber.current, work: work)
+      @worker_queue << request
+      block(nil, nil, request.fiber)
+      raise request.error if request.error
+
+      request.result
+    end
+
     def tick
       events = fetch_due_events
       timers = fetch_due_timers
@@ -72,6 +107,12 @@ module Itsi
     end
 
     def resume_fiber(token)
+      if (request = @timeout_requests.delete(token))
+        fiber, exception = request
+        fiber_interrupt(fiber, exception)
+        return
+      end
+
       if (fiber = @resume_tokens.delete(token))
         fiber.resume
       end
@@ -126,6 +167,7 @@ module Itsi
     def close
       run
     ensure
+      shutdown_worker_pool
       @closed ||= true
       freeze
     end
@@ -133,12 +175,11 @@ module Itsi
     # Need to defer to Process::Status rather than our extension
     # as we don't have a means of creating our own Process::Status.
     def process_wait(pid, flags)
-      result = nil
-      thread = Thread.new do
-        result = Process::Status.wait(pid, flags)
-      end
-      thread.join
-      result
+      blocking_operation_wait(-> { Process::Status.wait(pid, flags) })
+    end
+
+    def address_resolve(hostname)
+      blocking_operation_wait(-> { native_address_resolve(hostname) })
     end
 
     def closed?
@@ -148,6 +189,49 @@ module Itsi
     # Spin up a new fiber and immediately resume it.
     def fiber(&blk)
       Fiber.new(blocking: false, &blk).tap(&:resume)
+    end
+
+    private
+
+    def setup_worker_pool
+      @worker_stop_token = Object.new
+      @worker_queue = Queue.new
+      @worker_threads = Array.new(worker_pool_size) { start_worker_thread }
+    end
+
+    def start_worker_thread
+      Thread.new do
+        Thread.current.report_on_exception = false
+        Thread.current.thread_variable_set(:fork_safe, true)
+
+        loop do
+          request = @worker_queue.pop
+          break if request.equal?(@worker_stop_token)
+
+          begin
+            request.result = request.work.call
+          rescue Exception => exception
+            request.error = exception
+          ensure
+            unblock(nil, request.fiber)
+          end
+        end
+      end
+    end
+
+    def shutdown_worker_pool
+      return unless @worker_threads
+
+      @worker_threads.size.times { @worker_queue << @worker_stop_token }
+      @worker_threads.each(&:join)
+      @worker_threads.clear
+    end
+
+    def worker_pool_size
+      size = ENV.fetch("ITSI_WORKER_POOL_SIZE", Etc.nprocessors.to_s).to_i
+      size.positive? ? size : 1
+    rescue StandardError
+      1
     end
   end
 end
