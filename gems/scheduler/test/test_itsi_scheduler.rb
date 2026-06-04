@@ -69,4 +69,44 @@ class TestItsiScheduler < Minitest::Test
     assert_equal ArgumentError, error.class
     assert_equal "boom", error.message
   end
+
+  def test_io_select_returns_ready_descriptors_without_stalling_scheduler
+    ready = nil
+    marker = nil
+    reader, writer = IO.pipe
+
+    with_scheduler do |scheduler|
+      Fiber.schedule do
+        ready = scheduler.io_select([reader], nil, nil, 0.2)
+      end
+
+      Fiber.schedule do
+        sleep 0.01
+        marker = :progressed
+        writer.write("x")
+      end
+    end
+
+    assert_equal :progressed, marker
+    assert_equal [[reader], [], []], ready
+  ensure
+    reader&.close
+    writer&.close
+  end
+
+  def test_process_fork_reinitializes_worker_pool
+    worker_threads = nil
+    refreshed_threads = nil
+
+    with_scheduler do |scheduler|
+      worker_threads = scheduler.instance_variable_get(:@worker_threads)
+      scheduler.process_fork
+      refreshed_threads = scheduler.instance_variable_get(:@worker_threads)
+    end
+
+    refute_nil worker_threads
+    refute_nil refreshed_threads
+    refute_same worker_threads, refreshed_threads
+    assert_equal worker_threads.length, refreshed_threads.length
+  end
 end

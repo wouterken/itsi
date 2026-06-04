@@ -96,6 +96,31 @@ module Itsi
       request.result
     end
 
+    def io_select(readables, writables, exceptables, timeout)
+      readables = Array(readables).compact
+      writables = Array(writables).compact
+      exceptables = Array(exceptables).compact
+      ios = (readables + writables + exceptables).uniq
+
+      if ios.length == 1
+        io = ios.first
+        events = 0
+        events |= IO::READABLE if readables.include?(io)
+        events |= IO::WRITABLE if writables.include?(io)
+        events |= IO::PRIORITY if exceptables.include?(io)
+        readiness = io_wait(io, events, timeout)
+        return nil unless readiness
+
+        return [
+          (readiness & IO::READABLE).zero? ? [] : readables.select { |entry| entry == io },
+          (readiness & IO::WRITABLE).zero? ? [] : writables.select { |entry| entry == io },
+          (readiness & IO::PRIORITY).zero? ? [] : exceptables.select { |entry| entry == io }
+        ]
+      end
+
+      blocking_operation_wait(-> { IO.select(readables, writables, exceptables, timeout) })
+    end
+
     def tick
       events = fetch_due_events
       timers = fetch_due_timers
@@ -180,6 +205,12 @@ module Itsi
 
     def address_resolve(hostname)
       blocking_operation_wait(-> { native_address_resolve(hostname) })
+    end
+
+    def process_fork
+      shutdown_worker_pool
+      setup_worker_pool
+      nil
     end
 
     def closed?
