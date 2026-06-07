@@ -7,6 +7,7 @@ use crate::{
     },
 };
 use derive_more::Debug;
+use itsi_acme::Http01Handler;
 use itsi_error::ItsiError;
 use itsi_rb_helpers::{call_with_gvl, print_rb_backtrace, HeapValue};
 use itsi_tracing::{error, set_format, set_level, set_target, set_target_filters};
@@ -81,6 +82,8 @@ pub struct ServerParams {
     pub binds: Vec<Bind>,
     #[debug(skip)]
     pub(crate) listeners: Mutex<Vec<Listener>>,
+    #[debug(skip)]
+    pub acme_http01_handlers: RwLock<HashMap<String, Arc<Http01Handler>>>,
     listener_info: Mutex<HashMap<String, i32>>,
     pub itsi_server_token_preference: ItsiServerTokenPreference,
     pub preloaded: AtomicBool,
@@ -348,6 +351,7 @@ impl ServerParams {
             preexisting_listeners,
             listener_info: Mutex::new(HashMap::new()),
             listeners: Mutex::new(Vec::new()),
+            acme_http01_handlers: RwLock::new(HashMap::new()),
             middleware_loader: middleware_loader.into(),
             middleware: OnceLock::new(),
             preloaded: AtomicBool::new(false),
@@ -401,8 +405,25 @@ impl ServerParams {
             })
             .collect::<Result<HashMap<String, i32>>>()?;
 
+        let has_http_listener = listeners
+            .iter()
+            .any(|listener| matches!(listener, Listener::Tcp(_)));
+        let mut acme_http01_handlers = HashMap::new();
+        for listener in &listeners {
+            match listener {
+                Listener::TcpTls((_, acceptor)) | Listener::UnixTls((_, acceptor)) => {
+                    acceptor.set_http01_enabled(has_http_listener);
+                    for (domain, handler) in acceptor.http01_entries() {
+                        acme_http01_handlers.insert(domain, handler);
+                    }
+                }
+                Listener::Tcp(_) | Listener::Unix(_) => {}
+            }
+        }
+
         *self.listener_info.lock() = listener_info;
         *self.listeners.lock() = listeners;
+        *self.acme_http01_handlers.write() = acme_http01_handlers;
         Ok(())
     }
 }

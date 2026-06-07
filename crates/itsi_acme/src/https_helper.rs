@@ -30,7 +30,9 @@ pub(crate) async fn https(
     let client = reqwest::ClientBuilder::new()
         .use_preconfigured_tls(client_config.clone())
         .build()?;
-    let mut request = client.request(method, url.as_ref());
+    let mut request = client
+        .request(method, url.as_ref())
+        .header("User-Agent", concat!("itsi-acme/", env!("CARGO_PKG_VERSION")));
     if let Some(body) = body {
         request = request
             .body(body)

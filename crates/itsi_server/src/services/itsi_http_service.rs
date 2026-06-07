@@ -1,16 +1,17 @@
 use crate::default_responses::{NOT_FOUND_RESPONSE, TIMEOUT_RESPONSE};
 use crate::ruby_types::itsi_server::itsi_server_config::ItsiServerTokenPreference;
 use crate::server::http_message_types::{
-    ConversionExt, HttpRequest, HttpResponse, RequestExt, ResponseFormat,
+    ConversionExt, HttpBody, HttpRequest, HttpResponse, RequestExt, ResponseFormat,
 };
 use crate::server::lifecycle_event::LifecycleEvent;
 use crate::server::middleware_stack::MiddlewareLayer;
 use crate::server::serve_strategy::acceptor::AcceptorArgs;
 use crate::server::signal::{send_lifecycle_event, SHUTDOWN_REQUESTED};
+use bytes::Bytes;
 use chrono::{self, DateTime, Local};
 use either::Either;
 use http::header::ACCEPT_ENCODING;
-use http::{HeaderValue, Request};
+use http::{HeaderValue, Request, StatusCode};
 use hyper::body::Incoming;
 use regex::Regex;
 use smallvec::SmallVec;
@@ -174,6 +175,7 @@ impl HttpRequestContext {
 const SERVER_TOKEN_VERSION: HeaderValue =
     HeaderValue::from_static(concat!("Itsi/", env!("CARGO_PKG_VERSION")));
 const SERVER_TOKEN_NAME: HeaderValue = HeaderValue::from_static("Itsi");
+const TEXT_PLAIN_UTF8: HeaderValue = HeaderValue::from_static("text/plain; charset=utf-8");
 
 impl ItsiHttpService {
     pub async fn handle_request(&self, req: Request<Incoming>) -> itsi_error::Result<HttpResponse> {
@@ -188,6 +190,10 @@ impl ItsiHttpService {
         let token_preference = self.server_params.itsi_server_token_preference;
 
         let service_future = async move {
+            if let Some(acme_response) = self.acme_http01_response(&req) {
+                return Ok(acme_response);
+            }
+
             let Some((stack, matching_pattern)) =
                 self.server_params.middleware.get().unwrap().stack_for(&req)
             else {
@@ -264,4 +270,41 @@ impl ItsiHttpService {
             service_future.await
         }
     }
+
+    fn acme_http01_response(&self, req: &HttpRequest) -> Option<HttpResponse> {
+        let host = normalize_host_header(req.header("host")?)?;
+        let handlers = self.server_params.acme_http01_handlers.read();
+        let handler = handlers.get(host)?;
+        let key_authorization = handler.handle_challenge_request(req.uri().path())?;
+
+        let mut builder = http::Response::builder()
+            .status(StatusCode::OK)
+            .header(http::header::CONTENT_TYPE, TEXT_PLAIN_UTF8);
+
+        if req.method() == http::Method::HEAD {
+            builder = builder.header(http::header::CONTENT_LENGTH, "0");
+            return builder.body(HttpBody::empty()).ok();
+        }
+
+        builder
+            .header(
+                http::header::CONTENT_LENGTH,
+                key_authorization.len().to_string(),
+            )
+            .body(HttpBody::full(Bytes::from(key_authorization)))
+            .ok()
+    }
+}
+
+fn normalize_host_header(host: &str) -> Option<&str> {
+    let host = host.trim();
+    if host.is_empty() {
+        return None;
+    }
+
+    if let Some(stripped) = host.strip_prefix('[') {
+        return stripped.split(']').next();
+    }
+
+    Some(host.split(':').next().unwrap_or(host))
 }

@@ -26,12 +26,12 @@ def free_bind(protocol = "http", unix_socket: false)
 end
 
 def server(
-  app: nil, app_with_lint: nil, protocol: "http", bind: free_bind(protocol), itsi_rb: nil, cleanup: true,
+  app: nil, app_with_lint: nil, protocol: "http", bind: free_bind(protocol), binds: nil, itsi_rb: nil, cleanup: true,
            &blk)
   app ||= Rack::Lint.new(app_with_lint) if app_with_lint
 
   cli_params = {}
-  cli_params[:binds] = [bind] if bind
+  cli_params[:binds] = binds || [bind] if binds || bind
 
   sync = Queue.new
   cli_params[:hooks] ||= {}
@@ -40,7 +40,7 @@ def server(
   end
 
   Itsi::Server.start_in_background_thread(cli_params) do
-    bind bind
+    bind bind if bind && binds.nil?
     workers 1
     threads 1
     log_level :warn

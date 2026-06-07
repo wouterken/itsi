@@ -20,8 +20,9 @@ use x509_parser::parse_x509_certificate;
 
 use crate::acceptor::AcmeAcceptor;
 use crate::acme::{
-    Account, AcmeError, Auth, AuthStatus, Directory, Identifier, Order, OrderStatus,
+    Account, AcmeError, Auth, AuthStatus, Challenge, Directory, Identifier, Order, OrderStatus,
 };
+use crate::http_challenge::Http01Handler;
 use crate::{AcmeConfig, Incoming, ResolvesServerCertAcme};
 
 type Timer = std::pin::Pin<Box<Sleep>>;
@@ -36,6 +37,8 @@ pub struct AcmeState<EC: Debug = Infallible, EA: Debug = EC> {
     config: Arc<AcmeConfig<EC, EA>>,
     resolver: Arc<ResolvesServerCertAcme>,
     account_key: Option<Vec<u8>>,
+    http01_handler: Arc<Http01Handler>,
+    http01_enabled: bool,
 
     early_action: Option<BoxFuture<Event<EC, EA>>>,
     load_cert: Option<BoxFuture<Result<Option<Vec<u8>>, EC>>>,
@@ -128,12 +131,20 @@ impl<EC: 'static + Debug, EA: 'static + Debug> AcmeState<EC, EA> {
     pub fn resolver(&self) -> Arc<ResolvesServerCertAcme> {
         self.resolver.clone()
     }
+    pub fn http01_handler(&self) -> Arc<Http01Handler> {
+        self.http01_handler.clone()
+    }
+    pub fn set_http01_enabled(&mut self, enabled: bool) {
+        self.http01_enabled = enabled;
+    }
     pub fn new(config: AcmeConfig<EC, EA>) -> Self {
         let config = Arc::new(config);
         Self {
             config: config.clone(),
             resolver: ResolvesServerCertAcme::new(),
             account_key: None,
+            http01_handler: Arc::new(Http01Handler::new()),
+            http01_enabled: false,
             early_action: None,
             load_cert: Some(Box::pin({
                 let config = config.clone();
@@ -220,6 +231,8 @@ impl<EC: 'static + Debug, EA: 'static + Debug> AcmeState<EC, EA> {
     async fn order(
         config: Arc<AcmeConfig<EC, EA>>,
         resolver: Arc<ResolvesServerCertAcme>,
+        http01_handler: Arc<Http01Handler>,
+        http01_enabled: bool,
         key_pair: Vec<u8>,
     ) -> Result<Vec<u8>, OrderError> {
         let directory = Directory::discover(&config.client_config, &config.directory_url).await?;
@@ -242,10 +255,16 @@ impl<EC: 'static + Debug, EA: 'static + Debug> AcmeState<EC, EA> {
         loop {
             match order.status {
                 OrderStatus::Pending => {
-                    let auth_futures = order
-                        .authorizations
-                        .iter()
-                        .map(|url| Self::authorize(&config, &resolver, &account, url));
+                    let auth_futures = order.authorizations.iter().map(|url| {
+                        Self::authorize(
+                            &config,
+                            &resolver,
+                            &http01_handler,
+                            http01_enabled,
+                            &account,
+                            url,
+                        )
+                    });
                     try_join_all(auth_futures).await?;
                     log::info!("completed all authorizations");
                     order = account.order(&config.client_config, &order_url).await?;
@@ -289,40 +308,147 @@ impl<EC: 'static + Debug, EA: 'static + Debug> AcmeState<EC, EA> {
     async fn authorize(
         config: &AcmeConfig<EC, EA>,
         resolver: &ResolvesServerCertAcme,
+        http01_handler: &Http01Handler,
+        http01_enabled: bool,
         account: &Account,
         url: &String,
     ) -> Result<(), OrderError> {
         let auth = account.auth(&config.client_config, url).await?;
-        let (domain, challenge_url) = match auth.status {
+        let (domain, challenges) = match auth.status {
             AuthStatus::Pending => {
                 let Identifier::Dns(domain) = auth.identifier;
-                log::info!("trigger challenge for {}", &domain);
-                let (challenge, auth_key) =
-                    account.tls_alpn_01(&auth.challenges, domain.clone())?;
-                resolver.set_auth_key(domain.clone(), Arc::new(auth_key));
-                account
-                    .challenge(&config.client_config, &challenge.url)
-                    .await?;
-                (domain, challenge.url.clone())
+                (domain, auth.challenges)
             }
             AuthStatus::Valid => return Ok(()),
             _ => return Err(OrderError::BadAuth(auth)),
         };
+
+        log::info!("trigger challenge for {}", &domain);
+
+        let primary = if http01_enabled {
+            ChallengeKind::Http01
+        } else {
+            ChallengeKind::TlsAlpn01
+        };
+        let secondary = match primary {
+            ChallengeKind::Http01 => ChallengeKind::TlsAlpn01,
+            ChallengeKind::TlsAlpn01 => ChallengeKind::Http01,
+        };
+
+        match Self::attempt_authorization(
+            config,
+            resolver,
+            http01_handler,
+            account,
+            &domain,
+            url,
+            &challenges,
+            primary,
+        )
+        .await?
+        {
+            AttemptOutcome::Validated => return Ok(()),
+            AttemptOutcome::Unavailable | AttemptOutcome::RetryableFailure => {}
+        }
+
+        match Self::attempt_authorization(
+            config,
+            resolver,
+            http01_handler,
+            account,
+            &domain,
+            url,
+            &challenges,
+            secondary,
+        )
+        .await?
+        {
+            AttemptOutcome::Validated => Ok(()),
+            AttemptOutcome::Unavailable | AttemptOutcome::RetryableFailure => {
+                Err(OrderError::TooManyAttemptsAuth(domain))
+            }
+        }
+    }
+
+    async fn attempt_authorization(
+        config: &AcmeConfig<EC, EA>,
+        resolver: &ResolvesServerCertAcme,
+        http01_handler: &Http01Handler,
+        account: &Account,
+        domain: &str,
+        auth_url: &str,
+        challenges: &[Challenge],
+        kind: ChallengeKind,
+    ) -> Result<AttemptOutcome, OrderError> {
+        match kind {
+            ChallengeKind::TlsAlpn01 => {
+                let (challenge, auth_key) =
+                    match account.tls_alpn_01(challenges, domain.to_string()) {
+                        Ok(value) => value,
+                        Err(AcmeError::NoTlsAlpn01Challenge) => {
+                            return Ok(AttemptOutcome::Unavailable);
+                        }
+                        Err(error) => return Err(OrderError::Acme(error)),
+                    };
+
+                resolver.set_auth_key(domain.to_string(), Arc::new(auth_key));
+                account
+                    .challenge(&config.client_config, &challenge.url)
+                    .await?;
+                let outcome =
+                    Self::poll_authorization(config, account, domain, auth_url, &challenge.url)
+                        .await?;
+                resolver.remove_auth_key(domain);
+                Ok(outcome)
+            }
+            ChallengeKind::Http01 => {
+                let (challenge, key_authorization) = match account.http_01(challenges) {
+                    Ok(value) => value,
+                    Err(AcmeError::NoHttp01Challenge) => return Ok(AttemptOutcome::Unavailable),
+                    Err(error) => return Err(OrderError::Acme(error)),
+                };
+                let token = challenge
+                    .token
+                    .clone()
+                    .ok_or(OrderError::Acme(AcmeError::MissingChallengeToken))?;
+
+                http01_handler.add_challenge(token.clone(), key_authorization);
+                account
+                    .challenge(&config.client_config, &challenge.url)
+                    .await?;
+                let outcome =
+                    Self::poll_authorization(config, account, domain, auth_url, &challenge.url)
+                        .await?;
+                http01_handler.remove_challenge(&token);
+                Ok(outcome)
+            }
+        }
+    }
+
+    async fn poll_authorization(
+        config: &AcmeConfig<EC, EA>,
+        account: &Account,
+        domain: &str,
+        auth_url: &str,
+        challenge_url: &str,
+    ) -> Result<AttemptOutcome, OrderError> {
         for i in 0u64..5 {
             after(Duration::from_secs(1u64 << i)).await;
-            let auth = account.auth(&config.client_config, url).await?;
+            let auth = account.auth(&config.client_config, auth_url).await?;
             match auth.status {
                 AuthStatus::Pending => {
-                    log::info!("authorization for {} still pending", &domain);
+                    log::info!("authorization for {} still pending", domain);
                     account
-                        .challenge(&config.client_config, &challenge_url)
-                        .await?
+                        .challenge(&config.client_config, challenge_url)
+                        .await?;
                 }
-                AuthStatus::Valid => return Ok(()),
+                AuthStatus::Valid => return Ok(AttemptOutcome::Validated),
+                AuthStatus::Invalid => return Ok(AttemptOutcome::RetryableFailure),
                 _ => return Err(OrderError::BadAuth(auth)),
             }
         }
-        Err(OrderError::TooManyAttemptsAuth(domain))
+
+        Ok(AttemptOutcome::RetryableFailure)
     }
     fn poll_next_infinite(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Event<EC, EA>> {
         loop {
@@ -408,11 +534,32 @@ impl<EC: 'static + Debug, EA: 'static + Debug> AcmeState<EC, EA> {
             };
             let config = self.config.clone();
             let resolver = self.resolver.clone();
+            let http01_handler = self.http01_handler.clone();
+            let http01_enabled = self.http01_enabled;
             self.order = Some(Box::pin({
-                Self::order(config.clone(), resolver.clone(), account_key)
+                Self::order(
+                    config.clone(),
+                    resolver.clone(),
+                    http01_handler,
+                    http01_enabled,
+                    account_key,
+                )
             }));
         }
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum ChallengeKind {
+    Http01,
+    TlsAlpn01,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum AttemptOutcome {
+    Validated,
+    RetryableFailure,
+    Unavailable,
 }
 
 impl<EC: 'static + Debug, EA: 'static + Debug> Stream for AcmeState<EC, EA> {

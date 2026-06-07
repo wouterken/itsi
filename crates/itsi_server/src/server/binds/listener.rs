@@ -115,11 +115,7 @@ impl TokioListener {
     }
 
     pub async fn spawn_acme_event_task(&self, mut shutdown_receiver: Receiver<RunningPhase>) {
-        if let TokioListener::TcpTls(
-            _,
-            ItsiTlsAcceptor::Automatic(_acme_acceptor, state, _server_config),
-        ) = self
-        {
+        if let TokioListener::TcpTls(_, ItsiTlsAcceptor::Automatic { state, .. }) = self {
             let mut state = state.lock().await;
             loop {
                 tokio::select! {
@@ -215,7 +211,11 @@ impl AcceptedStream {
                         Err(_) => Err(ItsiError::Pass),
                     }
                 }
-                ItsiTlsAcceptor::Automatic(acme_acceptor, _, rustls_config) => {
+                ItsiTlsAcceptor::Automatic {
+                    acme_acceptor,
+                    server_config,
+                    ..
+                } => {
                     let accept_future = acme_acceptor.accept(stream);
                     match timeout(handshake_timeout, accept_future).await {
                         Err(_) => Err(ItsiError::Pass),
@@ -224,7 +224,7 @@ impl AcceptedStream {
                             Ok(Some(start_handshake)) => {
                                 match timeout(
                                     handshake_timeout,
-                                    start_handshake.into_stream(rustls_config.clone()),
+                                    start_handshake.into_stream(server_config.clone()),
                                 )
                                 .await
                                 {
@@ -259,7 +259,7 @@ impl AcceptedStream {
                         Err(_) => Err(ItsiError::Pass),
                     }
                 }
-                ItsiTlsAcceptor::Automatic(_, _, _) => {
+                ItsiTlsAcceptor::Automatic { .. } => {
                     error!("Automatic TLS not supported on Unix sockets");
                     Err(ItsiError::UnsupportedProtocol(
                         "Automatic TLS on Unix Sockets".to_owned(),

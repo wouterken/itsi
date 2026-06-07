@@ -38,6 +38,7 @@ tokio-rustls = { version = "0.26", default-features = false, features = [
 reqwest = { version = "0.12", default-features = false, features = [
   "rustls-tls",
 ] }
+parking_lot = "0.12"
 
 # Axum
 axum-server = { version = "0.7", features = ["tokio-rustls"], optional = true }

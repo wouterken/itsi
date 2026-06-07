@@ -1,5 +1,5 @@
 use base64::{engine::general_purpose, Engine as _};
-use itsi_acme::{AcmeAcceptor, AcmeConfig, AcmeState};
+use itsi_acme::{AcmeAcceptor, AcmeConfig, AcmeState, Http01Handler};
 use itsi_error::Result;
 use itsi_tracing::info;
 use locked_dir_cache::LockedDirCache;
@@ -32,11 +32,38 @@ mod locked_dir_cache;
 #[derive(Clone)]
 pub enum ItsiTlsAcceptor {
     Manual(TlsAcceptor),
-    Automatic(
-        AcmeAcceptor,
-        Arc<Mutex<AcmeState<Error>>>,
-        Arc<ServerConfig>,
-    ),
+    Automatic {
+        acme_acceptor: AcmeAcceptor,
+        state: Arc<Mutex<AcmeState<Error>>>,
+        server_config: Arc<ServerConfig>,
+        domains: Vec<String>,
+        http01_handler: Arc<Http01Handler>,
+    },
+}
+
+impl ItsiTlsAcceptor {
+    pub fn http01_entries(&self) -> Vec<(String, Arc<Http01Handler>)> {
+        match self {
+            ItsiTlsAcceptor::Automatic {
+                domains,
+                http01_handler,
+                ..
+            } => domains
+                .iter()
+                .cloned()
+                .map(|domain| (domain.to_ascii_lowercase(), http01_handler.clone()))
+                .collect(),
+            ItsiTlsAcceptor::Manual(_) => Vec::new(),
+        }
+    }
+
+    pub fn set_http01_enabled(&self, enabled: bool) {
+        if let ItsiTlsAcceptor::Automatic { state, .. } = self {
+            if let Ok(mut guard) = state.try_lock() {
+                guard.set_http01_enabled(enabled);
+            }
+        }
+    }
 }
 
 /// Generates a TLS configuration based on either :
@@ -69,7 +96,7 @@ pub fn configure_tls(
                     "acme_email query param or ITSI_ACME_CONTACT_EMAIL must be set before you can auto-generate let's encrypt certificates".to_string(),
                 ))?;
 
-            let acme_config = AcmeConfig::new(domains)
+            let acme_config = AcmeConfig::new(domains.clone())
                 .contact([format!("mailto:{}", acme_contact_email)])
                 .cache(LockedDirCache::new(&*ITSI_ACME_CACHE_DIR))
                 .directory(directory_url);
@@ -106,11 +133,14 @@ pub fn configure_tls(
             rustls_config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
 
             let acceptor = acme_state.acceptor();
-            return Ok(ItsiTlsAcceptor::Automatic(
-                acceptor,
-                Arc::new(Mutex::new(acme_state)),
-                Arc::new(rustls_config),
-            ));
+            let http01_handler = acme_state.http01_handler();
+            return Ok(ItsiTlsAcceptor::Automatic {
+                acme_acceptor: acceptor,
+                state: Arc::new(Mutex::new(acme_state)),
+                server_config: Arc::new(rustls_config),
+                domains,
+                http01_handler,
+            });
         }
     }
     let (certs, key) = if let (Some(cert_path), Some(key_path)) =

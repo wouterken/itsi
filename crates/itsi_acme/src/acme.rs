@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::https_helper::{https, HttpsRequestError, Method, Response};
-use crate::jose::{key_authorization_sha256, sign, sign_eab, JoseError};
+use crate::jose::{key_authorization, key_authorization_sha256, sign, sign_eab, JoseError};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use rcgen::{CustomExtension, Error as RcgenError, PKCS_ECDSA_P256_SHA256};
@@ -191,7 +191,11 @@ impl Account {
             None => return Err(AcmeError::NoTlsAlpn01Challenge),
         };
         let mut params = rcgen::CertificateParams::new(vec![domain])?;
-        let key_auth = key_authorization_sha256(&self.key_pair, &challenge.token)?;
+        let token = challenge
+            .token
+            .as_deref()
+            .ok_or(AcmeError::MissingChallengeToken)?;
+        let key_auth = key_authorization_sha256(&self.key_pair, token)?;
         params.custom_extensions = vec![CustomExtension::new_acme_identifier(key_auth.as_ref())];
 
         let key_pair = rcgen::KeyPair::generate_for(&PKCS_ECDSA_P256_SHA256)?;
@@ -203,6 +207,24 @@ impl Account {
         let pk = any_ecdsa_type(&pk_der).unwrap();
         let certified_key = CertifiedKey::new(vec![cert.der().clone()], pk);
         Ok((challenge, certified_key))
+    }
+
+    pub fn http_01<'a>(
+        &self,
+        challenges: &'a [Challenge],
+    ) -> Result<(&'a Challenge, String), AcmeError> {
+        let challenge = challenges.iter().find(|c| c.typ == ChallengeType::Http01);
+
+        let challenge = match challenge {
+            Some(challenge) => challenge,
+            None => return Err(AcmeError::NoHttp01Challenge),
+        };
+        let token = challenge
+            .token
+            .as_deref()
+            .ok_or(AcmeError::MissingChallengeToken)?;
+
+        Ok((challenge, key_authorization(&self.key_pair, token)?))
     }
 }
 
@@ -253,6 +275,8 @@ pub enum ChallengeType {
     Dns01,
     #[serde(rename = "tls-alpn-01")]
     TlsAlpn01,
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Debug, Deserialize)]
@@ -305,7 +329,7 @@ pub struct Challenge {
     #[serde(rename = "type")]
     pub typ: ChallengeType,
     pub url: String,
-    pub token: String,
+    pub token: Option<String>,
     pub error: Option<Problem>,
 }
 
@@ -335,6 +359,10 @@ pub enum AcmeError {
     Crypto(#[from] Unspecified),
     #[error("acme service response is missing {0} header")]
     MissingHeader(&'static str),
+    #[error("selected challenge is missing token")]
+    MissingChallengeToken,
+    #[error("no http-01 challenge found")]
+    NoHttp01Challenge,
     #[error("no tls-alpn-01 challenge found")]
     NoTlsAlpn01Challenge,
 }

@@ -31,6 +31,10 @@ impl ResolvesServerCertAcme {
     pub(crate) fn set_auth_key(&self, domain: String, cert: Arc<CertifiedKey>) {
         self.inner.lock().unwrap().auth_keys.insert(domain, cert);
     }
+
+    pub(crate) fn remove_auth_key(&self, domain: &str) {
+        self.inner.lock().unwrap().auth_keys.remove(domain);
+    }
 }
 
 impl ResolvesServerCert for ResolvesServerCertAcme {

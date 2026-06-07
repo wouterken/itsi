@@ -53,9 +53,13 @@ pub(crate) fn key_authorization_sha256(
     key: &EcdsaKeyPair,
     token: &str,
 ) -> Result<Digest, JoseError> {
-    let jwk = Jwk::new(key);
-    let key_authorization = format!("{}.{}", token, jwk.thumb_sha256_base64()?);
+    let key_authorization = key_authorization(key, token)?;
     Ok(digest(&SHA256, key_authorization.as_bytes()))
+}
+
+pub(crate) fn key_authorization(key: &EcdsaKeyPair, token: &str) -> Result<String, JoseError> {
+    let jwk = Jwk::new(key);
+    Ok(format!("{}.{}", token, jwk.thumb_sha256_base64()?))
 }
 
 #[derive(Serialize)]
