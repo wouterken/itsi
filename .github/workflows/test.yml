@@ -54,6 +54,12 @@ jobs:
           ruby-version: "3.4"
           bundler-cache: true
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+
       - name: Install Rust
         uses: actions-rs/toolchain@v1
         with:
@@ -77,6 +83,10 @@ jobs:
             echo "Waiting for Redis..."
             sleep 2
           done
+
+      - name: Verify local ACME test prerequisites
+        run: |
+          go version
 
       - name: Build Gems
         run: |
