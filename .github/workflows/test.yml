@@ -52,7 +52,7 @@ jobs:
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: "3.4"
-          bundler-cache: true
+          bundler: "4.0.6"
 
       - name: Set up Go
         uses: actions/setup-go@v5
