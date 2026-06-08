@@ -2,6 +2,8 @@
 
 ENV["ITSI_LOG"] = "off"
 
+Warning[:experimental] = false if Warning.respond_to?(:[]=)
+
 require "minitest/reporters"
 require "rackup"
 require "itsi/server"
@@ -43,7 +45,7 @@ def server(
     bind bind if bind && binds.nil?
     workers 1
     threads 1
-    log_level :warn
+    log_level :error
     run app if app
     instance_exec(&itsi_rb) if itsi_rb
   end
@@ -51,11 +53,6 @@ def server(
   sync.pop
   uri = URI(bind)
   RequestContext.new(uri, self).instance_exec(uri, &blk)
-rescue StandardError => e
-  puts e
-  # puts e.message
-  # puts e.backtrace.join("\n")
-  raise
 ensure
   Itsi::Server.stop_background_threads if cleanup
 end

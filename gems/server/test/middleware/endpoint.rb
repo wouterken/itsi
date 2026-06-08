@@ -118,14 +118,17 @@ class TestEndpoint < Minitest::Test
 
   # 8. Exceptions inside handler produce 500
   def test_internal_error_returns_500
-    server(itsi_rb: lambda do
-      endpoint "/boom" do |_req|
-        raise "test crash"
+    response = nil
+    capture_subprocess_io do
+      server(itsi_rb: lambda do
+        endpoint "/boom" do |_req|
+          raise "test crash"
+        end
+      end) do
+        response = get_resp("/boom")
       end
-    end) do
-      res = get_resp("/boom")
-      assert_equal "500", res.code
     end
+    assert_equal "500", response.code
   end
 
   # 9. Controller method dispatch via symbol

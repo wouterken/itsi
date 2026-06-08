@@ -11,6 +11,16 @@ SMOKE_TEST_GLOBS = %w[
   test/test_file_io.rb
 ].freeze
 
+def native_build_tasks_requested?
+  requested = Rake.application.top_level_tasks
+  return true if requested.empty?
+
+  requested.any? do |task_name|
+    task_name == "default" ||
+      task_name.start_with?("build", "compile", "cross", "clobber")
+  end
+end
+
 def configure_test_task(task_name, test_globs)
   Minitest::TestTask.create(task_name) do |t|
     t.libs << "test"
@@ -26,14 +36,16 @@ configure_test_task("test:smoke", SMOKE_TEST_GLOBS)
 
 task "test:full" => :test
 
-require "rb_sys/extensiontask"
+if native_build_tasks_requested?
+  require "rb_sys/extensiontask"
 
-task build: :compile
+  task build: :compile
 
-GEMSPEC = Gem::Specification.load("itsi-scheduler.gemspec")
+  GEMSPEC = Gem::Specification.load("itsi-scheduler.gemspec")
 
-RbSys::ExtensionTask.new("itsi-scheduler", GEMSPEC) do |ext|
-  ext.lib_dir = "lib/itsi/scheduler"
+  RbSys::ExtensionTask.new("itsi-scheduler", GEMSPEC) do |ext|
+    ext.lib_dir = "lib/itsi/scheduler"
+  end
 end
 
 task default: %i[compile test rubocop]

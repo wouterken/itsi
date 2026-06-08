@@ -29,6 +29,16 @@ SMOKE_TEST_GLOBS = %w[
   test/middleware/string_rewrite.rb
 ].freeze
 
+def native_build_tasks_requested?
+  requested = Rake.application.top_level_tasks
+  return true if requested.empty?
+
+  requested.any? do |task_name|
+    task_name == "default" ||
+      task_name.start_with?("build", "compile", "cross", "clobber")
+  end
+end
+
 def configure_test_task(task_name, test_globs)
   Minitest::TestTask.create(task_name) do |t|
     t.libs << "test"
@@ -45,14 +55,16 @@ configure_test_task("test:acme", ["test/acme/**/*.rb"])
 
 task "test:full" => :test
 
-require "rb_sys/extensiontask"
+if native_build_tasks_requested?
+  require "rb_sys/extensiontask"
 
-task build: :compile
+  task build: :compile
 
-GEMSPEC = Gem::Specification.load("itsi-server.gemspec")
+  GEMSPEC = Gem::Specification.load("itsi-server.gemspec")
 
-RbSys::ExtensionTask.new("itsi-server", GEMSPEC) do |ext|
-  ext.lib_dir = "lib/itsi/server"
+  RbSys::ExtensionTask.new("itsi-server", GEMSPEC) do |ext|
+    ext.lib_dir = "lib/itsi/server"
+  end
 end
 
 task default: %i[compile test rubocop]

@@ -25,17 +25,26 @@ GEMS = [
 ]
 SHARED_TASKS = %i[compile compile:dev test]
 
+def quiet_ruby_env
+  rubyopt = [ENV["RUBYOPT"], "-W0"].compact.join(" ").strip
+  rubyopt.empty? ? {} : { "RUBYOPT" => rubyopt }
+end
+
 GEMS.each do |gem|
   namespace gem[:shortname] do
     desc "Run tasks in the #{gem[:dir]} directory"
     task :default do
-      sh "cd #{gem[:dir]} && bundle exec rake"
+      Dir.chdir(gem[:dir]) do
+        sh quiet_ruby_env, "bundle", "exec", "rake", verbose: false
+      end
     end
 
     SHARED_TASKS.each do |task|
       task task do
         Rake::Task[:sync_crates].invoke
-        sh "cd #{gem[:dir]} && bundle exec rake #{task}"
+        Dir.chdir(gem[:dir]) do
+          sh quiet_ruby_env, "bundle", "exec", "rake", task.to_s, verbose: false
+        end
       end
     end
   end

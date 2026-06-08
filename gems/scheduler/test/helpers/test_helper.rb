@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+Warning[:experimental] = false if Warning.respond_to?(:[]=)
+
 require "minitest/reporters"
 Minitest::Reporters.use! Minitest::Reporters::SpecReporter.new
 
