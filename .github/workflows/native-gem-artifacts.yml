@@ -164,7 +164,7 @@ jobs:
         include: ${{ fromJson(needs.resolve-matrix.outputs.entries) }}
     env:
       BUNDLE_GEMFILE: ${{ github.workspace }}/${{ matrix.gemfile }}
-      BUNDLE_WITHOUT: server_test:server_test_support
+      BUNDLE_WITHOUT: test:server_test:server_test_support
     steps:
       - name: Resolve artifact source run
         id: artifact-source
