@@ -1,8 +1,9 @@
 use base64::{engine::general_purpose, Engine as _};
-use itsi_acme::{AcmeAcceptor, AcmeConfig, AcmeState, Http01Handler};
+use itsi_acme::{AcmeAcceptor, AcmeConfig, AcmeState, Http01Handler, ResolvesServerCertAcme};
 use itsi_error::Result;
-use itsi_tracing::info;
+use itsi_tracing::{error, info};
 use locked_dir_cache::LockedDirCache;
+use parking_lot::{Mutex as ParkingMutex, RwLock as ParkingRwLock};
 use rcgen::ExtendedKeyUsagePurpose;
 use rcgen::{
     BasicConstraints, CertificateParams, DistinguishedName, DnType, IsCa, KeyPair, KeyUsagePurpose,
@@ -17,9 +18,14 @@ use std::{
     collections::HashMap,
     fs,
     io::{BufReader, Error},
-    sync::Arc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    thread::JoinHandle,
 };
-use tokio::sync::Mutex;
+use tokio::runtime::Builder as RuntimeBuilder;
+use tokio::sync::{mpsc, watch};
 use tokio_rustls::{rustls::ServerConfig, TlsAcceptor};
 
 use crate::env::{
@@ -29,39 +35,298 @@ use crate::env::{
 
 mod locked_dir_cache;
 
+#[derive(Debug, Clone)]
+pub struct ManagedTlsDomainStatus {
+    pub domain: String,
+    pub status: String,
+    pub last_error: Option<String>,
+}
+
+#[derive(Clone)]
+struct DynamicAcmeConfigTemplate {
+    client_config: Arc<ClientConfig>,
+    directory_url: String,
+    contact: Vec<String>,
+    cache_dir: String,
+}
+
+impl DynamicAcmeConfigTemplate {
+    fn state_for_domain(
+        &self,
+        domain: &str,
+        resolver: Arc<ResolvesServerCertAcme>,
+        http01_handler: Arc<Http01Handler>,
+        http01_enabled: bool,
+    ) -> AcmeState<Error> {
+        let state = AcmeConfig::new([domain])
+            .contact(self.contact.clone())
+            .cache(LockedDirCache::new(self.cache_dir.clone()))
+            .directory(&self.directory_url)
+            .client_tls_config(self.client_config.clone());
+        let mut state = AcmeState::new_with_resolver(
+            state,
+            resolver,
+            http01_handler,
+            Some(domain.to_string()),
+        );
+        state.set_http01_enabled(http01_enabled);
+        state
+    }
+}
+
+enum DynamicAcmeCommand {
+    Register(String),
+    Unregister(String),
+    Shutdown,
+}
+
+#[derive(Clone)]
+pub struct DynamicAcmeManager {
+    inner: Arc<DynamicAcmeManagerInner>,
+}
+
+struct DynamicAcmeManagerInner {
+    resolver: Arc<ResolvesServerCertAcme>,
+    http01_registry: Arc<ParkingRwLock<HashMap<String, Arc<Http01Handler>>>>,
+    statuses: Arc<ParkingRwLock<HashMap<String, ManagedTlsDomainStatus>>>,
+    http01_enabled: Arc<AtomicBool>,
+    initialized: AtomicBool,
+    initial_domains: Vec<String>,
+    command_tx: mpsc::UnboundedSender<DynamicAcmeCommand>,
+    thread_handle: ParkingMutex<Option<JoinHandle<()>>>,
+}
+
+impl DynamicAcmeManager {
+    fn new(template: DynamicAcmeConfigTemplate, initial_domains: Vec<String>) -> Self {
+        let resolver = ResolvesServerCertAcme::new();
+        let http01_handler = Arc::new(Http01Handler::new());
+        let http01_registry = Arc::new(ParkingRwLock::new(HashMap::new()));
+        let statuses = Arc::new(ParkingRwLock::new(HashMap::new()));
+        let http01_enabled = Arc::new(AtomicBool::new(false));
+        let (command_tx, mut command_rx) = mpsc::unbounded_channel();
+
+        let resolver_clone = resolver.clone();
+        let http01_handler_clone = http01_handler.clone();
+        let http01_registry_clone = http01_registry.clone();
+        let statuses_clone = statuses.clone();
+        let http01_enabled_clone = http01_enabled.clone();
+
+        let thread_handle = std::thread::spawn(move || {
+            let runtime = RuntimeBuilder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("Failed to build dynamic ACME runtime");
+            runtime.block_on(async move {
+                let mut cancellations: HashMap<String, watch::Sender<bool>> = HashMap::new();
+
+                while let Some(command) = command_rx.recv().await {
+                    match command {
+                        DynamicAcmeCommand::Register(domain) => {
+                            let domain = domain.to_ascii_lowercase();
+                            if cancellations.contains_key(&domain) {
+                                continue;
+                            }
+
+                            statuses_clone.write().insert(
+                                domain.clone(),
+                                ManagedTlsDomainStatus {
+                                    domain: domain.clone(),
+                                    status: "pending".to_string(),
+                                    last_error: None,
+                                },
+                            );
+                            http01_registry_clone
+                                .write()
+                                .insert(domain.clone(), http01_handler_clone.clone());
+
+                            let (cancel_tx, mut cancel_rx) = watch::channel(false);
+                            cancellations.insert(domain.clone(), cancel_tx);
+
+                            let resolver = resolver_clone.clone();
+                            let http01_handler = http01_handler_clone.clone();
+                            let registry = http01_registry_clone.clone();
+                            let statuses = statuses_clone.clone();
+                            let template = template.clone();
+                            let enabled = http01_enabled_clone.clone();
+                            let task_domain = domain.clone();
+
+                            tokio::spawn(async move {
+                                statuses.write().insert(
+                                    task_domain.clone(),
+                                    ManagedTlsDomainStatus {
+                                        domain: task_domain.clone(),
+                                        status: "issuing".to_string(),
+                                        last_error: None,
+                                    },
+                                );
+                                let mut state = template.state_for_domain(
+                                    &task_domain,
+                                    resolver.clone(),
+                                    http01_handler,
+                                    enabled.load(Ordering::SeqCst),
+                                );
+
+                                loop {
+                                    tokio::select! {
+                                        changed = cancel_rx.changed() => {
+                                            if changed.is_ok() && *cancel_rx.borrow() {
+                                                resolver.remove_auth_key(&task_domain);
+                                                resolver.remove_cert_for_domain(&task_domain);
+                                                registry.write().remove(&task_domain);
+                                                statuses.write().remove(&task_domain);
+                                                break;
+                                            }
+                                        }
+                                        event = futures::StreamExt::next(&mut state) => {
+                                            match event {
+                                                Some(Ok(_)) => {
+                                                    let mut statuses = statuses.write();
+                                                    if let Some(status) = statuses.get_mut(&task_domain) {
+                                                        status.status = "active".to_string();
+                                                        status.last_error = None;
+                                                    }
+                                                }
+                                                Some(Err(err)) => {
+                                                    let mut statuses = statuses.write();
+                                                    if let Some(status) = statuses.get_mut(&task_domain) {
+                                                        status.status = "failed".to_string();
+                                                        status.last_error = Some(err.to_string());
+                                                    }
+                                                }
+                                                None => break,
+                                            }
+                                        }
+                                    }
+                                }
+                            });
+                        }
+                        DynamicAcmeCommand::Unregister(domain) => {
+                            let domain = domain.to_ascii_lowercase();
+                            if let Some(cancel_tx) = cancellations.remove(&domain) {
+                                let _ = cancel_tx.send(true);
+                            } else {
+                                http01_registry_clone.write().remove(&domain);
+                                resolver_clone.remove_auth_key(&domain);
+                                resolver_clone.remove_cert_for_domain(&domain);
+                                statuses_clone.write().remove(&domain);
+                            }
+                        }
+                        DynamicAcmeCommand::Shutdown => {
+                            for (_, cancel_tx) in cancellations.drain() {
+                                let _ = cancel_tx.send(true);
+                            }
+                            break;
+                        }
+                    }
+                }
+            });
+        });
+
+        Self {
+            inner: Arc::new(DynamicAcmeManagerInner {
+                resolver,
+                http01_registry,
+                statuses,
+                http01_enabled,
+                initialized: AtomicBool::new(false),
+                initial_domains,
+                command_tx,
+                thread_handle: ParkingMutex::new(Some(thread_handle)),
+            }),
+        }
+    }
+
+    pub fn resolver(&self) -> Arc<ResolvesServerCertAcme> {
+        self.inner.resolver.clone()
+    }
+
+    pub fn set_http01_enabled(&self, enabled: bool) {
+        self.inner.http01_enabled.store(enabled, Ordering::SeqCst);
+    }
+
+    pub fn initialize_domains(&self) {
+        if self.inner.initialized.swap(true, Ordering::SeqCst) {
+            return;
+        }
+
+        for domain in &self.inner.initial_domains {
+            self.register_domain(domain.clone());
+        }
+    }
+
+    pub fn register_domain(&self, domain: String) {
+        let _ = self
+            .inner
+            .command_tx
+            .send(DynamicAcmeCommand::Register(domain));
+    }
+
+    pub fn unregister_domain(&self, domain: &str) {
+        let _ = self
+            .inner
+            .command_tx
+            .send(DynamicAcmeCommand::Unregister(domain.to_string()));
+    }
+
+    pub fn http01_response(&self, host: &str, path: &str) -> Option<String> {
+        self.inner
+            .http01_registry
+            .read()
+            .get(host)
+            .and_then(|handler| handler.handle_challenge_request(path))
+    }
+
+    pub fn statuses(&self) -> Vec<ManagedTlsDomainStatus> {
+        let mut statuses = self
+            .inner
+            .statuses
+            .read()
+            .values()
+            .cloned()
+            .collect::<Vec<_>>();
+        statuses.sort_by(|a, b| a.domain.cmp(&b.domain));
+        statuses
+    }
+}
+
+impl Drop for DynamicAcmeManagerInner {
+    fn drop(&mut self) {
+        let _ = self.command_tx.send(DynamicAcmeCommand::Shutdown);
+        if let Some(handle) = self.thread_handle.lock().take() {
+            if let Err(err) = handle.join() {
+                error!("Dynamic ACME manager thread join failed: {:?}", err);
+            }
+        }
+    }
+}
+
 #[derive(Clone)]
 pub enum ItsiTlsAcceptor {
     Manual(TlsAcceptor),
     Automatic {
         acme_acceptor: AcmeAcceptor,
-        state: Arc<Mutex<AcmeState<Error>>>,
+        manager: DynamicAcmeManager,
         server_config: Arc<ServerConfig>,
-        domains: Vec<String>,
-        http01_handler: Arc<Http01Handler>,
     },
 }
 
 impl ItsiTlsAcceptor {
-    pub fn http01_entries(&self) -> Vec<(String, Arc<Http01Handler>)> {
+    pub fn manager(&self) -> Option<DynamicAcmeManager> {
         match self {
-            ItsiTlsAcceptor::Automatic {
-                domains,
-                http01_handler,
-                ..
-            } => domains
-                .iter()
-                .cloned()
-                .map(|domain| (domain.to_ascii_lowercase(), http01_handler.clone()))
-                .collect(),
-            ItsiTlsAcceptor::Manual(_) => Vec::new(),
+            ItsiTlsAcceptor::Automatic { manager, .. } => Some(manager.clone()),
+            ItsiTlsAcceptor::Manual(_) => None,
         }
     }
 
     pub fn set_http01_enabled(&self, enabled: bool) {
-        if let ItsiTlsAcceptor::Automatic { state, .. } = self {
-            if let Ok(mut guard) = state.try_lock() {
-                guard.set_http01_enabled(enabled);
-            }
+        if let ItsiTlsAcceptor::Automatic { manager, .. } = self {
+            manager.set_http01_enabled(enabled);
+        }
+    }
+
+    pub fn initialize_domains(&self) {
+        if let ItsiTlsAcceptor::Automatic { manager, .. } = self {
+            manager.initialize_domains();
         }
     }
 }
@@ -79,69 +344,79 @@ pub fn configure_tls(
     let domains = query_params
         .get("domains")
         .map(|v| v.split(',').map(String::from).collect::<Vec<_>>())
-        .or_else(|| query_params.get("domain").map(|v| vec![v.to_string()]));
+        .or_else(|| query_params.get("domain").map(|v| vec![v.to_string()]))
+        .unwrap_or_default();
 
     if query_params.get("cert").is_some_and(|c| c == "acme") {
-        if let Some(domains) = domains {
-            let directory_url = &*ITSI_ACME_DIRECTORY_URL;
-            info!(
-                domains = format!("{:?}", domains),
-                directory_url, "Requesting acme cert"
-            );
-            let acme_contact_email = query_params
-                .get("acme_email")
-                .map(|s| s.to_string())
-                .or_else(|| (*ITSI_ACME_CONTACT_EMAIL).as_ref().ok().map(|s| s.to_string()))
-                .ok_or_else(|| itsi_error::ItsiError::ArgumentError(
-                    "acme_email query param or ITSI_ACME_CONTACT_EMAIL must be set before you can auto-generate let's encrypt certificates".to_string(),
-                ))?;
+        let directory_url = &*ITSI_ACME_DIRECTORY_URL;
+        info!(
+            domains = format!("{:?}", domains),
+            directory_url, "Requesting acme cert"
+        );
+        let acme_contact_email = query_params
+            .get("acme_email")
+            .map(|s| s.to_string())
+            .or_else(|| (*ITSI_ACME_CONTACT_EMAIL).as_ref().ok().map(|s| s.to_string()))
+            .ok_or_else(|| itsi_error::ItsiError::ArgumentError(
+                "acme_email query param or ITSI_ACME_CONTACT_EMAIL must be set before you can auto-generate let's encrypt certificates".to_string(),
+            ))?;
 
-            let acme_config = AcmeConfig::new(domains.clone())
-                .contact([format!("mailto:{}", acme_contact_email)])
-                .cache(LockedDirCache::new(&*ITSI_ACME_CACHE_DIR))
-                .directory(directory_url);
+        let client_config = if let Ok(ca_pem_path) = &*ITSI_ACME_CA_PEM_PATH {
+            let mut root_cert_store = RootCertStore::empty();
 
-            let acme_state = if let Ok(ca_pem_path) = &*ITSI_ACME_CA_PEM_PATH {
-                let mut root_cert_store = RootCertStore::empty();
+            let ca_pem = fs::read(ca_pem_path).expect("failed to read CA pem file");
+            let mut ca_reader = BufReader::new(&ca_pem[..]);
+            let der_certs: Vec<CertificateDer> = certs(&mut ca_reader)
+                .collect::<std::result::Result<Vec<CertificateDer>, _>>()
+                .map_err(|e| {
+                    itsi_error::ItsiError::ArgumentError(format!("Invalid ACME CA Pem path {:?}", e))
+                })?;
+            root_cert_store.add_parsable_certificates(der_certs);
 
-                let ca_pem = fs::read(ca_pem_path).expect("failed to read CA pem file");
-                let mut ca_reader = BufReader::new(&ca_pem[..]);
-                let der_certs: Vec<CertificateDer> = certs(&mut ca_reader)
-                    .collect::<std::result::Result<Vec<CertificateDer>, _>>()
-                    .map_err(|e| {
-                        itsi_error::ItsiError::ArgumentError(format!(
-                            "Invalid ACME CA Pem path {:?}",
-                            e
-                        ))
-                    })?;
-                root_cert_store.add_parsable_certificates(der_certs);
-
-                let client_config = ClientConfig::builder()
+            Arc::new(
+                ClientConfig::builder()
                     .with_root_certificates(root_cert_store)
-                    .with_no_client_auth();
-                acme_config
-                    .client_tls_config(Arc::new(client_config))
-                    .state()
-            } else {
-                acme_config.state()
-            };
+                    .with_no_client_auth(),
+            )
+        } else {
+            let mut root_store = RootCertStore::empty();
+            root_store.extend(
+                webpki_roots::TLS_SERVER_ROOTS
+                    .iter()
+                    .map(|ta| rustls::pki_types::TrustAnchor {
+                        subject: ta.subject.clone(),
+                        subject_public_key_info: ta.subject_public_key_info.clone(),
+                        name_constraints: ta.name_constraints.clone(),
+                    }),
+            );
+            Arc::new(
+                ClientConfig::builder()
+                    .with_root_certificates(root_store)
+                    .with_no_client_auth(),
+            )
+        };
 
-            let mut rustls_config = ServerConfig::builder()
-                .with_no_client_auth()
-                .with_cert_resolver(acme_state.resolver());
+        let manager = DynamicAcmeManager::new(
+            DynamicAcmeConfigTemplate {
+                client_config,
+                directory_url: directory_url.to_string(),
+                contact: vec![format!("mailto:{}", acme_contact_email)],
+                cache_dir: ITSI_ACME_CACHE_DIR.to_string(),
+            },
+            domains.clone(),
+        );
 
-            rustls_config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
+        let mut rustls_config = ServerConfig::builder()
+            .with_no_client_auth()
+            .with_cert_resolver(manager.resolver());
 
-            let acceptor = acme_state.acceptor();
-            let http01_handler = acme_state.http01_handler();
-            return Ok(ItsiTlsAcceptor::Automatic {
-                acme_acceptor: acceptor,
-                state: Arc::new(Mutex::new(acme_state)),
-                server_config: Arc::new(rustls_config),
-                domains,
-                http01_handler,
-            });
-        }
+        rustls_config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
+
+        return Ok(ItsiTlsAcceptor::Automatic {
+            acme_acceptor: AcmeAcceptor::new(manager.resolver()),
+            manager,
+            server_config: Arc::new(rustls_config),
+        });
     }
     let (certs, key) = if let (Some(cert_path), Some(key_path)) =
         (query_params.get("cert"), query_params.get("key"))
@@ -151,7 +426,7 @@ pub fn configure_tls(
         let key = load_private_key(key_path);
         (certs, key)
     } else {
-        generate_ca_signed_cert(domains.unwrap_or(vec![host.to_owned()]))?
+        generate_ca_signed_cert(if domains.is_empty() { vec![host.to_owned()] } else { domains })?
     };
 
     let mut config = ServerConfig::builder()

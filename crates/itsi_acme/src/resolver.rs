@@ -13,26 +13,38 @@ pub struct ResolvesServerCertAcme {
 #[derive(Debug)]
 struct Inner {
     cert: Option<Arc<CertifiedKey>>,
+    certs: BTreeMap<String, Arc<CertifiedKey>>,
     auth_keys: BTreeMap<String, Arc<CertifiedKey>>,
 }
 
 impl ResolvesServerCertAcme {
-    pub(crate) fn new() -> Arc<Self> {
+    pub fn new() -> Arc<Self> {
         Arc::new(Self {
             inner: Mutex::new(Inner {
                 cert: None,
+                certs: Default::default(),
                 auth_keys: Default::default(),
             }),
         })
     }
-    pub(crate) fn set_cert(&self, cert: Arc<CertifiedKey>) {
+    pub fn set_cert(&self, cert: Arc<CertifiedKey>) {
         self.inner.lock().unwrap().cert = Some(cert);
     }
-    pub(crate) fn set_auth_key(&self, domain: String, cert: Arc<CertifiedKey>) {
+    pub fn set_cert_for_domain(&self, domain: String, cert: Arc<CertifiedKey>) {
+        let mut inner = self.inner.lock().unwrap();
+        if inner.cert.is_none() {
+            inner.cert = Some(cert.clone());
+        }
+        inner.certs.insert(domain, cert);
+    }
+    pub fn remove_cert_for_domain(&self, domain: &str) {
+        self.inner.lock().unwrap().certs.remove(domain);
+    }
+    pub fn set_auth_key(&self, domain: String, cert: Arc<CertifiedKey>) {
         self.inner.lock().unwrap().auth_keys.insert(domain, cert);
     }
 
-    pub(crate) fn remove_auth_key(&self, domain: &str) {
+    pub fn remove_auth_key(&self, domain: &str) {
         self.inner.lock().unwrap().auth_keys.remove(domain);
     }
 }
@@ -57,7 +69,14 @@ impl ResolvesServerCert for ResolvesServerCertAcme {
                 }
             }
         } else {
-            self.inner.lock().unwrap().cert.clone()
+            let inner = self.inner.lock().unwrap();
+            match client_hello.server_name() {
+                Some(domain) => {
+                    let domain = AsRef::<str>::as_ref(&domain);
+                    inner.certs.get(domain).cloned().or_else(|| inner.cert.clone())
+                }
+                None => inner.cert.clone(),
+            }
         }
     }
 }

@@ -40,7 +40,7 @@ class TestLocalAcmeChallenges < Minitest::Test
     https_bind = "https://0.0.0.0:#{local_acme.tls_port}?cert=acme&domains=#{domain}&acme_email=test@example.com"
 
     server(app: APP, bind: https_bind) do
-      wait_for_https_response(local_acme.tls_port)
+      wait_for_https_response(local_acme.tls_port, domain)
 
       certificate = peer_certificate(local_acme.tls_port, domain)
       assert_certificate_domain(certificate, domain)
@@ -59,7 +59,7 @@ class TestLocalAcmeChallenges < Minitest::Test
     http_bind = "http://0.0.0.0:#{local_acme.http_port}"
 
     server(app: APP, bind: https_bind, binds: [https_bind, http_bind]) do
-      wait_for_https_response(app_port)
+      wait_for_https_response(app_port, domain)
 
       certificate = peer_certificate(app_port, domain)
       assert_certificate_domain(certificate, domain)
@@ -67,6 +67,56 @@ class TestLocalAcmeChallenges < Minitest::Test
       response = https_get(app_port, "/", domain)
       assert_equal "200", response.code
       assert_equal "acme-ok", response.body
+    end
+  end
+
+  def test_dynamic_http01_issuance_with_runtime_domain_registration
+    domain = "runtime-http01.itsi.test"
+    local_acme = self.class.local_acme
+    app_port = free_tcp_port
+    https_bind = "https://0.0.0.0:#{app_port}?cert=acme&acme_email=test@example.com"
+    http_bind = "http://0.0.0.0:#{local_acme.http_port}"
+
+    server(app: APP, bind: https_bind, binds: [https_bind, http_bind]) do
+      assert_equal [], Itsi::Server.tls_domains
+      assert_equal ["tcp://0.0.0.0:#{app_port}"], Itsi::Server.tls_bindings
+
+      Itsi::Server.register_tls_domain(domain)
+      wait_until { Itsi::Server.tls_domains.include?(domain) }
+      wait_for_https_response(app_port, domain)
+
+      statuses = Itsi::Server.tls_domain_statuses
+      active = statuses.find { |status| status["domain"] == domain }
+      refute_nil active
+      assert_equal "active", active["status"]
+
+      certificate = peer_certificate(app_port, domain)
+      assert_certificate_domain(certificate, domain)
+
+      Itsi::Server.unregister_tls_domain(domain)
+      wait_until { !Itsi::Server.tls_domains.include?(domain) }
+    end
+  end
+
+  def test_dynamic_tls_alpn01_issuance_with_runtime_domain_registration
+    domain = "runtime-alpn.itsi.test"
+    local_acme = self.class.local_acme
+    https_bind = "https://0.0.0.0:#{local_acme.tls_port}?cert=acme&acme_email=test@example.com"
+
+    server(app: APP, bind: https_bind) do
+      assert_equal [], Itsi::Server.tls_domains
+
+      Itsi::Server.register_tls_domain(domain)
+      wait_until { Itsi::Server.tls_domains.include?(domain) }
+      wait_for_https_response(local_acme.tls_port, domain)
+
+      statuses = Itsi::Server.tls_domain_statuses
+      active = statuses.find { |status| status["domain"] == domain }
+      refute_nil active
+      assert_equal "active", active["status"]
+
+      certificate = peer_certificate(local_acme.tls_port, domain)
+      assert_certificate_domain(certificate, domain)
     end
   end
 
@@ -79,15 +129,25 @@ class TestLocalAcmeChallenges < Minitest::Test
     port
   end
 
-  def wait_for_https_response(port)
+  def wait_for_https_response(port, host = "127.0.0.1")
     Timeout.timeout(20) do
       loop do
         begin
-          response = https_get(port, "/")
+          response = https_get(port, "/", host)
           return response if response.code == "200"
         rescue StandardError
           sleep 0.1
         end
+      end
+    end
+  end
+
+  def wait_until(timeout: 10)
+    Timeout.timeout(timeout) do
+      loop do
+        return if yield
+
+        sleep 0.05
       end
     end
   end

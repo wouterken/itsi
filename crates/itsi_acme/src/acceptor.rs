@@ -16,7 +16,7 @@ pub struct AcmeAcceptor {
 }
 
 impl AcmeAcceptor {
-    pub(crate) fn new(resolver: Arc<ResolvesServerCertAcme>) -> Self {
+    pub fn new(resolver: Arc<ResolvesServerCertAcme>) -> Self {
         let mut config = ServerConfig::builder()
             .with_no_client_auth()
             .with_cert_resolver(resolver);

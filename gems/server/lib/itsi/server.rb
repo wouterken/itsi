@@ -32,6 +32,30 @@ module Itsi
         @running && !@running.empty?
       end
 
+      def current_server
+        @running&.last || raise("No running Itsi::Server instance")
+      end
+
+      def tls_bindings
+        current_server.tls_bindings
+      end
+
+      def tls_domains(listener_id = nil)
+        current_server.tls_domains(listener_id)
+      end
+
+      def tls_domain_statuses(listener_id = nil)
+        current_server.tls_domain_statuses(listener_id)
+      end
+
+      def register_tls_domain(domain, listener_id = nil)
+        current_server.register_tls_domain(domain, listener_id)
+      end
+
+      def unregister_tls_domain(domain, listener_id = nil)
+        current_server.unregister_tls_domain(domain, listener_id)
+      end
+
       def start_in_background_thread(cli_params = {}, &blk)
         @background_threads ||= []
         server, background_thread = start(cli_params, background: true, &blk)

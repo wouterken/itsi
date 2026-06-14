@@ -41,6 +41,20 @@ fn init(ruby: &Ruby) -> Result<()> {
     server.define_singleton_method("reset_signal_handlers", function!(reset_signal_handlers, 0))?;
     server.define_method("start", method!(ItsiServer::start, 0))?;
     server.define_method("stop", method!(ItsiServer::stop, 0))?;
+    server.define_method("tls_bindings", method!(ItsiServer::tls_bindings, 0))?;
+    server.define_method("tls_domains", method!(ItsiServer::tls_domains, 1))?;
+    server.define_method(
+        "tls_domain_statuses",
+        method!(ItsiServer::tls_domain_statuses, 1),
+    )?;
+    server.define_method(
+        "register_tls_domain",
+        method!(ItsiServer::register_tls_domain, 2),
+    )?;
+    server.define_method(
+        "unregister_tls_domain",
+        method!(ItsiServer::unregister_tls_domain, 2),
+    )?;
 
     let request = ruby.get_inner(&ITSI_REQUEST);
     request.define_method("path", method!(ItsiHttpRequest::path, 0))?;

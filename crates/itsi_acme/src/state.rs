@@ -39,6 +39,7 @@ pub struct AcmeState<EC: Debug = Infallible, EA: Debug = EC> {
     account_key: Option<Vec<u8>>,
     http01_handler: Arc<Http01Handler>,
     http01_enabled: bool,
+    managed_domain: Option<String>,
 
     early_action: Option<BoxFuture<Event<EC, EA>>>,
     load_cert: Option<BoxFuture<Result<Option<Vec<u8>>, EC>>>,
@@ -138,13 +139,22 @@ impl<EC: 'static + Debug, EA: 'static + Debug> AcmeState<EC, EA> {
         self.http01_enabled = enabled;
     }
     pub fn new(config: AcmeConfig<EC, EA>) -> Self {
+        Self::new_with_resolver(config, ResolvesServerCertAcme::new(), Arc::new(Http01Handler::new()), None)
+    }
+    pub fn new_with_resolver(
+        config: AcmeConfig<EC, EA>,
+        resolver: Arc<ResolvesServerCertAcme>,
+        http01_handler: Arc<Http01Handler>,
+        managed_domain: Option<String>,
+    ) -> Self {
         let config = Arc::new(config);
         Self {
             config: config.clone(),
-            resolver: ResolvesServerCertAcme::new(),
+            resolver,
             account_key: None,
-            http01_handler: Arc::new(Http01Handler::new()),
+            http01_handler,
             http01_enabled: false,
+            managed_domain,
             early_action: None,
             load_cert: Some(Box::pin({
                 let config = config.clone();
@@ -206,7 +216,11 @@ impl<EC: 'static + Debug, EA: 'static + Debug> AcmeState<EC, EA> {
                 }
             }
         };
-        self.resolver.set_cert(Arc::new(cert));
+        let cert = Arc::new(cert);
+        match self.managed_domain.as_ref() {
+            Some(domain) => self.resolver.set_cert_for_domain(domain.clone(), cert),
+            None => self.resolver.set_cert(cert),
+        }
         let wait_duration = (validity[1] - (validity[1] - validity[0]) / 3 - Utc::now())
             .max(chrono::Duration::zero())
             .to_std()

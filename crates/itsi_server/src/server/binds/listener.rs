@@ -8,7 +8,6 @@ use super::bind_protocol::BindProtocol;
 
 use super::tls::ItsiTlsAcceptor;
 use itsi_error::{ItsiError, Result};
-use itsi_tracing::info;
 use socket2::{Domain, Protocol, SockRef, Socket, Type};
 use std::fmt::Display;
 use std::net::{IpAddr, SocketAddr, TcpListener};
@@ -21,7 +20,6 @@ use tokio::net::UnixListener as TokioUnixListener;
 use tokio::net::{unix, TcpStream, UnixStream};
 use tokio::sync::watch::Receiver;
 use tokio::time::timeout;
-use tokio_stream::StreamExt;
 
 pub(crate) enum Listener {
     Tcp(TcpListener),
@@ -115,21 +113,8 @@ impl TokioListener {
     }
 
     pub async fn spawn_acme_event_task(&self, mut shutdown_receiver: Receiver<RunningPhase>) {
-        if let TokioListener::TcpTls(_, ItsiTlsAcceptor::Automatic { state, .. }) = self {
-            let mut state = state.lock().await;
-            loop {
-                tokio::select! {
-                  stream_event = StreamExt::next(&mut *state) => {
-                      match stream_event {
-                        Some(event) => info!("ACME Event: {:?}", event),
-                        None => error!("Received no acme event"),
-                      }
-                  },
-                  _ = shutdown_receiver.changed() => {
-                      break;
-                  }
-                }
-            }
+        if let TokioListener::TcpTls(_, ItsiTlsAcceptor::Automatic { .. }) = self {
+            let _ = shutdown_receiver.changed().await;
         }
     }
 

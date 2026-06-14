@@ -273,9 +273,10 @@ impl ItsiHttpService {
 
     fn acme_http01_response(&self, req: &HttpRequest) -> Option<HttpResponse> {
         let host = normalize_host_header(req.header("host")?)?;
-        let handlers = self.server_params.acme_http01_handlers.read();
-        let handler = handlers.get(host)?;
-        let key_authorization = handler.handle_challenge_request(req.uri().path())?;
+        let managers = self.server_params.acme_managers.read();
+        let key_authorization = managers
+            .iter()
+            .find_map(|(_, manager)| manager.http01_response(host, req.uri().path()))?;
 
         let mut builder = http::Response::builder()
             .status(StatusCode::OK)
