@@ -1,13 +1,13 @@
 PATH
   remote: ../scheduler
   specs:
-    itsi-scheduler (0.2.27)
+    itsi-scheduler (0.2.27.rc1)
       rb_sys (~> 0.9.91)
 
 PATH
   remote: .
   specs:
-    itsi-server (0.2.27)
+    itsi-server (0.2.27.rc1)
       json (~> 2)
       prism (~> 1.4)
       rack (>= 1.6)
@@ -96,8 +96,8 @@ CHECKSUMS
   google-protobuf (4.30.2) sha256=0f35168dbeeccf13d928acf6c128cfec17b9a826ae4505246a02c115f4ae16ed
   googleapis-common-protos-types (1.19.0) sha256=aecb76ca5326f8bcc47ab083259bbc4971d07e87f56808af7e210669d9765694
   grpc (1.78.0) sha256=7aaf47b6d7783fb0e7d40fc853d34e802d47aef7b1312862b6e719141b3527c9
-  itsi-scheduler (0.2.27)
-  itsi-server (0.2.27)
+  itsi-scheduler (0.2.27.rc1)
+  itsi-server (0.2.27.rc1)
   json (2.19.4) sha256=670a7d333fb3b18ca5b29cb255eb7bef099e40d88c02c80bd42a3f30fe5239ac
   jwt (3.1.2) sha256=af6991f19a6bb4060d618d9add7a66f0eeb005ac0bc017cd01f63b42e122d535
   language_server-protocol (3.17.0.5) sha256=fd1e39a51a28bf3eec959379985a72e296e9f9acfce46f6a79d31ca8760803cc
