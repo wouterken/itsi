@@ -1,7 +1,17 @@
 # frozen_string_literal: true
 
 require "bundler/gem_tasks"
-require "minitest/test_task"
+
+def test_tasks_requested?
+  requested = Rake.application.top_level_tasks
+  return true if requested.empty?
+
+  requested.any? do |task_name|
+    task_name == "test" || task_name.start_with?("test:")
+  end
+end
+
+require "minitest/test_task" if test_tasks_requested?
 
 SMOKE_TEST_GLOBS = %w[
   test/test_itsi_scheduler.rb
