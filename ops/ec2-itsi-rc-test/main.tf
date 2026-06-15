@@ -147,8 +147,10 @@ locals {
     cat >/usr/local/bin/itsi-runner <<'SH'
     #!/bin/bash
     set -euo pipefail
+    set -a
     source /etc/itsi/itsi.env
-    exec itsi /opt/itsi/Itsi.rb
+    set +a
+    exec itsi -C /opt/itsi/Itsi.rb -w 1 serve
     SH
     chmod +x /usr/local/bin/itsi-runner
 
@@ -166,14 +168,14 @@ locals {
     mode="$3"
 
     cat >/etc/itsi/itsi.env <<EOF_INNER
-    export ITSI_DOMAIN="$domain"
-    export ITSI_ACME_EMAIL="$email"
-    export ITSI_ACME_CACHE_DIR="/var/lib/itsi-acme/$mode"
+    ITSI_DOMAIN="$domain"
+    ITSI_ACME_EMAIL="$email"
+    ITSI_ACME_CACHE_DIR="/var/lib/itsi-acme/$mode"
     EOF_INNER
 
     if [ "$mode" = "staging" ]; then
       cat >>/etc/itsi/itsi.env <<'EOF_STAGING'
-    export ITSI_ACME_DIRECTORY_URL="https://acme-staging-v02.api.letsencrypt.org/directory"
+    ITSI_ACME_DIRECTORY_URL="https://acme-staging-v02.api.letsencrypt.org/directory"
     EOF_STAGING
     elif [ "$mode" != "prod" ]; then
       echo "mode must be staging or prod" >&2
@@ -209,12 +211,12 @@ locals {
     Itsi RC test host
 
     Next steps:
-      1. Point your test domain at this instance with Cloudflare set to DNS only.
+      1. Point your test domain at this instance.
       2. Run:
          sudo itsi-configure-domain <domain> <email> staging
       3. Verify:
          curl -I http://<domain>/
-         curl -vk https://<domain>/
+         curl -vk --resolve <domain>:443:PUBLIC_IP https://<domain>/
       4. When staging is good, switch to prod:
          sudo itsi-configure-domain <domain> <email> prod
     MOTD

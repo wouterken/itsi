@@ -21,6 +21,18 @@ The instance bootstraps:
 sudo itsi-configure-domain example.com you@example.com staging
 ```
 
+That helper writes `/etc/itsi/itsi.env` in systemd `EnvironmentFile` format and starts:
+
+```bash
+itsi -C /opt/itsi/Itsi.rb -w 1 serve
+```
+
+To verify the origin certificate directly while a proxy is in front, use:
+
+```bash
+curl -vk --resolve example.com:443:PUBLIC_IP https://example.com/
+```
+
 After testing:
 
 ```bash
