@@ -1,3 +1,10 @@
+## [0.2.27] - 2026-06-18
+- Add `HTTP-01` ACME validation support alongside `TLS-ALPN-01`, including fallback-friendly deployments behind proxies and CDNs when an HTTP listener is reachable.
+- Add runtime TLS domain registration APIs so Ruby code can enroll and remove ACME-managed domains without restarting Itsi.
+- Expand ACME coverage with Pebble-backed end-to-end tests for direct issuance, HTTP fallback, and dynamic runtime issuance flows.
+- Tighten scheduler compatibility around real Ruby fiber-scheduler hooks including DNS resolution, sleeps/timeouts, nested scheduling, and process waiting.
+- Refresh release documentation for native gem packaging, ACME behavior, and local ACME testing.
+
 ## [0.2.26] - 2026-05-13
 - Restore synchronized release source after the unsynchronized `0.2.24` / `0.2.25` pushes.
 - Restore the multi-platform native gem packaging workflow so the next release can ship prebuilt binaries again.
