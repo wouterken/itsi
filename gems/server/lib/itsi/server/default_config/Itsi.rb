@@ -37,6 +37,10 @@ fiber_scheduler nil
 # bind "https://itsi.fyi?cert=acme&acme_email=admin@itsi.fyi"
 # You can generate certificates for multiple domains at once, by passing a comma-separated list of domains
 # bind "https://0.0.0.0?domains=foo.itsi.fyi,bar.itsi.fyi&cert=acme&acme_email=admin@itsi.fyi"
+# If HTTPS on 443 is not directly reachable, you can also expose an HTTP listener and
+# Let's Encrypt will be able to validate using HTTP-01 instead.
+# bind "http://0.0.0.0:80"
+# bind "https://0.0.0.0:443?domains=foo.itsi.fyi&cert=acme&acme_email=admin@itsi.fyi"
 #
 # If you already have a certificate you can specify it using the cert and key parameters
 # bind "https://itsi.fyi?cert=/path/to/cert.pem&key=/path/to/key.pem"

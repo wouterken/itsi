@@ -16,6 +16,9 @@ When combined with Itsi Server, you can write endpoints that look just like regu
 If you're purely after a lightweight, yet efficient Ruby scheduler,
 you can use Itsi Scheduler as a standalone scheduler for any Ruby application.
 
+The current release line is packaged as precompiled native gems for common macOS and Linux x86_64 and ARM64 targets, with source builds still available as a fallback.
+Recent scheduler work has also tightened compatibility around the Ruby scheduler hooks that matter in practice: network I/O, DNS resolution, sleep/timeouts, nested scheduling, and process waiting.
+
 Just use `Fiber.set_scheduler` to set an instance `Itsi::Scheduler` as a scheduler to opt in to this IO weaving behavior
 *automatically* for all blocking IO.
 

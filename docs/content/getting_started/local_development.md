@@ -75,6 +75,19 @@ Itsi will print informative error message if config validation fails. E.g.
      |   ^^^
 ```
 
+## Local ACME Testing
+Itsi includes end-to-end ACME tests that exercise both `TLS-ALPN-01` and `HTTP-01` flows against a local [Pebble](https://github.com/letsencrypt/pebble) certificate authority.
+
+The test helper installs Pebble on demand using the Go toolchain, so the only prerequisite is a working `go` binary on your `PATH`.
+
+Once Go is available, the local ACME tests can be run as part of the normal server suite:
+
+```bash
+rake server:test
+```
+
+If Go is not installed, those specific ACME integration tests will be skipped rather than failing the whole suite.
+
 ## Shell Completions
 Itsi can also help you install shell completions, which are useful if you find yourself using the `itsi` executable a lot and forgetting the commands.
 Add the following line to the bottom of your ~/.bashrc or ~/.zshrc file:

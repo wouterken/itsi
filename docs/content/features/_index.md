@@ -145,6 +145,8 @@ Itsi also comes bundled with a passfile generator, to help you manage your passw
 * Automated provisioning of Let's Encrypt certificates.
 * File system caching of certificate data to avoid excessive API calls.
 * Supports usage of subject alternative names (SANs) for certificates that span multiple domains/sub-domains.
+* Supports direct `TLS-ALPN-01` validation and `HTTP-01` validation when a reachable HTTP listener is available.
+* Supports runtime domain registration for live certificate issuance without restarting the server.
 * See <a target="_blank" href="/options/certificates#production-certificates-lets-encrypt">certificates</a>.
 {{% /details %}}
 
@@ -225,6 +227,7 @@ Note: This is not the same as <a target="_blank" href="https://grpc.io/blog/grpc
 {{% details title="Non-blocking(Fiber Scheduler) Mode" closed="true" %}}
 * Support for Ruby’s fiber scheduler for non-blocking concurrency, boosting performance during I/O operations.
 * Use Itsi's own high-performance built-in <a target="_blank" href="/itsi_scheduler">Fiber Scheduler</a> or if your prefer you can bring your own!
+* Current native gems are built and tested across common Linux and macOS x86_64 and ARM64 targets.
 * See <a target="_blank" href="/options/fiber_scheduler">fiber_scheduler</a>.
 {{% /details %}}
 

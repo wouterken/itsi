@@ -7,6 +7,8 @@ This allows Itsi to process a very large number of IO heavy requests concurrentl
 
 Enabling Fiber Scheduler mode can drastically improve application performance if you perform large amounts of blocking IO operations.
 
+Itsi's bundled scheduler is intended to be practical for real Ruby applications, not just toy socket examples. It integrates with the scheduler hooks used by modern Rubies for socket I/O, DNS lookups, sleeps and timeouts, and process waiting.
+
 
 ## Configuration File
 ```ruby {filename="Itsi.rb"}

@@ -20,7 +20,8 @@ Install Ruby
   **Prerequisites**
 
 
-You'll need at least a C/C++ build environment and `clang` and `curl` (for running `rustup`) installed.
+Most Linux installs on common x86_64 and ARM64 targets can use the precompiled native gems directly.
+If RubyGems falls back to the source gems, you'll need a C/C++ build environment plus `clang` and `curl` (for running `rustup`).
 
 #### For Ubuntu / Debian:
 ```bash
@@ -63,6 +64,9 @@ Then use `gem` to install Itsi, or its components based on your Ruby version.
   {{< /tab >}}
   {{< tab >}}
   **Mac**:
+  Most macOS installs on Apple Silicon and Intel Macs can use the precompiled native gems directly.
+  If RubyGems falls back to the source gems, install Xcode Command Line Tools first.
+
   **For Ruby >= 3.0**:
 ```bash
     gem install itsi
@@ -88,7 +92,7 @@ Then use `gem` to install Itsi, or its components based on your Ruby version.
   {{< tab >}}
   **FreeBSD**
 
-On FreeBSD you'll need to install a few build tools manually:
+FreeBSD currently relies on source builds, so you'll need to install a few build tools manually:
 ```bash
   pkg install gmake cmake curl llvm
 ```

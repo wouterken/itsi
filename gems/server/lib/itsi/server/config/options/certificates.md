@@ -54,12 +54,40 @@ Let's Encrypt enforces strict rate limits on production certificate generation. 
 {{< /callout >}}
 
 
-{{< callout type="warn" >}}
-Currently only the TLS-ALPN-01 challenge type is supported for automated certificates.
-The HTTP-01 challenge is not *yet* supported. This means that, for e.g. if your server is sitting behind a CDN or reverse proxy that performs HTTPS termination, you will not be able to rely on the *automated* certificate generation for fully automated, verified e2e encryption.
+Itsi supports both ACME challenge types that matter for common deployments:
 
-Instead you may wish to use:
-* [Self-signed](#development--self-signed) certificates
-* [Manually](#existing-certificates) install certificates
-* Use HTTP between the CDN and the server
-{{< /callout >}}
+* `TLS-ALPN-01` is used when the certificate authority can reach Itsi directly on the HTTPS listener.
+* `HTTP-01` can be used when you also expose a reachable HTTP listener for the same hostname. In real Let's Encrypt deployments this typically means port `80` must reach Itsi for `/.well-known/acme-challenge/*`.
+
+This means setups behind a CDN, WAF, or TLS-terminating proxy can still use automated certificates, provided plain HTTP validation traffic is forwarded to Itsi.
+
+E.g. a production configuration that allows HTTP-01 fallback might look like this:
+
+```ruby {filename=Itsi.rb}
+bind "http://0.0.0.0:80"
+bind "https://0.0.0.0:443?cert=acme&domains=example.com&acme_email=you@example.com"
+```
+
+## Dynamic Domain Registration
+You can add or remove ACME-managed domains while Itsi is already running.
+
+This is useful when hostnames are discovered dynamically by your Ruby application, or when you want to defer certificate issuance until a tenant, customer, or site is activated.
+
+Runtime APIs:
+
+* `Itsi::Server.tls_bindings`
+* `Itsi::Server.tls_domains(listener_id = nil)`
+* `Itsi::Server.tls_domain_statuses(listener_id = nil)`
+* `Itsi::Server.register_tls_domain(domain, listener_id = nil)`
+* `Itsi::Server.unregister_tls_domain(domain, listener_id = nil)`
+
+Example:
+
+```ruby
+Itsi::Server.register_tls_domain("customer-a.example.com")
+
+status = Itsi::Server.tls_domain_statuses.find { |entry| entry["domain"] == "customer-a.example.com" }
+puts status
+```
+
+When using dynamic issuance with HTTP-01, the same requirement still applies: the domain being issued must be able to reach an Itsi-managed HTTP listener for the ACME challenge path.

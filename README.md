@@ -29,11 +29,14 @@ Make sure you have Ruby installed! If not, look here:
 ### 2. Itsi
 
 > On Linux?
-You'll need at least `build-essential` and `libclang-dev` installed to build Itsi on Linux.
+You'll need at least `build-essential` and `libclang-dev` installed to build Itsi on Linux if RubyGems falls back to a source build.
   E.g.
   ```bash
   apt-get install build-essential libclang-dev
   ```
+
+> Precompiled native gems are published for common macOS and Linux targets on x86_64 and ARM64.
+> On those platforms most installs can skip the local Rust toolchain entirely, while source gems remain available as a fallback.
 
 Then, install Itsi using `gem`:
   ```bash
