@@ -11,7 +11,6 @@ use http::{request::Parts, Response, StatusCode};
 use http_body_util::BodyExt;
 use itsi_error::CLIENT_CONNECTION_CLOSED;
 use itsi_rb_helpers::{print_rb_backtrace, HeapValue};
-use itsi_tracing::debug;
 use magnus::{
     block::Proc,
     error::{ErrorType, Result as MagnusResult},

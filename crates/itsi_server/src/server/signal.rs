@@ -63,7 +63,7 @@ pub fn send_lifecycle_event(event: LifecycleEvent) {
     }
 }
 
-fn receive_signal(signum: i32, _: sighandler_t) {
+extern "C" fn receive_signal(signum: i32) {
     debug!("Received signal: {}", signum);
     SIGINT_COUNT.fetch_add(-1, Ordering::SeqCst);
     let event = match signum {
@@ -96,20 +96,25 @@ fn receive_signal(signum: i32, _: sighandler_t) {
     }
 }
 
+fn signal_handler() -> sighandler_t {
+    receive_signal as *const () as sighandler_t
+}
+
 pub fn reset_signal_handlers() -> bool {
     debug!("Resetting signal handlers");
     SIGINT_COUNT.store(0, Ordering::SeqCst);
     SHUTDOWN_REQUESTED.store(false, Ordering::SeqCst);
 
     unsafe {
-        libc::signal(libc::SIGTERM, receive_signal as usize);
-        libc::signal(libc::SIGINT, receive_signal as usize);
-        libc::signal(libc::SIGUSR2, receive_signal as usize);
-        libc::signal(libc::SIGUSR1, receive_signal as usize);
-        libc::signal(libc::SIGHUP, receive_signal as usize);
-        libc::signal(libc::SIGTTIN, receive_signal as usize);
-        libc::signal(libc::SIGTTOU, receive_signal as usize);
-        libc::signal(libc::SIGCHLD, receive_signal as usize);
+        let handler = signal_handler();
+        libc::signal(libc::SIGTERM, handler);
+        libc::signal(libc::SIGINT, handler);
+        libc::signal(libc::SIGUSR2, handler);
+        libc::signal(libc::SIGUSR1, handler);
+        libc::signal(libc::SIGHUP, handler);
+        libc::signal(libc::SIGTTIN, handler);
+        libc::signal(libc::SIGTTOU, handler);
+        libc::signal(libc::SIGCHLD, handler);
     }
     true
 }
