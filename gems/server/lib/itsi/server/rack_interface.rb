@@ -103,7 +103,8 @@ module Itsi
         elsif body_streamer
           # If we're partially hijacked or returned a streaming body,
           # stream this response.
-          body_streamer.call(response)
+          stream = status == 101 ? request.partial_hijack : response
+          body_streamer.call(stream)
 
         elsif body.is_a?(Array)
           if body.length == 1

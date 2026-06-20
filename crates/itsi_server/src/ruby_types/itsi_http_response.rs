@@ -72,6 +72,17 @@ pub enum ResponseFrame {
 }
 
 impl ItsiHttpResponse {
+    fn is_expected_bridge_shutdown(err: &io::Error) -> bool {
+        matches!(
+            err.kind(),
+            io::ErrorKind::BrokenPipe
+                | io::ErrorKind::ConnectionAborted
+                | io::ErrorKind::ConnectionReset
+                | io::ErrorKind::NotConnected
+                | io::ErrorKind::UnexpectedEof
+        )
+    }
+
     pub fn new(
         parts: Arc<Parts>,
         response_sender: OneshotSender<ResponseFrame>,
@@ -98,13 +109,17 @@ impl ItsiHttpResponse {
         let (mut cr, mut cw) = tokio::io::split(client_io);
 
         let to_ruby = tokio::spawn(async move {
-            if let Err(e) = tokio::io::copy(&mut cr, &mut lw).await {
-                eprintln!("Error copying upgraded->local: {:?}", e);
+            if let Err(err) = tokio::io::copy(&mut cr, &mut lw).await {
+                if !Self::is_expected_bridge_shutdown(&err) {
+                    eprintln!("Error copying upgraded->local: {:?}", err);
+                }
             }
         });
         let from_ruby = tokio::spawn(async move {
-            if let Err(e) = tokio::io::copy(&mut lr, &mut cw).await {
-                eprintln!("Error copying upgraded->local: {:?}", e);
+            if let Err(err) = tokio::io::copy(&mut lr, &mut cw).await {
+                if !Self::is_expected_bridge_shutdown(&err) {
+                    eprintln!("Error copying local->upgraded: {:?}", err);
+                }
             }
         });
 

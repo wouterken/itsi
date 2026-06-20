@@ -1,4 +1,7 @@
 require_relative "../helpers/test_helper"
+require "async/websocket/adapters/rack"
+require "protocol/websocket/connection"
+require "base64"
 
 class TestRackServer < Minitest::Test
   def test_that_it_has_a_version_number
@@ -143,6 +146,36 @@ class TestRackServer < Minitest::Test
     assert_equal UNIXSocket, stream_class
     assert_equal true, stream_is_io
     assert_operator read_arity, :!=, 0
+  end
+
+  def test_async_websocket_rack_adapter_can_upgrade_and_echo_messages
+    callback_error = Queue.new
+
+    server(app_with_lint: lambda do |env|
+      Async::WebSocket::Adapters::Rack.open(env) do |connection|
+        begin
+          message = connection.read
+          connection.write(message)
+          connection.flush
+        rescue => e
+          callback_error << e
+        end
+      end || [200, { "content-type" => "text/plain" }, ["ok"]]
+    end) do |uri|
+      socket = websocket_upgrade_socket(uri)
+      connection = websocket_client_connection(socket)
+
+      connection.write("hello")
+      connection.flush
+
+      message = connection.read
+      assert_equal "hello", message.to_str
+    ensure
+      connection&.close rescue nil
+      socket&.close
+    end
+
+    raise callback_error.pop unless callback_error.empty?
   end
 
   def test_enumerable_body
@@ -502,5 +535,37 @@ class TestRackServer < Minitest::Test
       resp = get_resp("/")
       assert_equal %w[a=b c=d], resp.get_fields("set-cookie")
     end
+  end
+
+  private
+
+  def websocket_upgrade_socket(uri)
+    socket = TCPSocket.new(uri.host, uri.port)
+    socket.write(
+      "GET / HTTP/1.1\r\n" \
+      "Host: #{uri.host}:#{uri.port}\r\n" \
+      "Connection: Upgrade\r\n" \
+      "Upgrade: websocket\r\n" \
+      "Sec-WebSocket-Version: 13\r\n" \
+      "Sec-WebSocket-Key: #{Base64.strict_encode64(SecureRandom.random_bytes(16))}\r\n" \
+      "\r\n"
+    )
+    socket.flush
+
+    response = +""
+    until response.include?("\r\n\r\n")
+      chunk = socket.read(1)
+      raise EOFError, "Unexpected EOF during websocket handshake" unless chunk
+
+      response << chunk
+    end
+
+    assert_includes response, "101"
+    socket
+  end
+
+  def websocket_client_connection(socket)
+    framer = Protocol::WebSocket::Framer.new(socket)
+    Protocol::WebSocket::Connection.new(framer, mask: "\x01\x02\x03\x04")
   end
 end

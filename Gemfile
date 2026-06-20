@@ -10,6 +10,7 @@ group :scheduler_test_db do
 end
 
 group :server_test_support do
+  gem 'async-websocket'
   gem 'jwt'
   gem 'net_http_unix'
   gem 'redis'
